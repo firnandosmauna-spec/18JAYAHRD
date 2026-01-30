@@ -7,7 +7,7 @@ import { BrowserRouter } from "react-router-dom";
 const basename = import.meta.env.BASE_URL;
 
 // App version - increment this to force cache clear
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.3.0";
 const STORED_VERSION = localStorage.getItem("app_version");
 
 // Clear cache if version changed

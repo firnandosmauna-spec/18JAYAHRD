@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, createContext, useContext, ReactNode } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ModuleLayout from '@/components/layout/ModuleLayout';
-import { 
-  Building2, 
-  Plus, 
-  Search, 
+import { useProjects } from '@/hooks/useProject';
+import { useToast } from '@/components/ui/use-toast';
+import {
+  Building2,
+  Plus,
+  Search,
   Filter,
   MoreVertical,
   Calendar,
@@ -22,7 +24,6 @@ import {
   ClipboardList,
   MapPin,
   Phone,
-  Mail,
   Bell,
   XCircle,
   X
@@ -31,7 +32,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import {
   Table,
@@ -57,7 +57,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -66,7 +65,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { createContext, useContext, ReactNode } from 'react';
 
 // Notification types and context for ProjectModule
 interface ProjectNotification {
@@ -93,25 +91,19 @@ const ProjectNotificationContext = createContext<ProjectNotificationContextType 
 function useProjectNotifications() {
   const context = useContext(ProjectNotificationContext);
   if (!context) {
-    // Return default values if not in provider
     return {
       notifications: [] as ProjectNotification[],
       unreadCount: 0,
-      addNotification: () => {},
-      markAsRead: () => {},
-      markAllAsRead: () => {},
-      clearNotification: () => {},
+      addNotification: () => { },
+      markAsRead: () => { },
+      markAllAsRead: () => { },
+      clearNotification: () => { },
     };
   }
   return context;
 }
 
-// Initial notifications for project module
-const initialProjectNotifications: ProjectNotification[] = [
-  { id: 1, title: 'Proyek Baru', message: 'Proyek pembangunan rumah tipe 45 dimulai', type: 'info', time: '5 menit lalu', read: false, module: 'project' },
-  { id: 2, title: 'Material Tiba', message: 'Pengiriman semen 50 sak telah tiba', type: 'success', time: '1 jam lalu', read: false, module: 'material' },
-  { id: 3, title: 'Stok Rendah', message: 'Stok besi beton hampir habis', type: 'warning', time: '2 jam lalu', read: false, module: 'material' },
-];
+const initialProjectNotifications: ProjectNotification[] = [];
 
 function ProjectNotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<ProjectNotification[]>(initialProjectNotifications);
@@ -199,9 +191,8 @@ function NotificationBell() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
-                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                    notification.read ? 'bg-gray-50 border-gray-200' : 'bg-[#E76F51]/5 border-[#E76F51]/20'
-                  }`}
+                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${notification.read ? 'bg-gray-50 border-gray-200' : 'bg-[#E76F51]/5 border-[#E76F51]/20'
+                    }`}
                   onClick={() => markAsRead(notification.id)}
                 >
                   <div className="flex items-start gap-3">
@@ -246,107 +237,32 @@ const navItems = [
   { label: 'Laporan', href: '/projects/reports', icon: FileText },
 ];
 
-// Mock data
-const projects = [
-  { 
-    id: 1, 
-    name: 'Pembangunan Rumah Tipe 45 - Jl. Merdeka', 
-    client: 'Budi Santoso', 
-    status: 'in-progress', 
-    progress: 65, 
-    startDate: '2024-01-15', 
-    targetDate: '2024-04-15',
-    budget: 450000000,
-    spent: 292500000,
-    location: 'Jl. Merdeka No. 123, Jakarta',
-    phone: '081234567890',
-    type: 'Rumah Tinggal',
-    area: 45
-  },
-  { 
-    id: 2, 
-    name: 'Renovasi Rumah Tipe 70 - Perumahan Griya', 
-    client: 'Siti Rahayu', 
-    status: 'in-progress', 
-    progress: 40, 
-    startDate: '2024-02-01', 
-    targetDate: '2024-05-01',
-    budget: 280000000,
-    spent: 112000000,
-    location: 'Perumahan Griya Asri Blok C12',
-    phone: '081298765432',
-    type: 'Renovasi',
-    area: 70
-  },
-  { 
-    id: 3, 
-    name: 'Pembangunan Rumah Tipe 60 - BSD', 
-    client: 'Ahmad Wijaya', 
-    status: 'planning', 
-    progress: 15, 
-    startDate: '2024-03-01', 
-    targetDate: '2024-07-01',
-    budget: 600000000,
-    spent: 90000000,
-    location: 'BSD City, Tangerang Selatan',
-    phone: '081345678901',
-    type: 'Rumah Tinggal',
-    area: 60
-  },
-  { 
-    id: 4, 
-    name: 'Pembangunan Rumah Minimalis - Bekasi', 
-    client: 'Dewi Lestari', 
-    status: 'completed', 
-    progress: 100, 
-    startDate: '2023-10-01', 
-    targetDate: '2024-01-31',
-    budget: 380000000,
-    spent: 375000000,
-    location: 'Jl. Raya Bekasi KM 25',
-    phone: '081456789012',
-    type: 'Rumah Tinggal',
-    area: 50
-  },
-];
-
-const projectPhases = [
-  { id: 1, name: 'Persiapan Lahan', duration: '7 hari', status: 'completed' },
-  { id: 2, name: 'Pondasi', duration: '14 hari', status: 'completed' },
-  { id: 3, name: 'Struktur & Rangka', duration: '21 hari', status: 'in-progress' },
-  { id: 4, name: 'Dinding & Atap', duration: '14 hari', status: 'pending' },
-  { id: 5, name: 'Instalasi MEP', duration: '10 hari', status: 'pending' },
-  { id: 6, name: 'Finishing Interior', duration: '14 hari', status: 'pending' },
-  { id: 7, name: 'Finishing Eksterior', duration: '7 hari', status: 'pending' },
-  { id: 8, name: 'Landscaping', duration: '5 hari', status: 'pending' },
-];
-
-const materials = [
-  { id: 1, name: 'Semen Portland', unit: 'Sak', stock: 150, used: 85, price: 65000 },
-  { id: 2, name: 'Bata Merah', unit: 'Buah', stock: 5000, used: 3200, price: 1200 },
-  { id: 3, name: 'Pasir Cor', unit: 'M³', stock: 25, used: 18, price: 350000 },
-  { id: 4, name: 'Besi Beton 10mm', unit: 'Batang', stock: 200, used: 145, price: 85000 },
-  { id: 5, name: 'Keramik 40x40', unit: 'Dus', stock: 80, used: 45, price: 125000 },
-  { id: 6, name: 'Cat Tembok', unit: 'Kaleng', stock: 60, used: 28, price: 180000 },
-];
-
-const workers = [
-  { id: 1, name: 'Pak Joko', role: 'Mandor', phone: '081234567890', status: 'active', dailyRate: 250000 },
-  { id: 2, name: 'Pak Budi', role: 'Tukang Batu', phone: '081234567891', status: 'active', dailyRate: 200000 },
-  { id: 3, name: 'Pak Andi', role: 'Tukang Batu', phone: '081234567892', status: 'active', dailyRate: 200000 },
-  { id: 4, name: 'Pak Rudi', role: 'Tukang Kayu', phone: '081234567893', status: 'active', dailyRate: 220000 },
-  { id: 5, name: 'Pak Hadi', role: 'Tukang Las', phone: '081234567894', status: 'active', dailyRate: 230000 },
-  { id: 6, name: 'Pak Slamet', role: 'Tukang Cat', phone: '081234567895', status: 'on-leave', dailyRate: 180000 },
-];
-
 function ProjectDashboard() {
+  const { projects, loading, addProject, refetch } = useProjects();
   const { addNotification } = useProjectNotifications();
+  const { toast } = useToast();
+
   const [showAddProjectDialog, setShowAddProjectDialog] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newProject, setNewProject] = useState({
+    name: '',
+    client_name: '',
+    type: '',
+    area_sqm: '',
+    location: '',
+    start_date: '',
+    end_date: '',
+    budget: '',
+    client_phone: '',
+  });
 
   const activeProjects = projects.filter(p => p.status === 'in-progress').length;
   const completedProjects = projects.filter(p => p.status === 'completed').length;
-  const totalBudget = projects.reduce((acc, p) => acc + p.budget, 0);
-  const totalSpent = projects.reduce((acc, p) => acc + p.spent, 0);
+  const totalBudget = projects.reduce((acc, p) => acc + (p.budget || 0), 0);
+
+  // Note: 'workers' count is not available in simple project list, would need separate query or join
+  // Placeholder for now
+  const activeWorkersCount = 0;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -358,10 +274,88 @@ function ProjectDashboard() {
         return <Badge className="bg-green-500">Selesai</Badge>;
       case 'on-hold':
         return <Badge className="bg-gray-500">Ditunda</Badge>;
+      case 'cancelled':
+        return <Badge className="bg-red-500">Dibatalkan</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
   };
+
+  const handleAddProject = async () => {
+    try {
+      setIsSubmitting(true);
+      // Basic validation
+      if (!newProject.name || !newProject.client_name) {
+        toast({
+          title: 'Error',
+          description: 'Nama Proyek dan Nama Klien wajib diisi',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      await addProject({
+        name: newProject.name,
+        client_name: newProject.client_name,
+        type: newProject.type,
+        area_sqm: newProject.area_sqm ? parseFloat(newProject.area_sqm) : 0,
+        location: newProject.location,
+        start_date: newProject.start_date || undefined,
+        end_date: newProject.end_date || undefined,
+        budget: newProject.budget ? parseFloat(newProject.budget) : 0,
+        client_phone: newProject.client_phone,
+        status: 'planning',
+        spent: 0,
+        progress: 0,
+      });
+
+      addNotification({
+        title: 'Proyek Ditambahkan',
+        message: `Proyek "${newProject.name}" berhasil dibuat`,
+        type: 'success',
+        time: 'Baru saja',
+        module: 'project'
+      });
+
+      toast({
+        title: 'Berhasil',
+        description: 'Proyek berhasil ditambahkan',
+      });
+
+      setShowAddProjectDialog(false);
+      setNewProject({
+        name: '',
+        client_name: '',
+        type: '',
+        area_sqm: '',
+        location: '',
+        start_date: '',
+        end_date: '',
+        budget: '',
+        client_phone: '',
+      });
+      refetch();
+    } catch (error: any) {
+      toast({
+        title: 'Gagal',
+        description: error.message || 'Gagal menambahkan proyek',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-[#E76F51]/30 border-t-[#E76F51] rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground font-body">Memuat data proyek...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -388,73 +382,111 @@ function ProjectDashboard() {
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label className="font-body">Nama Proyek</Label>
-                  <Input placeholder="Pembangunan Rumah Tipe 45..." className="font-body" />
+                  <Label className="font-body">Nama Proyek <span className="text-red-500">*</span></Label>
+                  <Input
+                    placeholder="Pembangunan Rumah Tipe 45..."
+                    className="font-body"
+                    value={newProject.name}
+                    onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label className="font-body">Nama Klien</Label>
-                  <Input placeholder="Nama pemilik rumah" className="font-body" />
+                  <Label className="font-body">Nama Klien <span className="text-red-500">*</span></Label>
+                  <Input
+                    placeholder="Nama pemilik rumah"
+                    className="font-body"
+                    value={newProject.client_name}
+                    onChange={(e) => setNewProject({ ...newProject, client_name: e.target.value })}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="font-body">Tipe Proyek</Label>
-                    <Select>
+                    <Select
+                      value={newProject.type}
+                      onValueChange={(val) => setNewProject({ ...newProject, type: val })}
+                    >
                       <SelectTrigger className="font-body">
                         <SelectValue placeholder="Pilih tipe" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="new" className="font-body">Rumah Baru</SelectItem>
-                        <SelectItem value="renovation" className="font-body">Renovasi</SelectItem>
-                        <SelectItem value="extension" className="font-body">Perluasan</SelectItem>
+                        <SelectItem value="Rumah Baru" className="font-body">Rumah Baru</SelectItem>
+                        <SelectItem value="Renovasi" className="font-body">Renovasi</SelectItem>
+                        <SelectItem value="Perluasan" className="font-body">Perluasan</SelectItem>
+                        <SelectItem value="Interior" className="font-body">Interior</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label className="font-body">Luas (m²)</Label>
-                    <Input type="number" placeholder="45" className="font-body" />
+                    <Input
+                      type="number"
+                      placeholder="45"
+                      className="font-body"
+                      value={newProject.area_sqm}
+                      onChange={(e) => setNewProject({ ...newProject, area_sqm: e.target.value })}
+                    />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="font-body">Lokasi</Label>
-                  <Input placeholder="Alamat lengkap proyek" className="font-body" />
+                  <Input
+                    placeholder="Alamat lengkap proyek"
+                    className="font-body"
+                    value={newProject.location}
+                    onChange={(e) => setNewProject({ ...newProject, location: e.target.value })}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="font-body">Tanggal Mulai</Label>
-                    <Input type="date" className="font-body" />
+                    <Input
+                      type="date"
+                      className="font-body"
+                      value={newProject.start_date}
+                      onChange={(e) => setNewProject({ ...newProject, start_date: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label className="font-body">Target Selesai</Label>
-                    <Input type="date" className="font-body" />
+                    <Input
+                      type="date"
+                      className="font-body"
+                      value={newProject.end_date}
+                      onChange={(e) => setNewProject({ ...newProject, end_date: e.target.value })}
+                    />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="font-body">Budget (Rp)</Label>
-                  <Input type="number" placeholder="450000000" className="font-body" />
+                  <Input
+                    type="number"
+                    placeholder="450000000"
+                    className="font-body"
+                    value={newProject.budget}
+                    onChange={(e) => setNewProject({ ...newProject, budget: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label className="font-body">Kontak Klien</Label>
-                  <Input placeholder="081234567890" className="font-body" />
+                  <Input
+                    placeholder="081234567890"
+                    className="font-body"
+                    value={newProject.client_phone}
+                    onChange={(e) => setNewProject({ ...newProject, client_phone: e.target.value })}
+                  />
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setShowAddProjectDialog(false)} className="font-body">
+                <Button variant="outline" onClick={() => setShowAddProjectDialog(false)} className="font-body" disabled={isSubmitting}>
                   Batal
                 </Button>
-                <Button 
+                <Button
                   className="bg-[#E76F51] hover:bg-[#E76F51]/90 font-body"
-                  onClick={() => {
-                    addNotification({
-                      title: 'Proyek Ditambahkan',
-                      message: 'Proyek baru berhasil ditambahkan',
-                      type: 'success',
-                      time: 'Baru saja',
-                      module: 'project'
-                    });
-                    setShowAddProjectDialog(false);
-                  }}
+                  onClick={handleAddProject}
+                  disabled={isSubmitting}
                 >
-                  Simpan
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -514,8 +546,8 @@ function ProjectDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-body text-muted-foreground">Total Budget</p>
-                  <p className="text-2xl font-display font-bold text-[#1C1C1E] mt-1">
-                    Rp {(totalBudget / 1000000000).toFixed(1)}M
+                  <p className="text-xl font-display font-bold text-[#1C1C1E] mt-1">
+                    Rp {(totalBudget / 1000000).toLocaleString('id-ID')}jt
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
@@ -537,7 +569,7 @@ function ProjectDashboard() {
                 <div>
                   <p className="text-sm font-body text-muted-foreground">Pekerja Aktif</p>
                   <p className="text-2xl font-display font-bold text-[#1C1C1E] mt-1">
-                    {workers.filter(w => w.status === 'active').length}
+                    {activeWorkersCount}
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center">
@@ -579,130 +611,75 @@ function ProjectDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {projects.map((project) => (
-                <TableRow key={project.id}>
-                  <TableCell className="font-body font-medium">
-                    <div>
-                      <p className="font-medium">{project.name}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <MapPin className="w-3 h-3" />
-                        {project.location}
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-body">
-                    <div>
-                      <p>{project.client}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <Phone className="w-3 h-3" />
-                        {project.phone}
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell>{getStatusBadge(project.status)}</TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs font-body">
-                        <span>{project.progress}%</span>
-                      </div>
-                      <Progress value={project.progress} className="h-2" />
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">
-                    <div>
-                      <p className="font-medium">Rp {(project.budget / 1000000).toFixed(0)}jt</p>
-                      <p className="text-xs text-muted-foreground">
-                        Terpakai: Rp {(project.spent / 1000000).toFixed(0)}jt
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-body text-sm">
-                    {new Date(project.targetDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem className="font-body">Lihat Detail</DropdownMenuItem>
-                        <DropdownMenuItem className="font-body">Edit Proyek</DropdownMenuItem>
-                        <DropdownMenuItem className="font-body">Laporan Progress</DropdownMenuItem>
-                        <DropdownMenuItem className="font-body text-red-600">Hapus</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+              {projects.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    Belum ada proyek. Silakan buat proyek baru.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                projects.map((project) => (
+                  <TableRow key={project.id}>
+                    <TableCell className="font-body font-medium">
+                      <div>
+                        <p className="font-medium">{project.name}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                          <MapPin className="w-3 h-3" />
+                          {project.location || '-'}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-body">
+                      <div>
+                        <p>{project.client_name}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                          <Phone className="w-3 h-3" />
+                          {project.client_phone || '-'}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(project.status)}</TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs font-body">
+                          <span>{project.progress}%</span>
+                        </div>
+                        <Progress value={project.progress} className="h-2" />
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      <div>
+                        <p className="font-medium">Rp {(project.budget / 1000000).toFixed(0)}jt</p>
+                        <p className="text-xs text-muted-foreground">
+                          Terpakai: Rp {((project.spent || 0) / 1000000).toFixed(0)}jt
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-body text-sm">
+                      {project.end_date ? new Date(project.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem className="font-body">Lihat Detail</DropdownMenuItem>
+                          <DropdownMenuItem className="font-body">Edit Proyek</DropdownMenuItem>
+                          <DropdownMenuItem className="font-body">Laporan Progress</DropdownMenuItem>
+                          <DropdownMenuItem className="font-body text-red-600">Hapus</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
-
-      {/* Project Phases & Materials */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Project Phases */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display">Tahapan Proyek</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {projectPhases.map((phase, index) => (
-                <div key={phase.id} className="flex items-center gap-3 p-3 rounded-lg border">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                    phase.status === 'completed' ? 'bg-green-500 text-white' :
-                    phase.status === 'in-progress' ? 'bg-blue-500 text-white' :
-                    'bg-gray-200 text-gray-600'
-                  }`}>
-                    {index + 1}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-body font-medium">{phase.name}</p>
-                    <p className="text-xs text-muted-foreground">{phase.duration}</p>
-                  </div>
-                  {phase.status === 'completed' && <CheckCircle className="w-5 h-5 text-green-500" />}
-                  {phase.status === 'in-progress' && <Clock className="w-5 h-5 text-blue-500" />}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Materials */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display">Material Proyek</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {materials.slice(0, 6).map((material) => (
-                <div key={material.id} className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[#E76F51]/20 flex items-center justify-center">
-                      <Package className="w-5 h-5 text-[#E76F51]" />
-                    </div>
-                    <div>
-                      <p className="font-body font-medium">{material.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Terpakai: {material.used} {material.unit}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-mono text-sm font-medium">
-                      {material.stock - material.used} {material.unit}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Sisa stok</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

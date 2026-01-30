@@ -61,6 +61,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { generateSalarySlip } from '@/utils/pdfGenerator';
 import { exportPayrollToExcel } from '@/utils/excelGenerator';
+import { PayrollPrintSettingsDialog } from './PayrollPrintSettingsDialog';
 
 // Hooks
 import { usePayroll, useEmployees, useLoans } from '@/hooks/useSupabase';
@@ -141,6 +142,19 @@ export function PayrollManagement() {
   console.log("DEBUG: Current User Role:", user?.role);
   console.log("DEBUG: Current User ID:", user?.id);
   console.log("DEBUG: Current Employee ID:", user?.employee_id);
+
+  // Print Settings State
+  const [printSettings, setPrintSettings] = useState<unknown>(undefined);
+
+  // Load initial settings
+  useEffect(() => {
+    const saved = localStorage.getItem('hris_payroll_print_settings');
+    if (saved) {
+      try {
+        setPrintSettings(JSON.parse(saved));
+      } catch (e) { console.error(e); }
+    }
+  }, []);
 
   const [activeTab, setActiveTab] = useState<'current' | 'history' | 'summary'>('current');
   const [searchQuery, setSearchQuery] = useState('');
@@ -236,6 +250,20 @@ export function PayrollManagement() {
             newDetails.push(`Keterlambatan: ${totalLateMinutes} menit (Rp ${latePenalty.toLocaleString('id-ID')})`);
           }
 
+          // 4. Sanctions Info (SP1)
+          const sp1Count = attendance?.filter((record: any) =>
+            record.notes && record.notes.includes('SP1 TRIGGERED')
+          ).length || 0;
+
+          if (sp1Count > 0) {
+            newDetails.push(`Sanksi: ${sp1Count}x Peringatan SP1 Mingguan (Akumulasi > 30 menit)`);
+          }
+
+          console.log("DEBUG: Attendance Sanctions Check");
+          console.log("Attendance Records:", attendance?.length);
+          console.log("SP1 Count:", sp1Count);
+          console.log("Notes found:", attendance?.map((a: any) => a.notes));
+
         } catch (err) {
           console.error("Failed to fetch attendance", err);
         }
@@ -290,6 +318,7 @@ export function PayrollManagement() {
       overtime_hours: '0',
       overtime_rate: '0'
     });
+    setDeductionDetails([]);
   };
 
   // Calculate net salary
@@ -445,7 +474,7 @@ export function PayrollManagement() {
       });
       return;
     }
-    generateSalarySlip(payroll, employee);
+    generateSalarySlip(payroll, employee, printSettings as any);
   };
 
   // Handle Export Excel
@@ -697,10 +726,13 @@ export function PayrollManagement() {
                     />
                   </div>
                   {user?.role !== 'staff' && (
-                    <Button variant="outline" className="font-body" onClick={handleExportExcel}>
-                      <Download className="w-4 h-4 mr-2" />
-                      Export
-                    </Button>
+                    <div className="flex gap-2">
+                      <PayrollPrintSettingsDialog onSettingsChange={setPrintSettings} />
+                      <Button variant="outline" className="font-body" onClick={handleExportExcel}>
+                        <Download className="w-4 h-4 mr-2" />
+                        Export
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>

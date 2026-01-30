@@ -5,10 +5,10 @@ import ModuleLayout from '@/components/layout/ModuleLayout';
 import { useProducts, useProductCategories, useWarehouses, useStockMovements, useLowStockProducts } from '@/hooks/useInventory';
 import { useToast } from '@/components/ui/use-toast';
 import type { Product } from '@/lib/supabase';
-import { 
-  Package, 
-  Plus, 
-  Search, 
+import {
+  Package,
+  Plus,
+  Search,
   Filter,
   MoreVertical,
   AlertTriangle,
@@ -145,30 +145,30 @@ function InventoryDashboard() {
 
   // Calculate stats from real data
   const stats = [
-    { 
-      label: 'Total Produk', 
-      value: products.length, 
-      icon: Package, 
-      change: `+${products.filter(p => p.status === 'active').length}` 
+    {
+      label: 'Total Produk',
+      value: products.length,
+      icon: Package,
+      change: `+${products.filter(p => p.status === 'active').length}`
     },
-    { 
-      label: 'Stok Rendah', 
-      value: lowStockProducts.length, 
-      icon: AlertTriangle, 
-      change: `+${lowStockProducts.length}`, 
-      warning: true 
+    {
+      label: 'Stok Rendah',
+      value: lowStockProducts.length,
+      icon: AlertTriangle,
+      change: `+${lowStockProducts.length}`,
+      warning: true
     },
-    { 
-      label: 'Stok Masuk', 
-      value: movements.filter(m => m.movement_type === 'in').length, 
-      icon: TrendingUp, 
-      change: '+12%' 
+    {
+      label: 'Stok Masuk',
+      value: movements.filter(m => m.movement_type === 'in').length,
+      icon: TrendingUp,
+      change: '+12%'
     },
-    { 
-      label: 'Stok Keluar', 
-      value: movements.filter(m => m.movement_type === 'out').length, 
-      icon: TrendingDown, 
-      change: '+8%' 
+    {
+      label: 'Stok Keluar',
+      value: movements.filter(m => m.movement_type === 'out').length,
+      icon: TrendingDown,
+      change: '+8%'
     },
   ];
 
@@ -292,7 +292,7 @@ function InventoryDashboard() {
       console.log('Saving product with data (Dashboard):', productData);
       console.log('Available categories:', categories);
       console.log('Available warehouses:', warehouses);
-      
+
       const savedProduct = await addProduct(productData);
       console.log('Product saved successfully (Dashboard):', savedProduct);
 
@@ -309,7 +309,7 @@ function InventoryDashboard() {
       });
     } catch (error: any) {
       console.error('Failed to add product:', error);
-      
+
       // Error handling yang lebih spesifik
       let errorMessage = 'Gagal menambahkan produk';
       if (error?.message) {
@@ -549,24 +549,24 @@ function InventoryDashboard() {
               </div>
             </div>
             <DialogFooter>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setShowAddProductDialog(false);
                   resetForm();
-                }} 
+                }}
                 className="font-body"
                 disabled={isSubmitting}
               >
                 Batal
               </Button>
-              <Button 
+              <Button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   handleAddProduct(e);
-                }} 
+                }}
                 className="bg-inventory hover:bg-inventory-dark font-body"
                 disabled={isSubmitting}
               >
@@ -629,38 +629,35 @@ function InventoryDashboard() {
             {lowStockProducts.map((product) => {
               const status = getProductStatus(product);
               return (
-              <div key={product.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    status === 'out-of-stock' ? 'bg-red-100' : 'bg-orange-100'
-                  }`}>
-                    <Package className={`w-5 h-5 ${
-                      status === 'out-of-stock' ? 'text-red-600' : 'text-orange-600'
-                    }`} />
+                <div key={product.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${status === 'out-of-stock' ? 'bg-red-100' : 'bg-orange-100'
+                      }`}>
+                      <Package className={`w-5 h-5 ${status === 'out-of-stock' ? 'text-red-600' : 'text-orange-600'
+                        }`} />
+                    </div>
+                    <div>
+                      <p className="font-medium font-body text-[#1C1C1E]">{product.name}</p>
+                      <p className="text-sm text-muted-foreground font-mono">{product.sku}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium font-body text-[#1C1C1E]">{product.name}</p>
-                    <p className="text-sm text-muted-foreground font-mono">{product.sku}</p>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className={`font-mono font-semibold ${status === 'out-of-stock' ? 'text-red-600' : 'text-orange-600'
+                        }`}>
+                        {product.stock} / {product.min_stock}
+                      </p>
+                      <Progress
+                        value={product.min_stock > 0 ? (product.stock / product.min_stock) * 100 : 0}
+                        className="w-24 h-2"
+                      />
+                    </div>
+                    <Button size="sm" variant="outline" className="font-body">
+                      Restok
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className={`font-mono font-semibold ${
-                      status === 'out-of-stock' ? 'text-red-600' : 'text-orange-600'
-                    }`}>
-                      {product.stock} / {product.min_stock}
-                    </p>
-                    <Progress 
-                      value={product.min_stock > 0 ? (product.stock / product.min_stock) * 100 : 0} 
-                      className="w-24 h-2"
-                    />
-                  </div>
-                  <Button size="sm" variant="outline" className="font-body">
-                    Restok
-                  </Button>
-                </div>
-              </div>
-            );
+              );
             })}
           </div>
         </CardContent>
@@ -680,13 +677,12 @@ function InventoryDashboard() {
               const product = movement.products;
               const productName = product?.name || 'Unknown Product';
               const movementDate = new Date(movement.created_at).toLocaleDateString('id-ID');
-              
+
               return (
                 <div key={movement.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      movement.movement_type === 'in' ? 'bg-green-100' : 'bg-blue-100'
-                    }`}>
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${movement.movement_type === 'in' ? 'bg-green-100' : 'bg-blue-100'
+                      }`}>
                       {movement.movement_type === 'in' ? (
                         <ArrowDownRight className="w-5 h-5 text-green-600" />
                       ) : (
@@ -701,9 +697,8 @@ function InventoryDashboard() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`font-mono font-semibold ${
-                      movement.movement_type === 'in' ? 'text-green-600' : 'text-blue-600'
-                    }`}>
+                    <p className={`font-mono font-semibold ${movement.movement_type === 'in' ? 'text-green-600' : 'text-blue-600'
+                      }`}>
                       {movement.movement_type === 'in' ? '+' : '-'}{movement.quantity} unit
                     </p>
                     <Badge variant="secondary" className="font-body text-xs">
@@ -730,7 +725,7 @@ function ProductList() {
   const { categories } = useProductCategories();
   const { warehouses } = useWarehouses();
   const { toast } = useToast();
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -886,7 +881,7 @@ function ProductList() {
       console.log('Saving product with data (ProductList):', productData);
       console.log('Available categories:', categories);
       console.log('Available warehouses:', warehouses);
-      
+
       const savedProduct = await addProduct(productData);
       console.log('Product saved successfully (ProductList):', savedProduct);
 
@@ -909,7 +904,7 @@ function ProductList() {
         details: error?.details,
         hint: error?.hint
       });
-      
+
       // Error handling yang lebih spesifik
       let errorMessage = 'Gagal menambahkan produk';
       if (error?.message) {
@@ -1166,24 +1161,24 @@ function ProductList() {
               </div>
             </div>
             <DialogFooter>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setShowAddProductDialog(false);
                   resetForm();
-                }} 
+                }}
                 className="font-body"
                 disabled={isSubmitting}
               >
                 Batal
               </Button>
-              <Button 
+              <Button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   handleAddProduct(e);
-                }} 
+                }}
                 className="bg-inventory hover:bg-inventory-dark font-body"
                 disabled={isSubmitting}
               >
@@ -1249,23 +1244,23 @@ function ProductList() {
                     <TableRow key={product.id}>
                       <TableCell className="font-body font-medium">{product.name}</TableCell>
                       <TableCell className="font-mono text-sm">{product.sku}</TableCell>
-                      <TableCell className="font-body">{product.category}</TableCell>
+                      <TableCell className="font-body">{(product as any).category || '-'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <span className="font-mono">{product.stock}</span>
-                          <Progress 
-                            value={Math.min((product.stock / product.minStock) * 100, 100)} 
+                          <Progress
+                            value={Math.min((product.stock / ((product as any).min_stock || 1)) * 100, 100)}
                             className="w-16 h-2"
                           />
                         </div>
                       </TableCell>
                       <TableCell className="font-mono">{formatCurrency(product.price)}</TableCell>
                       <TableCell>
-                        <Badge 
-                          variant={product.status === 'in-stock' ? 'default' : product.status === 'out-of-stock' ? 'destructive' : 'secondary'}
+                        <Badge
+                          variant={product.stock === 0 ? 'destructive' : product.stock <= ((product as any).min_stock || 5) ? 'secondary' : 'default'}
                           className="font-body"
                         >
-                          {product.status === 'in-stock' ? 'Tersedia' : product.status === 'out-of-stock' ? 'Habis' : 'Stok Rendah'}
+                          {product.stock === 0 ? 'Habis' : product.stock <= ((product as any).min_stock || 5) ? 'Stok Rendah' : 'Tersedia'}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
@@ -1293,7 +1288,7 @@ function ProductList() {
 
         <TabsContent value="in-stock" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products.filter(p => p.status === 'in-stock').map((product) => (
+            {products.filter(p => p.stock > ((p as any).min_stock || 5)).map((product) => (
               <Card key={product.id} className="border-gray-200">
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
@@ -1316,7 +1311,7 @@ function ProductList() {
 
         <TabsContent value="low-stock" className="mt-6">
           <div className="space-y-4">
-            {products.filter(p => p.status === 'low-stock').map((product) => (
+            {products.filter(p => p.stock <= ((p as any).min_stock || 5) && p.stock > 0).map((product) => (
               <Card key={product.id} className="border-gray-200 border-l-4 border-l-orange-500">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -1332,9 +1327,9 @@ function ProductList() {
                     <div className="flex items-center gap-4">
                       <div className="text-right">
                         <p className="font-mono font-semibold text-orange-600">
-                          {product.stock} / {product.minStock} unit
+                          {product.stock} / {(product as any).min_stock} unit
                         </p>
-                        <p className="text-xs text-muted-foreground font-body">Min. stok: {product.minStock}</p>
+                        <p className="text-xs text-muted-foreground font-body">Min. stok: {(product as any).min_stock}</p>
                       </div>
                       <Button className="bg-inventory hover:bg-inventory-dark font-body">
                         Restok
@@ -1349,7 +1344,7 @@ function ProductList() {
 
         <TabsContent value="out-of-stock" className="mt-6">
           <div className="space-y-4">
-            {products.filter(p => p.status === 'out-of-stock').map((product) => (
+            {products.filter(p => p.stock === 0).map((product) => (
               <Card key={product.id} className="border-gray-200 border-l-4 border-l-red-500">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">

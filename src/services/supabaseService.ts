@@ -9,7 +9,10 @@ import type {
   RewardRecord,
   NotificationRecord,
   EmployeeLoan,
-  Position
+  Position,
+  EmployeeContract,
+  JobHistory,
+  LeaveQuota
 } from '@/lib/supabase'
 
 // Employee Services
@@ -212,6 +215,16 @@ export const leaveService = {
   },
 
   async approve(id: string, approvedBy: string) {
+    // 1. Get the leave request details first
+    const { data: leaveReq, error: fetchError } = await supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // 2. Update status to approved
     const { data, error } = await supabase
       .from('leave_requests')
       .update({
@@ -224,8 +237,16 @@ export const leaveService = {
       .single()
 
     if (error) throw error
+
+    // 3. If it's annual leave, deduct from quota
+    if (leaveReq.leave_type === 'annual') {
+      const year = new Date(leaveReq.start_date).getFullYear();
+      await leaveQuotaService.updateQuota(leaveReq.employee_id, year, leaveReq.days);
+    }
+
     return data
   },
+
 
   async reject(id: string) {
     const { data, error } = await supabase
@@ -632,6 +653,130 @@ export const positionService = {
       .eq('id', id);
 
     if (error) throw error;
+  }
+}
+
+// Employee Contract Services
+export const contractService = {
+  async getByEmployee(employeeId: string) {
+    const { data, error } = await supabase
+      .from('employee_contracts')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .order('start_date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async create(contract: Omit<EmployeeContract, 'id' | 'created_at' | 'updated_at'>) {
+    const { data, error } = await supabase
+      .from('employee_contracts')
+      .insert(contract)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async update(id: string, updates: Partial<EmployeeContract>) {
+    const { data, error } = await supabase
+      .from('employee_contracts')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+}
+
+// Job History Services
+export const jobHistoryService = {
+  async getByEmployee(employeeId: string) {
+    const { data, error } = await supabase
+      .from('job_history')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .order('start_date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async create(history: Omit<JobHistory, 'id' | 'created_at' | 'updated_at'>) {
+    const { data, error } = await supabase
+      .from('job_history')
+      .insert(history)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+}
+
+// Leave Quota Services
+export const leaveQuotaService = {
+  async getByEmployee(employeeId: string, year: number) {
+    const { data, error } = await supabase
+      .from('leave_quotas')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('year', year)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async updateQuota(employeeId: string, year: number, usedDays: number) {
+    const { data: existing } = await supabase
+      .from('leave_quotas')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('year', year)
+      .maybeSingle();
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from('leave_quotas')
+        .update({
+          used_days: (existing.used_days || 0) + usedDays,
+          remaining_days: existing.total_days - ((existing.used_days || 0) + usedDays)
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } else {
+      // Fetch default quota from settings
+      const { data: settingData } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'leave_annual_quota')
+        .maybeSingle();
+
+      const defaultTotal = settingData ? Number(settingData.value) : 12;
+
+      // Create new quota if not exists
+      const { data, error } = await supabase
+        .from('leave_quotas')
+        .insert({
+          employee_id: employeeId,
+          year: year,
+          total_days: defaultTotal,
+          used_days: usedDays,
+          remaining_days: defaultTotal - usedDays
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
   }
 }
 

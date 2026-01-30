@@ -54,7 +54,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 // Hooks
-import { useLeaveRequests, useEmployees } from '@/hooks/useSupabase';
+import { useLeaveRequests, useEmployees, useLeaveQuota } from '@/hooks/useSupabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { LeaveRequest } from '@/lib/supabase';
 import { attendanceService } from '@/services/supabaseService';
@@ -175,6 +175,7 @@ export function LeaveManagement() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState<LeaveRequest | null>(null);
+  const { quotas: allQuotas, refetch: refetchQuota } = useLeaveQuota();
   const [lateReturns, setLateReturns] = useState<Record<string, { isLate: boolean; returnDate?: string }>>({});
 
   const [formData, setFormData] = useState<LeaveFormData>({
@@ -281,6 +282,7 @@ export function LeaveManagement() {
 
       console.log('Approving leave:', { leaveId, approverId });
       await approveLeaveRequest(leaveId, approverId);
+      await refetchQuota();
       alert('Cuti berhasil disetujui');
     } catch (error) {
       console.error('Failed to approve leave:', error);
@@ -364,6 +366,39 @@ export function LeaveManagement() {
           Ajukan Cuti
         </Button>
       </div>
+
+      {/* Quota Summary (Admin/Manager only) */}
+      {user?.role !== 'staff' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="border-none shadow-sm bg-blue-50/50 overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-900">
+              <Calendar className="w-12 h-12" />
+            </div>
+            <CardHeader className="pb-2 text-left">
+              <CardDescription className="text-blue-600 font-bold text-[10px] uppercase tracking-widest">Total Jatah Cuti</CardDescription>
+              <CardTitle className="text-3xl font-display text-blue-900">{allQuotas.reduce((acc, q) => acc + q.total_days, 0)} <span className="text-sm font-medium">Hari</span></CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="border-none shadow-sm bg-orange-50/50 overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-4 opacity-10 text-orange-900">
+              <Clock className="w-12 h-12" />
+            </div>
+            <CardHeader className="pb-2 text-left">
+              <CardDescription className="text-orange-600 font-bold text-[10px] uppercase tracking-widest">Cuti Terpakai</CardDescription>
+              <CardTitle className="text-3xl font-display text-orange-900">{allQuotas.reduce((acc, q) => acc + q.used_days, 0)} <span className="text-sm font-medium">Hari</span></CardTitle>
+            </CardHeader>
+          </Card>
+          <Card className="border-none shadow-sm bg-green-50/50 overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-4 opacity-10 text-green-900">
+              <CheckCircle className="w-12 h-12" />
+            </div>
+            <CardHeader className="pb-2 text-left">
+              <CardDescription className="text-green-600 font-bold text-[10px] uppercase tracking-widest">Sisa Kuota</CardDescription>
+              <CardTitle className="text-3xl font-display text-green-900">{allQuotas.reduce((acc, q) => acc + q.remaining_days, 0)} <span className="text-sm font-medium">Hari</span></CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+      )}
 
       {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4">
@@ -766,6 +801,6 @@ export function LeaveManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

@@ -1,423 +1,287 @@
-import { supabase } from '@/lib/supabase';
-import type {
-  Account,
-  Transaction,
-  JournalEntry,
-  AccountBalance,
-  TransactionFilter,
-  TransactionValidation,
-  AccountType,
-  TransactionStatus
-} from '@/types/accounting';
+import { Account, JournalEntry, JournalItem, AccountType, ProfitLossReport, BalanceSheetReport, AccountBalance } from '../types/accounting';
+import { supabase } from '../lib/supabase';
 
-// Account Services
-export const accountService = {
-  // Get all accounts with optional filtering
-  async getAll(includeInactive = false): Promise<Account[]> {
-    let query = supabase
-      .from('accounts')
-      .select('*')
-      .order('code');
+class AccountingService {
+    // Chart of Accounts (CoA)
+    async getAccounts(): Promise<Account[]> {
+        const { data, error } = await supabase
+            .from('accounting_accounts')
+            .select('*')
+            .order('code', { ascending: true });
 
-    if (!includeInactive) {
-      query = query.eq('is_active', true);
+        if (error) throw error;
+        return data || [];
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
-  },
+    async createAccount(account: Omit<Account, 'id' | 'created_at' | 'updated_at' | 'balance'>): Promise<Account> {
+        const { data, error } = await supabase
+            .from('accounting_accounts')
+            .insert([{ ...account, balance: 0 }])
+            .select()
+            .single();
 
-  // Get account by ID
-  async getById(id: string): Promise<Account | null> {
-    const { data, error } = await supabase
-      .from('accounts')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Get accounts by type
-  async getByType(type: AccountType): Promise<Account[]> {
-    const { data, error } = await supabase
-      .from('accounts')
-      .select('*')
-      .eq('type', type)
-      .eq('is_active', true)
-      .order('code');
-
-    if (error) throw error;
-    return data || [];
-  },
-
-  // Create new account
-  async create(account: Omit<Account, 'id' | 'created_at' | 'updated_at'>): Promise<Account> {
-    const { data, error } = await supabase
-      .from('accounts')
-      .insert(account)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Update account
-  async update(id: string, updates: Partial<Omit<Account, 'id' | 'created_at'>>): Promise<Account> {
-    const { data, error } = await supabase
-      .from('accounts')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Deactivate account (soft delete)
-  async deactivate(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('accounts')
-      .update({ is_active: false })
-      .eq('id', id);
-
-    if (error) throw error;
-  },
-
-  // Get account balances
-  async getBalances(): Promise<AccountBalance[]> {
-    const { data, error } = await supabase
-      .from('account_balances')
-      .select('*')
-      .order('code');
-
-    if (error) throw error;
-    return data || [];
-  },
-
-  // Get account balance by ID
-  async getBalance(accountId: string): Promise<number> {
-    const { data, error } = await supabase
-      .from('account_balances')
-      .select('balance')
-      .eq('id', accountId)
-      .single();
-
-    if (error) throw error;
-    return data?.balance || 0;
-  }
-};
-
-// Transaction Services
-export const transactionService = {
-  // Get all transactions with filtering
-  async getAll(filter?: TransactionFilter): Promise<Transaction[]> {
-    let query = supabase
-      .from('transactions')
-      .select(`
-        *,
-        journal_entries (
-          id,
-          account_id,
-          debit_amount,
-          credit_amount,
-          description,
-          accounts (
-            id,
-            code,
-            name,
-            type
-          )
-        )
-      `)
-      .order('date', { ascending: false });
-
-    if (filter) {
-      if (filter.startDate) {
-        query = query.gte('date', filter.startDate);
-      }
-      if (filter.endDate) {
-        query = query.lte('date', filter.endDate);
-      }
-      if (filter.status) {
-        query = query.eq('status', filter.status);
-      }
-      if (filter.searchQuery) {
-        query = query.or(`description.ilike.%${filter.searchQuery}%,reference.ilike.%${filter.searchQuery}%`);
-      }
+        if (error) throw error;
+        return data;
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
-  },
+    // Journal Entries
+    async getJournalEntries(): Promise<JournalEntry[]> {
+        const { data, error } = await supabase
+            .from('accounting_journals')
+            .select('*, items:accounting_journal_items(*)')
+            .order('date', { ascending: false });
 
-  // Get transaction by ID
-  async getById(id: string): Promise<Transaction | null> {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select(`
-        *,
-        journal_entries (
-          id,
-          account_id,
-          debit_amount,
-          credit_amount,
-          description,
-          accounts (
-            id,
-            code,
-            name,
-            type
-          )
-        )
-      `)
-      .eq('id', id)
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Create new transaction with journal entries
-  async create(
-    transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>,
-    entries: Omit<JournalEntry, 'id' | 'transaction_id' | 'created_at'>[]
-  ): Promise<Transaction> {
-    // Validate transaction balance
-    const validation = this.validateBalance(entries);
-    if (!validation.isBalanced) {
-      throw new Error(`Transaction is not balanced: ${validation.errors.join(', ')}`);
+        if (error) throw error;
+        return data || [];
     }
 
-    // Start transaction
-    const { data: transactionData, error: transactionError } = await supabase
-      .from('transactions')
-      .insert({
-        ...transaction,
-        created_by: transaction.created_by || 'system'
-      })
-      .select()
-      .single();
+    async createJournalEntry(entry: Omit<JournalEntry, 'id' | 'created_at' | 'status'> & { status?: string }): Promise<JournalEntry> {
+        const { items, ...entryData } = entry;
 
-    if (transactionError) throw transactionError;
+        // Validate balance
+        const totalDebit = items.reduce((sum, item) => sum + item.debit, 0);
+        const totalCredit = items.reduce((sum, item) => sum + item.credit, 0);
 
-    // Insert journal entries
-    const entriesWithTransactionId = entries.map(entry => ({
-      ...entry,
-      transaction_id: transactionData.id
-    }));
+        if (Math.abs(totalDebit - totalCredit) > 0.01) {
+            throw new Error('Journal entry is not balanced. Total Debit must equal Total Credit.');
+        }
 
-    const { error: entriesError } = await supabase
-      .from('journal_entries')
-      .insert(entriesWithTransactionId);
+        // Start transaction (using rpc if multiple inserts are needed, or handle manually)
+        // For now, simple insert with items handled separately or via relational insert if supported
 
-    if (entriesError) {
-      // Rollback transaction if entries fail
-      await supabase.from('transactions').delete().eq('id', transactionData.id);
-      throw entriesError;
+        const { data: journal, error: journalError } = await supabase
+            .from('accounting_journals')
+            .insert([{ ...entryData, status: entry.status || 'posted' }])
+            .select()
+            .single();
+
+        if (journalError) throw journalError;
+
+        const journalItems = items.map(item => ({
+            ...item,
+            journal_id: journal.id
+        }));
+
+        const { error: itemsError } = await supabase
+            .from('accounting_journal_items')
+            .insert(journalItems);
+
+        if (itemsError) throw itemsError;
+
+        // Update account balances (This should ideally be done by a trigger in DB or via a procedure)
+        for (const item of items) {
+            await this.updateAccountBalance(item.account_id, item.debit, item.credit);
+        }
+
+        return { ...journal, items };
     }
 
-    return transactionData;
-  },
+    private async updateAccountBalance(accountId: string, debit: number, credit: number) {
+        // Determine if debit increases or decreases balance based on account type
+        const { data: account, error: fetchError } = await supabase
+            .from('accounting_accounts')
+            .select('type, balance')
+            .eq('id', accountId)
+            .single();
 
-  // Update transaction
-  async update(
-    id: string,
-    updates: Partial<Omit<Transaction, 'id' | 'created_at'>>,
-    entries?: Omit<JournalEntry, 'id' | 'transaction_id' | 'created_at'>[]
-  ): Promise<Transaction> {
-    // Check if transaction is posted (cannot modify posted transactions)
-    const existing = await this.getById(id);
-    if (existing?.status === 'posted') {
-      throw new Error('Cannot modify posted transactions');
+        if (fetchError) throw fetchError;
+
+        let adjustment = 0;
+        const type = account.type as AccountType;
+
+        // Assets, Expenses: Debit increases balance, Credit decreases
+        // Liabilities, Equity, Revenue: Debit decreases balance, Credit increases
+        if (type === 'asset' || type === 'expense') {
+            adjustment = debit - credit;
+        } else {
+            adjustment = credit - debit;
+        }
+
+        const { error: updateError } = await supabase
+            .from('accounting_accounts')
+            .update({ balance: account.balance + adjustment })
+            .eq('id', accountId);
+
+        if (updateError) throw updateError;
     }
 
-    if (entries) {
-      // Validate new entries balance
-      const validation = this.validateBalance(entries);
-      if (!validation.isBalanced) {
-        throw new Error(`Transaction is not balanced: ${validation.errors.join(', ')}`);
-      }
+    // Reports
+    async getProfitLoss(startDate: string, endDate: string): Promise<ProfitLossReport> {
+        // Fetch journal items for revenue and expense accounts within period
+        // Correct way for Postgrest:
+        const { data: journalItems, error: itemsError } = await supabase
+            .from('accounting_journal_items')
+            .select(`
+                debit,
+                credit,
+                account_id,
+                account:accounting_accounts!inner(id, code, name, type),
+                journal:accounting_journals!inner(date)
+            `)
+            .gte('journal.date', startDate)
+            .lte('journal.date', endDate)
+            .in('account.type', ['revenue', 'expense']);
 
-      // Delete existing entries
-      await supabase.from('journal_entries').delete().eq('transaction_id', id);
+        if (itemsError) throw itemsError;
 
-      // Insert new entries
-      const entriesWithTransactionId = entries.map(entry => ({
-        ...entry,
-        transaction_id: id
-      }));
+        const revenueMap = new Map<string, AccountBalance>();
+        const expenseMap = new Map<string, AccountBalance>();
 
-      const { error: entriesError } = await supabase
-        .from('journal_entries')
-        .insert(entriesWithTransactionId);
+        journalItems.forEach(item => {
+            const acc = item.account as any;
+            const targetMap = acc.type === 'revenue' ? revenueMap : expenseMap;
+            const existing = targetMap.get(acc.id) || {
+                account_id: acc.id,
+                account_code: acc.code,
+                account_name: acc.name,
+                balance: 0
+            };
 
-      if (entriesError) throw entriesError;
+            // Revenue: Credit - Debit
+            // Expense: Debit - Credit
+            if (acc.type === 'revenue') {
+                existing.balance += (item.credit - item.debit);
+            } else {
+                existing.balance += (item.debit - item.credit);
+            }
+            targetMap.set(acc.id, existing);
+        });
+
+        const revenue = Array.from(revenueMap.values());
+        const expense = Array.from(expenseMap.values());
+        const total_revenue = revenue.reduce((sum, r) => sum + r.balance, 0);
+        const total_expense = expense.reduce((sum, e) => sum + e.balance, 0);
+
+        return {
+            period: `${startDate} to ${endDate}`,
+            revenue,
+            total_revenue,
+            expense,
+            total_expense,
+            net_profit: total_revenue - total_expense
+        };
     }
 
-    // Update transaction
-    const { data, error } = await supabase
-      .from('transactions')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+    async getBalanceSheet(date: string): Promise<BalanceSheetReport> {
+        // Fetch all transactions up to target date for all types to calculate Retained Earnings
+        const { data: journalItems, error: itemsError } = await supabase
+            .from('accounting_journal_items')
+            .select(`
+                debit,
+                credit,
+                account:accounting_accounts!inner(id, code, name, type),
+                journal:accounting_journals!inner(date)
+            `)
+            .lte('journal.date', date);
 
-    if (error) throw error;
-    return data;
-  },
+        if (itemsError) throw itemsError;
 
-  // Post transaction (make it immutable)
-  async post(id: string): Promise<Transaction> {
-    const { data, error } = await supabase
-      .from('transactions')
-      .update({ status: 'posted' })
-      .eq('id', id)
-      .select()
-      .single();
+        const maps = {
+            asset: new Map<string, AccountBalance>(),
+            liability: new Map<string, AccountBalance>(),
+            equity: new Map<string, AccountBalance>()
+        };
 
-    if (error) throw error;
-    return data;
-  },
+        let netProfit = 0;
 
-  // Reverse transaction
-  async reverse(id: string): Promise<Transaction> {
-    const { data, error } = await supabase
-      .from('transactions')
-      .update({ status: 'reversed' })
-      .eq('id', id)
-      .select()
-      .single();
+        journalItems.forEach(item => {
+            const acc = item.account as any;
 
-    if (error) throw error;
-    return data;
-  },
+            // Assets, Liabilities, Equity maps
+            if (['asset', 'liability', 'equity'].includes(acc.type)) {
+                const targetMap = maps[acc.type as keyof typeof maps];
+                const existing = targetMap.get(acc.id) || {
+                    account_id: acc.id,
+                    account_code: acc.code,
+                    account_name: acc.name,
+                    balance: 0
+                };
 
-  // Delete transaction (only drafts)
-  async delete(id: string): Promise<void> {
-    const existing = await this.getById(id);
-    if (existing?.status !== 'draft') {
-      throw new Error('Can only delete draft transactions');
+                if (acc.type === 'asset') {
+                    existing.balance += (item.debit - item.credit);
+                } else {
+                    existing.balance += (item.credit - item.debit);
+                }
+                targetMap.set(acc.id, existing);
+            }
+
+            // Calculate Net Profit for Retained Earnings (Revenue - Expense)
+            if (acc.type === 'revenue') {
+                netProfit += (item.credit - item.debit);
+            } else if (acc.type === 'expense') {
+                netProfit -= (item.debit - item.credit);
+            }
+        });
+
+        const assets = Array.from(maps.asset.values());
+        const liabilities = Array.from(maps.liability.values());
+        const equity = Array.from(maps.equity.values());
+
+        // Add Net Profit as a row in Equity if not zero
+        if (netProfit !== 0) {
+            equity.push({
+                account_id: 'retained-earnings',
+                account_code: '3999',
+                account_name: 'Laba (Rugi) Tahun Berjalan',
+                balance: netProfit
+            });
+        }
+
+        const total_assets = assets.reduce((sum, a) => sum + a.balance, 0);
+        const total_liabilities = liabilities.reduce((sum, l) => sum + l.balance, 0);
+        const total_equity = equity.reduce((sum, e) => sum + e.balance, 0);
+
+        return {
+            date,
+            assets,
+            total_assets,
+            liabilities,
+            total_liabilities,
+            equity,
+            total_equity
+        };
     }
 
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('id', id);
+    async getOpeningBalance(accountId: string, startDate: string): Promise<number> {
+        const { data: items, error } = await supabase
+            .from('accounting_journal_items')
+            .select(`
+                debit,
+                credit,
+                account:accounting_accounts!inner(type),
+                journal:accounting_journals!inner(date)
+            `)
+            .lt('journal.date', startDate)
+            .eq('account_id', accountId);
 
-    if (error) throw error;
-  },
+        if (error) throw error;
+        if (!items || items.length === 0) return 0;
 
-  // Validate transaction balance
-  validateBalance(entries: Omit<JournalEntry, 'id' | 'transaction_id' | 'created_at'>[]): TransactionValidation {
-    const totalDebits = entries.reduce((sum, entry) => sum + (entry.debit_amount || 0), 0);
-    const totalCredits = entries.reduce((sum, entry) => sum + (entry.credit_amount || 0), 0);
-    const difference = Math.abs(totalDebits - totalCredits);
-    const isBalanced = difference < 0.01; // Allow for small rounding differences
-
-    const errors: string[] = [];
-    if (!isBalanced) {
-      errors.push(`Debits (${totalDebits}) do not equal credits (${totalCredits})`);
-    }
-    if (entries.length === 0) {
-      errors.push('Transaction must have at least one journal entry');
-    }
-    if (entries.some(entry => entry.debit_amount < 0 || entry.credit_amount < 0)) {
-      errors.push('Debit and credit amounts cannot be negative');
-    }
-    if (entries.some(entry => entry.debit_amount > 0 && entry.credit_amount > 0)) {
-      errors.push('Journal entry cannot have both debit and credit amounts');
+        const type = (items[0].account as any).type;
+        return items.reduce((sum, item) => {
+            if (type === 'asset' || type === 'expense') {
+                return sum + (item.debit - item.credit);
+            } else {
+                return sum + (item.credit - item.debit);
+            }
+        }, 0);
     }
 
-    return {
-      isBalanced,
-      totalDebits,
-      totalCredits,
-      difference,
-      errors
-    };
-  }
-};
+    async getLedger(accountId: string, startDate: string, endDate: string): Promise<any[]> {
+        const { data, error } = await supabase
+            .from('accounting_journal_items')
+            .select(`
+                *,
+                journal:accounting_journals!inner(date, description, reference)
+            `)
+            .eq('account_id', accountId)
+            .gte('journal.date', startDate)
+            .lte('journal.date', endDate)
+            .order('created_at', { ascending: true });
 
-// Journal Entry Services
-export const journalEntryService = {
-  // Get entries by transaction
-  async getByTransaction(transactionId: string): Promise<JournalEntry[]> {
-    const { data, error } = await supabase
-      .from('journal_entries')
-      .select(`
-        *,
-        accounts (
-          id,
-          code,
-          name,
-          type
-        )
-      `)
-      .eq('transaction_id', transactionId)
-      .order('created_at');
-
-    if (error) throw error;
-    return data || [];
-  },
-
-  // Get entries by account
-  async getByAccount(accountId: string, startDate?: string, endDate?: string): Promise<JournalEntry[]> {
-    let query = supabase
-      .from('journal_entries')
-      .select(`
-        *,
-        transactions (
-          id,
-          date,
-          description,
-          reference,
-          status
-        )
-      `)
-      .eq('account_id', accountId)
-      .order('created_at', { ascending: false });
-
-    if (startDate || endDate) {
-      query = query
-        .gte('transactions.date', startDate)
-        .lte('transactions.date', endDate);
+        if (error) throw error;
+        return data || [];
     }
+}
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
-  }
-};
-
-// Utility function to handle accounting errors
-export const handleAccountingError = (error: any): string => {
-  console.error('Accounting error:', error);
-
-  if (error.message?.includes('not balanced')) {
-    return 'Transaksi tidak seimbang - total debit harus sama dengan total kredit';
-  }
-
-  if (error.message?.includes('Cannot modify posted')) {
-    return 'Tidak dapat mengubah transaksi yang sudah diposting';
-  }
-
-  if (error.code === '23505') {
-    return 'Kode akun sudah digunakan';
-  }
-
-  if (error.code === '23503') {
-    return 'Data terkait dengan transaksi lain, tidak dapat dihapus';
-  }
-
-  if (error.code === 'PGRST116') {
-    return 'Data tidak ditemukan';
-  }
-
-  return error.message || 'Terjadi kesalahan pada sistem akuntansi';
-};
+export const accountingService = new AccountingService();

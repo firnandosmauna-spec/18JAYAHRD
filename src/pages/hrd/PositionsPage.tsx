@@ -56,7 +56,8 @@ export default function PositionsPage() {
             const { data, error } = await supabase
                 .from("positions")
                 .select("*")
-                .order("title");
+                .select("*")
+                .order("department");
 
             if (error) throw error;
             setPositions(data || []);
@@ -75,21 +76,24 @@ export default function PositionsPage() {
 
     const handleSave = async () => {
         try {
-            if (!currentPosition.title || !currentPosition.department || !currentPosition.level || currentPosition.gaji_pokok === undefined) {
+            if (!currentPosition.department || !currentPosition.level) {
                 toast({
                     title: "Validation Error",
-                    description: "Please fill in all required fields (Title, Department, Level, Salary)",
+                    description: "Mohon isi semua field yang wajib (Departemen, Posisi)",
                     variant: "destructive",
                 });
                 return;
             }
 
+            // Auto-generate title: "{Level} - {Department}"
+            const generatedTitle = `${currentPosition.level} - ${currentPosition.department}`;
+
             const positionData = {
-                title: currentPosition.title,
+                title: generatedTitle,
                 department: currentPosition.department,
                 level: currentPosition.level,
-                gaji_pokok: currentPosition.gaji_pokok,
-                job_desc: currentPosition.job_desc,
+                gaji_pokok: 0, // Default to 0 as requested
+                job_desc: "", // Empty as requested
             };
 
             let error;
@@ -155,7 +159,8 @@ export default function PositionsPage() {
     };
 
     const filteredPositions = positions.filter((p) =>
-        p.title.toLowerCase().includes(searchQuery.toLowerCase())
+        p.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.level && p.level.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
     return (
@@ -190,30 +195,27 @@ export default function PositionsPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Title</TableHead>
-                                    <TableHead>Department</TableHead>
-                                    <TableHead>Level</TableHead>
-                                    <TableHead>Base Salary</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead>Departemen</TableHead>
+                                    <TableHead>Posisi</TableHead>
+                                    <TableHead className="text-right">Aksi</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center py-8">
+                                        <TableCell colSpan={3} className="text-center py-8">
                                             Loading positions...
                                         </TableCell>
                                     </TableRow>
                                 ) : filteredPositions.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
                                             No positions found.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
                                     filteredPositions.map((position) => (
                                         <TableRow key={position.id}>
-                                            <TableCell className="font-medium">{position.title}</TableCell>
                                             <TableCell>
                                                 {position.department}
                                             </TableCell>
@@ -223,14 +225,6 @@ export default function PositionsPage() {
                                                         {position.level}
                                                     </Badge>
                                                 )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {position.gaji_pokok
-                                                    ? new Intl.NumberFormat("id-ID", {
-                                                        style: "currency",
-                                                        currency: "IDR",
-                                                    }).format(position.gaji_pokok)
-                                                    : "-"}
                                             </TableCell>
                                             <TableCell className="text-right space-x-2">
                                                 <Button
@@ -268,54 +262,30 @@ export default function PositionsPage() {
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="title">Job Title <span className="text-red-500">*</span></Label>
-                            <Input
-                                id="title"
-                                value={currentPosition.title || ""}
-                                onChange={(e) => setCurrentPosition({ ...currentPosition, title: e.target.value })}
-                                placeholder="e.g. Senior Developer"
-                            />
-                        </div>
-
-                        <div className="grid gap-2">
-                            <Label htmlFor="department">Department <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="department">Departemen <span className="text-red-500">*</span></Label>
                             <Input
                                 id="department"
                                 value={currentPosition.department || ""}
                                 onChange={(e) => setCurrentPosition({ ...currentPosition, department: e.target.value })}
-                                placeholder="e.g. Finance, HRD"
+                                placeholder="Contoh: HRD, Finance"
                             />
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="level">Level <span className="text-red-500">*</span></Label>
-                            <Input
-                                id="level"
-                                value={currentPosition.level || ""}
-                                onChange={(e) => setCurrentPosition({ ...currentPosition, level: e.target.value })}
-                                placeholder="e.g. Staff, Manager, Senior"
-                            />
-                        </div>
-
-                        <div className="grid gap-2">
-                            <Label htmlFor="salary">Base Salary (IDR) <span className="text-red-500">*</span></Label>
-                            <Input
-                                id="salary"
-                                type="number"
-                                value={currentPosition.gaji_pokok || ""}
-                                onChange={(e) => setCurrentPosition({ ...currentPosition, gaji_pokok: Number(e.target.value) })}
-                                placeholder="0"
-                            />
-                        </div>
-
-                        <div className="grid gap-2">
-                            <Label htmlFor="desc">Job Description</Label>
-                            <Input
-                                id="desc"
-                                value={currentPosition.job_desc || ""}
-                                onChange={(e) => setCurrentPosition({ ...currentPosition, job_desc: e.target.value })}
-                                placeholder="Brief description of responsibilities"
-                            />
+                            <Label htmlFor="level">Posisi <span className="text-red-500">*</span></Label>
+                            <Select
+                                value={currentPosition.level}
+                                onValueChange={(val) => setCurrentPosition({ ...currentPosition, level: val })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Pilih Posisi" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Administrator">Administrator</SelectItem>
+                                    <SelectItem value="Staf">Staf</SelectItem>
+                                    <SelectItem value="Manager">Manager</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                     <DialogFooter>

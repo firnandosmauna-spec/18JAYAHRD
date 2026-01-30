@@ -21,7 +21,6 @@ const roleOptions: { value: UserRole; label: string }[] = [
 
 const moduleOptions: { value: ModuleType; label: string }[] = [
   { value: 'hrd', label: 'HRD' },
-  { value: 'accounting', label: 'Accounting' },
   { value: 'inventory', label: 'Inventory' },
   { value: 'customer', label: 'Customer' },
   { value: 'project', label: 'Project' },
@@ -91,18 +90,8 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
       );
 
       if (success) {
-        setSuccess('Registrasi berhasil! Silakan login dengan akun yang baru dibuat.');
-        // Reset form
-        setFormData({
-          name: '',
-          email: '',
-          password: '',
-          confirmPassword: '',
-          role: 'staff',
-          modules: ['hrd'],
-          position: '',
-          department: '',
-        });
+        setSuccess('Registrasi berhasil! Memuat Dashboard...');
+        // No more reload, let AuthContext handle state change
       }
     } catch (error: any) {
       setError(error.message || 'Terjadi kesalahan saat registrasi');
@@ -198,21 +187,18 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
             />
           </div>
 
+          {/* 
+            Role selection removed. Default is 'staff'. 
+            Admin can upgrade roles via User Management.
+          */}
+          {/* 
           <div className="space-y-2">
             <Label htmlFor="role">Role</Label>
             <Select value={formData.role} onValueChange={handleRoleChange} disabled={isSubmitting}>
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih role" />
-              </SelectTrigger>
-              <SelectContent>
-                {roleOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              ...
             </Select>
-          </div>
+          </div> 
+          */}
 
           {/* 
             Position and Department removed as per request.

@@ -58,9 +58,9 @@ module.exports = {
           dark: "#095456",
         },
         accounting: {
-          DEFAULT: "#1A2332",
-          light: "#F4A261",
-          dark: "#0F1520",
+          DEFAULT: "#10B981", // Emerald 500
+          light: "#34D399",  // Emerald 400
+          dark: "#059669",   // Emerald 600
         },
         inventory: {
           DEFAULT: "#E76F51",

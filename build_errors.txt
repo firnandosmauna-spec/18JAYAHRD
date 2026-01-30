@@ -1,0 +1,26 @@
+﻿src/components/accounting/CoAView.tsx(54,37): error TS2304: Cannot find name 'supabase'.
+src/components/accounting/CoAView.tsx(61,13): error TS2304: Cannot find name 'toast'.
+src/components/accounting/CoAView.tsx(65,13): error TS2304: Cannot find name 'toast'.
+src/pages/modules/HRDModuleSupabase.tsx(1831,80): error TS2339: Property 'contract_type' does not exist on type 'EmployeeContract'.
+src/pages/modules/HRDModuleSupabase.tsx(1869,69): error TS2339: Property 'position_title' does not exist on type 'JobHistory'.
+src/pages/modules/HRDModuleSupabase.tsx(1872,29): error TS2339: Property 'start_date' does not exist on type 'JobHistory'.
+src/pages/modules/HRDModuleSupabase.tsx(1872,51): error TS2339: Property 'end_date' does not exist on type 'JobHistory'.
+src/pages/modules/HRDModuleSupabase.tsx(1874,21): error TS2339: Property 'notes' does not exist on type 'JobHistory'.
+src/pages/modules/HRDModuleSupabase.tsx(1876,25): error TS2339: Property 'notes' does not exist on type 'JobHistory'.
+src/pages/modules/InventoryModule.tsx(1252,65): error TS2339: Property 'category' does not exist on type 'Product'.
+src/pages/modules/InventoryModule.tsx(1257,70): error TS2551: Property 'minStock' does not exist on type 'Product'. Did you mean 'min_stock'?
+src/pages/modules/InventoryModule.tsx(1265,36): error TS2367: This comparison appears to be unintentional because the types '"active" | "inactive" | "discontinued"' and '"in-stock"' have no overlap.
+src/pages/modules/InventoryModule.tsx(1265,80): error TS2367: This comparison appears to be unintentional because the types '"active" | "inactive" | "discontinued"' and '"out-of-stock"' have no overlap.
+src/pages/modules/InventoryModule.tsx(1268,28): error TS2367: This comparison appears to be unintentional because the types '"active" | "inactive" | "discontinued"' and '"in-stock"' have no overlap.
+src/pages/modules/InventoryModule.tsx(1268,73): error TS2367: This comparison appears to be unintentional because the types '"active" | "inactive" | "discontinued"' and '"out-of-stock"' have no overlap.
+src/pages/modules/InventoryModule.tsx(1296,35): error TS2367: This comparison appears to be unintentional because the types '"active" | "inactive" | "discontinued"' and '"in-stock"' have no overlap.
+src/pages/modules/InventoryModule.tsx(1319,35): error TS2367: This comparison appears to be unintentional because the types '"active" | "inactive" | "discontinued"' and '"low-stock"' have no overlap.
+src/pages/modules/InventoryModule.tsx(1335,54): error TS2551: Property 'minStock' does not exist on type 'Product'. Did you mean 'min_stock'?
+src/pages/modules/InventoryModule.tsx(1337,100): error TS2551: Property 'minStock' does not exist on type 'Product'. Did you mean 'min_stock'?
+src/pages/modules/InventoryModule.tsx(1352,35): error TS2367: This comparison appears to be unintentional because the types '"active" | "inactive" | "discontinued"' and '"out-of-stock"' have no overlap.
+src/services/userService.ts(205,30): error TS2554: Expected 0-1 arguments, but got 2.
+src/services/userService.ts(213,30): error TS2554: Expected 0-1 arguments, but got 2.
+src/services/userService.ts(221,30): error TS2554: Expected 0-1 arguments, but got 2.
+src/services/userService.ts(230,30): error TS2554: Expected 0-1 arguments, but got 2.
+src/utils/migration.ts(54,40): error TS2345: Argument of type '{ name: any; position: any; department_id: any; status: any; join_date: any; salary: any; bank_account: any; bank: any; sales_target: any; sales_achieved: any; attendance_score: any; innovation_projects: any; team_leadership: any; customer_rating: any; }' is not assignable to parameter of type 'Omit<Employee, "created_at" | "updated_at" | "id">'.
+  Property 'department' is missing in type '{ name: any; position: any; department_id: any; status: any; join_date: any; salary: any; bank_account: any; bank: any; sales_target: any; sales_achieved: any; attendance_score: any; innovation_projects: any; team_leadership: any; customer_rating: any; }' but required in type 'Omit<Employee, "created_at" | "updated_at" | "id">'.

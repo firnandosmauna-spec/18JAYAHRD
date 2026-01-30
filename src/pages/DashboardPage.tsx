@@ -11,7 +11,6 @@ import {
   Bell,
   Search,
   Settings,
-
   ChevronRight,
   Clock,
   TrendingUp,
@@ -20,11 +19,15 @@ import {
   FileText,
   UserPlus,
   DollarSign,
+  Wallet,
+  BarChart3,
   ShoppingCart,
   ShoppingBag,
   MessageSquare,
   Building2,
   Shield,
+  Calendar,
+  Lock,
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -60,35 +63,35 @@ interface ModuleConfig {
 const modules: ModuleConfig[] = [
   {
     id: 'hrd',
-    name: 'HRD',
-    description: 'Kelola karyawan, cuti, absensi, dan penggajian',
+    name: 'HRD & Payroll',
+    description: 'Manajemen karyawan, absensi, dan penggajian',
     icon: Users,
     color: 'text-hrd',
     bgColor: 'bg-hrd/10',
     borderColor: 'border-hrd',
     route: '/hrd',
     stats: [
-      { label: 'Karyawan Aktif', value: 156, icon: Users },
-      { label: 'Pengajuan Cuti', value: 8, icon: FileText },
-      { label: 'Karyawan Baru', value: 3, icon: UserPlus },
+      { label: 'Total Karyawan', value: 0, icon: Users },
+      { label: 'Hadir Hari Ini', value: 0, icon: CheckCircle },
+      { label: 'Cuti Pending', value: 0, icon: Calendar },
     ],
-    notifications: 8,
+    notifications: 0,
   },
   {
     id: 'accounting',
     name: 'Akuntansi',
-    description: 'Pembukuan, jurnal, laporan keuangan, dan invoice',
+    description: 'Bagan akun, jurnal umum, dan laporan keuangan standar',
     icon: Calculator,
     color: 'text-accounting-light',
     bgColor: 'bg-accounting/10',
     borderColor: 'border-accounting',
     route: '/accounting',
     stats: [
-      { label: 'Invoice Pending', value: 12, icon: FileText },
-      { label: 'Pendapatan Bulan Ini', value: 45000000, icon: DollarSign },
-      { label: 'Transaksi Hari Ini', value: 24, icon: TrendingUp },
+      { label: 'Journal Posted', value: 45, icon: FileText },
+      { label: 'Laba (YTD)', value: 125000000, icon: TrendingUp },
+      { label: 'Asset Total', value: 850000000, icon: Wallet },
     ],
-    notifications: 5,
+    notifications: 3,
   },
   {
     id: 'inventory',
@@ -188,16 +191,7 @@ const modules: ModuleConfig[] = [
   },
 ];
 
-const recentActivities = [
-  { id: 1, module: 'hrd', action: 'Pengajuan cuti disetujui', user: 'Budi Santoso', time: '5 menit lalu', icon: CheckCircle },
-  { id: 2, module: 'sales', action: 'Pesanan #SO-2024-001 dibuat', user: 'Sales Admin', time: '10 menit lalu', icon: ShoppingCart },
-  { id: 3, module: 'accounting', action: 'Invoice #INV-2024-001 dibuat', user: 'Siti Rahayu', time: '15 menit lalu', icon: FileText },
-  { id: 4, module: 'purchase', action: 'PO #PO-2024-001 dikirim ke supplier', user: 'Purchasing', time: '25 menit lalu', icon: ShoppingBag },
-  { id: 5, module: 'inventory', action: 'Stok produk A-001 rendah', user: 'System', time: '30 menit lalu', icon: AlertCircle },
-  { id: 6, module: 'customer', action: 'Tiket #TKT-456 diselesaikan', user: 'Ahmad Wijaya', time: '1 jam lalu', icon: CheckCircle },
-  { id: 7, module: 'sales', action: 'Pelanggan baru PT. Maju Bersama ditambahkan', user: 'Sales Team', time: '1.5 jam lalu', icon: Users },
-  { id: 8, module: 'hrd', action: 'Karyawan baru ditambahkan', user: 'HR Admin', time: '2 jam lalu', icon: UserPlus },
-];
+const recentActivities: any[] = [];
 
 function AnimatedNumber({ value, prefix = '', suffix = '' }: { value: number; prefix?: string; suffix?: string }) {
   const [displayValue, setDisplayValue] = useState(0);
@@ -251,7 +245,6 @@ export default function DashboardPage() {
   const getModuleColor = (moduleId: string) => {
     switch (moduleId) {
       case 'hrd': return 'bg-hrd';
-      case 'accounting': return 'bg-accounting';
       case 'inventory': return 'bg-inventory';
       case 'customer': return 'bg-customer';
       case 'sales': return 'bg-[#2563EB]';
@@ -271,7 +264,7 @@ export default function DashboardPage() {
               <div className="w-10 h-10 bg-[#1A2332] rounded-xl flex items-center justify-center">
                 <Building2 className="w-6 h-6 text-white" />
               </div>
-              <span className="font-display text-xl font-bold text-[#1C1C1E]">BusinessHub</span>
+              <span className="font-display text-xl font-bold text-[#1C1C1E]">HRD 18 JAYA</span>
             </div>
 
             {/* Search */}
@@ -317,7 +310,7 @@ export default function DashboardPage() {
           className="mb-8"
         >
           <h1 className="font-display text-3xl font-bold text-[#1C1C1E] mb-2">
-            Selamat Datang, {user?.name.split(' ')[0]}!
+            Selamat Datang, {user?.name}!
           </h1>
           <p className="text-muted-foreground font-body">
             Pilih modul untuk memulai pekerjaan Anda hari ini
@@ -457,60 +450,30 @@ export default function DashboardPage() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all"
-                  onClick={() => navigate('/hrd')}
+                  onClick={() => navigate('/hrd?add=true')}
                 >
                   <div className="w-12 h-12 bg-hrd/10 rounded-lg flex items-center justify-center mb-3">
                     <UserPlus className="w-6 h-6 text-hrd" />
                   </div>
                   <p className="font-medium text-sm text-gray-900">Tambah Karyawan</p>
-                  <p className="text-xs text-gray-500">Daftar karyawan baru</p>
+                  <p className="text-xs text-gray-500">Registrasi karyawan baru</p>
                 </motion.div>
 
                 <motion.div
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all"
-                  onClick={() => navigate('/hrd')}
+                  onClick={() => navigate('/hrd/leave?action=apply')}
                 >
                   <div className="w-12 h-12 bg-hrd/10 rounded-lg flex items-center justify-center mb-3">
-                    <FileText className="w-6 h-6 text-hrd" />
+                    <Calendar className="w-6 h-6 text-hrd" />
                   </div>
                   <p className="font-medium text-sm text-gray-900">Ajukan Cuti</p>
-                  <p className="text-xs text-gray-500">Buat pengajuan cuti</p>
+                  <p className="text-xs text-gray-500">Formulir pengajuan cuti</p>
                 </motion.div>
               </>
             )}
 
-            {/* Accounting Quick Actions */}
-            {hasModuleAccess('accounting') && (
-              <>
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all"
-                  onClick={() => navigate('/accounting')}
-                >
-                  <div className="w-12 h-12 bg-accounting/10 rounded-lg flex items-center justify-center mb-3">
-                    <DollarSign className="w-6 h-6 text-accounting-light" />
-                  </div>
-                  <p className="font-medium text-sm text-gray-900">Buat Transaksi</p>
-                  <p className="text-xs text-gray-500">Catat transaksi baru</p>
-                </motion.div>
-
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all"
-                  onClick={() => navigate('/accounting')}
-                >
-                  <div className="w-12 h-12 bg-accounting/10 rounded-lg flex items-center justify-center mb-3">
-                    <Calculator className="w-6 h-6 text-accounting-light" />
-                  </div>
-                  <p className="font-medium text-sm text-gray-900">Laporan Keuangan</p>
-                  <p className="text-xs text-gray-500">Lihat laporan</p>
-                </motion.div>
-              </>
-            )}
 
             {/* Sales Quick Actions */}
             {hasModuleAccess('sales') && (
@@ -539,6 +502,37 @@ export default function DashboardPage() {
                   </div>
                   <p className="font-medium text-sm text-gray-900">Tambah Pelanggan</p>
                   <p className="text-xs text-gray-500">Daftar pelanggan baru</p>
+                </motion.div>
+              </>
+            )}
+
+            {/* Accounting Quick Actions */}
+            {hasModuleAccess('accounting') && (
+              <>
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all"
+                  onClick={() => navigate('/accounting')}
+                >
+                  <div className="w-12 h-12 bg-accounting/10 rounded-lg flex items-center justify-center mb-3">
+                    <FileText className="w-6 h-6 text-accounting-light" />
+                  </div>
+                  <p className="font-medium text-sm text-gray-900">Jurnal Baru</p>
+                  <p className="text-xs text-gray-500">Input transaksi keuangan</p>
+                </motion.div>
+
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all"
+                  onClick={() => navigate('/accounting')}
+                >
+                  <div className="w-12 h-12 bg-accounting/10 rounded-lg flex items-center justify-center mb-3">
+                    <BarChart3 className="w-6 h-6 text-accounting-light" />
+                  </div>
+                  <p className="font-medium text-sm text-gray-900">Laporan Neraca</p>
+                  <p className="text-xs text-gray-500">Lihat posisi keuangan</p>
                 </motion.div>
               </>
             )}
@@ -845,15 +839,8 @@ export default function DashboardPage() {
           </Tabs>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }
 
-function Lock({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
+

@@ -67,6 +67,10 @@ interface Pipeline {
     notes?: string;
     created_by?: string;
     created_at: string;
+    attachment_url?: string;
+    survey_attachment_url?: string;
+    booking_attachment_url?: string;
+    akad_attachment_url?: string;
 }
 
 interface Attachment {
@@ -101,7 +105,7 @@ export default function MarketingModule() {
     const [pipelines, setPipelines] = useState<Pipeline[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
-    const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
+    const [viewMode, setViewMode] = useState<'board' | 'list'>('list');
 
     // Admin Filter State
     const [users, setUsers] = useState<{ id: string, name: string }[]>([]);
@@ -132,7 +136,11 @@ export default function MarketingModule() {
         booking_date: '',
         booking_fee: 0,
         akad_date: '',
-        notes: ''
+        notes: '',
+        attachment_url: '',
+        survey_attachment_url: '',
+        booking_attachment_url: '',
+        akad_attachment_url: ''
     });
 
     const fetchPipelines = async () => {
@@ -318,7 +326,11 @@ export default function MarketingModule() {
             booking_date: '',
             booking_fee: 0,
             akad_date: '',
-            notes: ''
+            notes: '',
+            attachment_url: '',
+            survey_attachment_url: '',
+            booking_attachment_url: '',
+            akad_attachment_url: ''
         });
     };
 
@@ -335,7 +347,11 @@ export default function MarketingModule() {
             booking_date: item.booking_date ? item.booking_date.split('T')[0] : '',
             booking_fee: item.booking_fee || 0,
             akad_date: item.akad_date ? item.akad_date.split('T')[0] : '',
-            notes: item.notes || ''
+            notes: item.notes || '',
+            attachment_url: item.attachment_url || '',
+            survey_attachment_url: item.survey_attachment_url || '',
+            booking_attachment_url: item.booking_attachment_url || '',
+            akad_attachment_url: item.akad_attachment_url || ''
         });
         fetchAttachments(item.id);
         fetchLogs(item.id);
@@ -358,6 +374,37 @@ export default function MarketingModule() {
             .eq('pipeline_id', pipelineId)
             .order('created_at', { ascending: false });
         setLogs(data || []);
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField: string = 'attachment_url') => {
+        if (!e.target.files || e.target.files.length === 0) return;
+
+        const file = e.target.files[0];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random()}.${fileExt}`;
+        const filePath = `${user?.id || 'admin'}/${fileName}`;
+
+        try {
+            setUploading(true);
+            const { error: uploadError } = await supabase.storage
+                .from('pipeline-uploads')
+                .upload(filePath, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data } = supabase.storage
+                .from('pipeline-uploads')
+                .getPublicUrl(filePath);
+
+            setFormData(prev => ({ ...prev, [targetField]: data.publicUrl }));
+
+            toast({ title: "Upload Berhasil", description: "Gambar berhasil diunggah" });
+        } catch (error: any) {
+            console.error('Upload failed:', error);
+            toast({ title: "Upload Gagal", description: error.message, variant: 'destructive' });
+        } finally {
+            setUploading(false);
+        }
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -627,7 +674,7 @@ export default function MarketingModule() {
 
                         <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
                             <Button
-                                variant={viewMode === 'board' ? 'white' : 'ghost'}
+                                variant="ghost"
                                 size="sm"
                                 className={`h-8 w-8 p-0 rounded-md transition-all ${viewMode === 'board' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
                                 onClick={() => setViewMode('board')}
@@ -636,7 +683,7 @@ export default function MarketingModule() {
                                 <LayoutGrid className="w-4 h-4" />
                             </Button>
                             <Button
-                                variant={viewMode === 'list' ? 'white' : 'ghost'}
+                                variant="ghost"
                                 size="sm"
                                 className={`h-8 w-8 p-0 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
                                 onClick={() => setViewMode('list')}
@@ -805,12 +852,12 @@ export default function MarketingModule() {
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 border-b border-slate-100 text-xs uppercase text-slate-500 font-bold tracking-wider">
                                 <tr>
-                                    <th className="px-6 py-4">Deal Info</th>
-                                    <th className="px-6 py-4">Sumber (Source)</th>
-                                    <th className="px-6 py-4">Jadwal Survey</th>
-                                    <th className="px-6 py-4">Booking (Date & Fee)</th>
-                                    <th className="px-6 py-4">Rencana Akad</th>
-                                    <th className="px-6 py-4">Status & Approval</th>
+                                    <th className="px-6 py-4">Rencana Penjualan</th>
+                                    <th className="px-6 py-4">Asal Konsumen</th>
+                                    <th className="px-6 py-4">Data Konsumen</th>
+                                    <th className="px-6 py-4">Survey / Waktu</th>
+                                    <th className="px-6 py-4">Booking</th>
+                                    <th className="px-6 py-4">Akad</th>
                                     <th className="px-6 py-4 text-right">Aksi</th>
                                 </tr>
                             </thead>
@@ -824,98 +871,124 @@ export default function MarketingModule() {
                                 ) : (
                                     filteredPipelines.map((item) => (
                                         <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col">
+                                            <td className="px-6 py-4 align-top">
+                                                <div className="flex flex-col gap-1">
                                                     <span className="font-semibold text-slate-900">{item.title}</span>
-                                                    <div className="flex items-center text-xs text-slate-500 mt-1">
-                                                        <User className="w-3 h-3 mr-1" />
-                                                        {item.contact_name}
+                                                    <div className="text-emerald-600 font-medium text-xs">
+                                                        {formatCurrency(item.value)}
                                                     </div>
-                                                    {item.company && (
-                                                        <div className="flex items-center text-xs text-slate-400 mt-0.5">
-                                                            <Building className="w-3 h-3 mr-1" />
-                                                            {item.company}
-                                                        </div>
-                                                    )}
+                                                    <Badge className={`w-fit mt-1 ${STAGES.find(s => s.id === item.stage)?.color}`}>
+                                                        {STAGES.find(s => s.id === item.stage)?.label}
+                                                    </Badge>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 align-top">
                                                 {item.source ? (
-                                                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-normal">
+                                                    <Badge variant="outline" className="font-normal text-slate-600">
                                                         {item.source}
                                                     </Badge>
                                                 ) : <span className="text-slate-400">-</span>}
                                             </td>
-                                            <td className="px-6 py-4">
-                                                {item.survey_date ? (
-                                                    <div className="flex items-center text-slate-700">
-                                                        <Calendar className="w-4 h-4 mr-2 text-slate-400" />
-                                                        {format(new Date(item.survey_date), 'dd MMM yyyy', { locale: id })}
+                                            <td className="px-6 py-4 align-top">
+                                                <div className="flex gap-3">
+                                                    {item.attachment_url && (
+                                                        <div className="flex-shrink-0">
+                                                            <img
+                                                                src={item.attachment_url}
+                                                                alt="Thumbnail"
+                                                                className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
+                                                                onClick={() => window.open(item.attachment_url, '_blank')}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <div className="font-medium text-slate-900 flex items-center gap-1">
+                                                            <User className="h-3 w-3 text-slate-400" /> {item.contact_name}
+                                                        </div>
+                                                        {item.company && (
+                                                            <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                                                                <Building className="h-3 w-3 text-slate-400" /> {item.company}
+                                                            </div>
+                                                        )}
+                                                        {item.notes && (
+                                                            <div className="text-[10px] text-slate-400 mt-1 line-clamp-2 italic">
+                                                                "{item.notes}"
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                ) : <span className="text-slate-400">-</span>}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col gap-1">
-                                                    {item.booking_date ? (
-                                                        <span className="text-slate-700 font-medium">
-                                                            {format(new Date(item.booking_date), 'dd MMM yyyy', { locale: id })}
-                                                        </span>
-                                                    ) : <span className="text-slate-400 text-xs">-</span>}
-
-                                                    {item.booking_fee && item.booking_fee > 0 ? (
-                                                        <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full w-fit">
-                                                            Fee: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(item.booking_fee)}
-                                                        </span>
-                                                    ) : null}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                {item.akad_date ? (
-                                                    <div className="text-slate-700">
-                                                        {format(new Date(item.akad_date), 'dd MMM yyyy', { locale: id })}
+                                            <td className="px-6 py-4 align-top">
+                                                {item.survey_date ? (
+                                                    <div className="flex flex-col gap-2">
+                                                        <div className="flex items-center gap-1.5 text-slate-700 bg-slate-50 px-2 py-1 rounded border border-slate-100 w-fit">
+                                                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                                            {format(new Date(item.survey_date), 'dd MMM yyyy', { locale: id })}
+                                                        </div>
+                                                        {item.survey_attachment_url && (
+                                                            <div className="mt-1">
+                                                                <img
+                                                                    src={item.survey_attachment_url}
+                                                                    alt="Bukti Survey"
+                                                                    className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
+                                                                    onClick={() => window.open(item.survey_attachment_url, '_blank')}
+                                                                    title="Bukti Survey"
+                                                                />
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                ) : <span className="text-slate-400">-</span>}
+                                                ) : <span className="text-slate-400 text-xs">-</span>}
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col gap-2">
-                                                    {/* Stage Badge */}
-                                                    <span className={`px-2 py-1 rounded text-xs font-semibold w-fit ${STAGES.find(s => s.id === item.stage)?.color || 'bg-gray-100'}`}>
-                                                        {STAGES.find(s => s.id === item.stage)?.label}
-                                                    </span>
-
-                                                    {/* Approval Status */}
-                                                    {item.stage === 'won' && (
+                                            <td className="px-6 py-4 align-top">
+                                                <div className="space-y-1">
+                                                    {item.booking_date ? (
+                                                        <div className="flex items-center gap-1.5 text-slate-700">
+                                                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                                            {format(new Date(item.booking_date), 'dd MMM yyyy', { locale: id })}
+                                                        </div>
+                                                    ) : <span className="text-slate-400 text-xs">-</span>}
+                                                    {item.booking_fee ? (
+                                                        <div className="flex items-center gap-1.5 text-xs text-blue-600 font-medium">
+                                                            <DollarSign className="h-3 w-3" />
+                                                            {formatCurrency(item.booking_fee)}
+                                                        </div>
+                                                    ) : null}
+                                                    {item.booking_attachment_url && (
                                                         <div className="mt-1">
-                                                            {!item.approval_status || item.approval_status === 'draft' ? (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="h-6 text-xs text-blue-600 hover:bg-blue-50 px-0"
-                                                                    onClick={() => handleRequestApproval(item.id)}
-                                                                >
-                                                                    Minta Approval
-                                                                </Button>
-                                                            ) : item.approval_status === 'pending' ? (
-                                                                <div className="flex items-center gap-2">
-                                                                    <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Pending</Badge>
-                                                                    {['admin', 'manager'].includes(user?.role || '') && (
-                                                                        <Button
-                                                                            size="sm"
-                                                                            className="h-6 text-xs bg-emerald-600 hover:bg-emerald-700"
-                                                                            onClick={() => handleApproveDeal(item.id)}
-                                                                        >
-                                                                            Approve
-                                                                        </Button>
-                                                                    )}
-                                                                </div>
-                                                            ) : (
-                                                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
-                                                                    <CheckCircle2 className="w-3 h-3 mr-1" /> Approved
-                                                                </Badge>
-                                                            )}
+                                                            <img
+                                                                src={item.booking_attachment_url}
+                                                                alt="Bukti Booking"
+                                                                className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
+                                                                onClick={() => window.open(item.booking_attachment_url, '_blank')}
+                                                                title="Bukti Booking"
+                                                            />
                                                         </div>
                                                     )}
                                                 </div>
+                                            </td>
+                                            <td className="px-6 py-4 align-top">
+                                                <div className="space-y-2">
+                                                    {item.akad_date ? (
+                                                        <div className="flex items-center gap-1.5 font-medium text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-100 w-fit">
+                                                            <FileText className="h-3.5 w-3.5" />
+                                                            {format(new Date(item.akad_date), 'dd MMM yyyy', { locale: id })}
+                                                        </div>
+                                                    ) : <span className="text-slate-400 text-xs">Belum dijadwalkan</span>}
+
+                                                    {item.akad_attachment_url && (
+                                                        <div className="mt-1">
+                                                            <img
+                                                                src={item.akad_attachment_url}
+                                                                alt="Bukti Akad"
+                                                                className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
+                                                                onClick={() => window.open(item.akad_attachment_url, '_blank')}
+                                                                title="Bukti Akad"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Approval UI included in Action or separate? Keeping simple for now */}
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <DropdownMenu>
@@ -939,7 +1012,7 @@ export default function MarketingModule() {
 
             {/* Add/Edit Dialog */}
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-                <DialogContent className="sm:max-w-[800px]">
+                <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>{editingItem ? 'Edit Deal' : 'Buat Deal Baru'}</DialogTitle>
                     </DialogHeader>
@@ -958,14 +1031,10 @@ export default function MarketingModule() {
                         </div>
 
                         {/* Section 2: Kontak & Source */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Nama Client (PIC)</Label>
                                 <Input required placeholder="Nama lengkap" value={formData.contact_name} onChange={e => setFormData({ ...formData, contact_name: e.target.value })} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>No. HP / Kontak</Label>
-                                <Input placeholder="08..." />
                             </div>
                             <div className="space-y-2">
                                 <Label>Sumber (Source)</Label>
@@ -989,50 +1058,131 @@ export default function MarketingModule() {
                         <div className="border-t border-slate-100 my-2" />
 
                         {/* Section 3: Nilai & Jadwal */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
-                            {/* Col 1: Financials */}
+                        {/* Section 3: Timeline & Financials (Chronological Layout) */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50 p-5 rounded-xl border border-slate-100">
+
+                            {/* Col 1: Tahap Survey */}
                             <div className="space-y-4">
+                                <h4 className="font-semibold text-slate-700 flex items-center gap-2 border-b border-slate-200 pb-2">
+                                    <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs">1</span>
+                                    Tahap Survey
+                                </h4>
                                 <div className="space-y-2">
-                                    <Label className="text-blue-600 font-semibold">Nilai Deal (Rp)</Label>
-                                    <Input type="number" className="font-semibold" required value={formData.value} onChange={e => setFormData({ ...formData, value: Number(e.target.value) })} />
+                                    <Label>Jadwal Survey</Label>
+                                    <Input type="date" value={formData.survey_date} onChange={e => setFormData({ ...formData, survey_date: e.target.value })} className="bg-white" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2 text-xs text-slate-500"><Upload className="w-3 h-3" /> Bukti Survey</Label>
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <Input
+                                                type="file"
+                                                className="cursor-pointer bg-white h-8 text-xs pr-8"
+                                                accept="image/*"
+                                                onChange={(e) => handleImageUpload(e, 'survey_attachment_url')}
+                                                disabled={uploading}
+                                            />
+                                        </div>
+                                        {formData.survey_attachment_url && (
+                                            <div className="relative group flex-shrink-0">
+                                                <img src={formData.survey_attachment_url} alt="Preview" className="h-8 w-8 object-cover rounded border border-slate-200" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData({ ...formData, survey_attachment_url: '' })}
+                                                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <Trash2 className="w-2 h-2" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Col 2: Tahap Booking */}
+                            <div className="space-y-4">
+                                <h4 className="font-semibold text-slate-700 flex items-center gap-2 border-b border-slate-200 pb-2">
+                                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs">2</span>
+                                    Tahap Booking
+                                </h4>
+                                <div className="space-y-2">
+                                    <Label>Tanggal Booking</Label>
+                                    <Input type="date" value={formData.booking_date} onChange={e => setFormData({ ...formData, booking_date: e.target.value })} className="bg-white" />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Booking Fee (Rp)</Label>
                                     <div className="relative">
                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-xs">Rp</span>
-                                        <Input type="number" className="pl-8" value={formData.booking_fee} onChange={e => setFormData({ ...formData, booking_fee: Number(e.target.value) })} />
+                                        <Input type="number" className="pl-8 bg-white" value={formData.booking_fee} onChange={e => setFormData({ ...formData, booking_fee: Number(e.target.value) })} />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2 text-xs text-slate-500"><Upload className="w-3 h-3" /> Bukti Booking</Label>
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <Input
+                                                type="file"
+                                                className="cursor-pointer bg-white h-8 text-xs pr-8"
+                                                accept="image/*"
+                                                onChange={(e) => handleImageUpload(e, 'booking_attachment_url')}
+                                                disabled={uploading}
+                                            />
+                                        </div>
+                                        {formData.booking_attachment_url && (
+                                            <div className="relative group flex-shrink-0">
+                                                <img src={formData.booking_attachment_url} alt="Preview" className="h-8 w-8 object-cover rounded border border-slate-200" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData({ ...formData, booking_attachment_url: '' })}
+                                                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <Trash2 className="w-2 h-2" />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Col 2: Dates 1 */}
+                            {/* Col 3: Tahap Akad & Final */}
                             <div className="space-y-4">
+                                <h4 className="font-semibold text-slate-700 flex items-center gap-2 border-b border-slate-200 pb-2">
+                                    <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xs">3</span>
+                                    Tahap Akad
+                                </h4>
                                 <div className="space-y-2">
-                                    <Label>Jadwal Survey</Label>
-                                    <Input type="date" value={formData.survey_date} onChange={e => setFormData({ ...formData, survey_date: e.target.value })} />
+                                    <Label className="text-blue-600 font-semibold">Nilai Deal (Rp)</Label>
+                                    <Input type="number" className="font-semibold bg-white" required value={formData.value} onChange={e => setFormData({ ...formData, value: Number(e.target.value) })} />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Tanggal Booking</Label>
-                                    <Input type="date" value={formData.booking_date} onChange={e => setFormData({ ...formData, booking_date: e.target.value })} />
-                                </div>
-                            </div>
-
-                            {/* Col 3: Dates 2 & Stage */}
-                            <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label>Rencana Akad</Label>
-                                    <Input type="date" value={formData.akad_date} onChange={e => setFormData({ ...formData, akad_date: e.target.value })} />
+                                    <Input type="date" value={formData.akad_date} onChange={e => setFormData({ ...formData, akad_date: e.target.value })} className="bg-white" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Status Tahapan</Label>
-                                    <Select value={formData.stage} onValueChange={(v: Stage) => setFormData({ ...formData, stage: v })}>
-                                        <SelectTrigger className="bg-white">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {STAGES.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
+                                    <Label className="flex items-center gap-2 text-xs text-slate-500"><Upload className="w-3 h-3" /> Bukti Akad</Label>
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <Input
+                                                type="file"
+                                                className="cursor-pointer bg-white h-8 text-xs pr-8"
+                                                accept="image/*"
+                                                onChange={(e) => handleImageUpload(e, 'akad_attachment_url')}
+                                                disabled={uploading}
+                                            />
+                                        </div>
+                                        {formData.akad_attachment_url && (
+                                            <div className="relative group flex-shrink-0">
+                                                <img src={formData.akad_attachment_url} alt="Preview" className="h-8 w-8 object-cover rounded border border-slate-200" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData({ ...formData, akad_attachment_url: '' })}
+                                                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <Trash2 className="w-2 h-2" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1041,6 +1191,37 @@ export default function MarketingModule() {
                         <div className="space-y-2">
                             <Label>Catatan Tambahan</Label>
                             <Input placeholder="Keterangan lain..." value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
+                        </div>
+
+                        {/* Image Upload for Thumbnail (New) */}
+                        <div className="space-y-2">
+                            <Label>Upload Foto/Dokumen (Thumbnail)</Label>
+                            <div className="flex items-center gap-4">
+                                <Input
+                                    type="file"
+                                    className="cursor-pointer bg-white"
+                                    accept="image/*"
+                                    onChange={(e) => handleImageUpload(e, 'attachment_url')}
+                                    disabled={uploading}
+                                />
+                                {uploading && <div className="text-xs text-slate-500">Uploading...</div>}
+                            </div>
+                            {formData.attachment_url && (
+                                <div className="mt-2 relative w-fit group">
+                                    <img
+                                        src={formData.attachment_url}
+                                        alt="Preview"
+                                        className="h-24 w-24 object-cover rounded-lg border border-slate-200"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, attachment_url: '' })}
+                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {/* Section 5: Attachments (Only when editing existing deal) */}

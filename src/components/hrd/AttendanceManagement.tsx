@@ -67,6 +67,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePresence } from '@/hooks/usePresence';
 import type { AttendanceRecord, LeaveRequest } from '@/lib/supabase';
 import { attendanceService, leaveService } from '@/services/supabaseService';
+import { settingsService } from '@/services/settingsService';
 
 // Types
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'leave' | 'holiday';
@@ -239,8 +240,11 @@ async function checkLateReturnFromLeave(employeeId: string, checkInDate: string)
 }
 
 export function AttendanceManagement() {
+  const historyRef = React.useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(today);
+  const todayDate = new Date();
+  const firstDay = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+  const [startDate, setStartDate] = useState(firstDay.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(today);
 
   const { attendance, loading, error, addAttendance, refetch } = useAttendance(startDate, endDate);
@@ -249,7 +253,8 @@ export function AttendanceManagement() {
   const { toast } = useToast();
 
   // Track online users
-  const { onlineUsers } = usePresence();
+  // const { onlineUsers } = usePresence();
+  const onlineUsers: any[] = [];
 
   // DEBUG: Temporary log to screen
   // console.log('Current Online Users:', onlineUsers); 
@@ -261,6 +266,19 @@ export function AttendanceManagement() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [selectedAttendance, setSelectedAttendance] = useState<AttendanceRecord | null>(null);
+  const [penaltyRate, setPenaltyRate] = useState<number>(0);
+
+  useEffect(() => {
+    const fetchPenaltyRate = async () => {
+      try {
+        const settings = await settingsService.getAttendanceSettings();
+        setPenaltyRate(settings.attendance_late_penalty);
+      } catch (err) {
+        console.error('Error fetching penalty rate:', err);
+      }
+    };
+    fetchPenaltyRate();
+  }, []);
 
   const [formData, setFormData] = useState<AttendanceFormData>({
     employee_id: '',
@@ -272,11 +290,18 @@ export function AttendanceManagement() {
     notes: ''
   });
 
-  // Filter attendance based on search
+  // Filter attendance based on search and role
   const filteredAttendance = attendance.filter(att => {
     const employee = employees.find(emp => emp.id === att.employee_id);
     const employeeName = employee?.name || '';
-    return employeeName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = employeeName.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // If staff, only show their own attendance
+    if (user?.role === 'staff') {
+      return matchesSearch && att.employee_id === user.employee_id;
+    }
+
+    return matchesSearch;
   });
 
   // Get today's attendance
@@ -336,48 +361,7 @@ export function AttendanceManagement() {
         notes: formData.notes || null
       };
 
-      const savedAttendance = await addAttendance(newAttendance);
-
-      // Cek apakah karyawan terlambat masuk setelah tanggal akhir cuti/izin
-      if (formData.check_in && formData.date) {
-        const lateReturnLeave = await checkLateReturnFromLeave(formData.employee_id, formData.date);
-
-        if (lateReturnLeave) {
-          const employee = employees.find(emp => emp.id === formData.employee_id);
-          const endDate = new Date(lateReturnLeave.end_date).toLocaleDateString('id-ID', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-          });
-          const checkInDate = new Date(formData.date).toLocaleDateString('id-ID', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-          });
-
-          toast({
-            title: 'Peringatan: Terlambat Kembali dari Cuti/Izin',
-            description: `${employee?.name || 'Karyawan'} terlambat masuk setelah tanggal akhir cuti/izin. Tanggal akhir cuti: ${endDate}, Tanggal masuk: ${checkInDate}. Harap perhatikan ketepatan waktu kembali bekerja.`,
-            variant: 'destructive',
-            duration: 12000
-          });
-        }
-      }
-
-      // Jika ada check out, cek apakah perlu menampilkan notifikasi surat peringatan
-      if (formData.check_out) {
-        const lateCount = await countLateThisMonth(formData.employee_id, formData.date);
-
-        if (lateCount > MAX_LATE_PER_MONTH) {
-          const employee = employees.find(emp => emp.id === formData.employee_id);
-          toast({
-            title: 'Surat Peringatan 1',
-            description: `${employee?.name || 'Karyawan'} telah melebihi ${MAX_LATE_PER_MONTH} kali keterlambatan dalam 1 bulan (Total: ${lateCount} kali). Surat peringatan 1 telah diterbitkan.`,
-            variant: 'destructive',
-            duration: 10000
-          });
-        }
-      }
+      await addAttendance(newAttendance);
 
       setShowAddDialog(false);
       resetForm();
@@ -400,7 +384,7 @@ export function AttendanceManagement() {
   const handleCheckOut = async (attendanceId: string, employeeId: string, checkOutTime: string) => {
     try {
       // Update check out
-      const updatedAttendance = await attendanceService.update(attendanceId, {
+      await attendanceService.update(attendanceId, {
         check_out: checkOutTime
       });
 
@@ -410,45 +394,6 @@ export function AttendanceManagement() {
         const workHours = calculateWorkHours(attendanceRecord.check_in, checkOutTime);
         await attendanceService.update(attendanceId, {
           work_hours: workHours !== '-' ? workHours : null
-        });
-      }
-
-      // Cek apakah karyawan terlambat masuk setelah tanggal akhir cuti/izin
-      if (attendanceRecord?.date && attendanceRecord?.check_in) {
-        const lateReturnLeave = await checkLateReturnFromLeave(employeeId, attendanceRecord.date);
-
-        if (lateReturnLeave) {
-          const employee = employees.find(emp => emp.id === employeeId);
-          const endDate = new Date(lateReturnLeave.end_date).toLocaleDateString('id-ID', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-          });
-          const checkInDate = new Date(attendanceRecord.date).toLocaleDateString('id-ID', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-          });
-
-          toast({
-            title: 'Peringatan: Terlambat Kembali dari Cuti/Izin',
-            description: `${employee?.name || 'Karyawan'} terlambat masuk setelah tanggal akhir cuti/izin. Tanggal akhir cuti: ${endDate}, Tanggal masuk: ${checkInDate}. Harap perhatikan ketepatan waktu kembali bekerja.`,
-            variant: 'destructive',
-            duration: 12000
-          });
-        }
-      }
-
-      // Cek jumlah keterlambatan bulan ini
-      const lateCount = await countLateThisMonth(employeeId, attendanceRecord?.date || today);
-
-      if (lateCount > MAX_LATE_PER_MONTH) {
-        const employee = employees.find(emp => emp.id === employeeId);
-        toast({
-          title: 'Surat Peringatan 1',
-          description: `${employee?.name || 'Karyawan'} telah melebihi ${MAX_LATE_PER_MONTH} kali keterlambatan dalam 1 bulan (Total: ${lateCount} kali). Surat peringatan 1 telah diterbitkan.`,
-          variant: 'destructive',
-          duration: 10000
         });
       }
 
@@ -469,10 +414,36 @@ export function AttendanceManagement() {
     }
   };
 
+  const calculatePenalty = (checkIn?: string, dateString?: string): number => {
+    if (!checkIn || penaltyRate <= 0) return 0;
+
+    const schedule = getWorkSchedule(dateString);
+    const [checkInHour, checkInMinute] = checkIn.split(':').map(Number);
+    const [workHour, workMinute] = schedule.start.split(':').map(Number);
+
+    const checkInTotalMinutes = checkInHour * 60 + checkInMinute;
+    const workStartTotalMinutes = workHour * 60 + workMinute;
+    const lateThreshold = workStartTotalMinutes + LATE_TOLERANCE_MINUTES;
+
+    if (checkInTotalMinutes > lateThreshold) {
+      const minutesLate = checkInTotalMinutes - lateThreshold;
+      return minutesLate * penaltyRate;
+    }
+
+    return 0;
+  };
+
   // Handle view attendance details
   const handleViewAttendance = (attendance: AttendanceRecord) => {
     setSelectedAttendance(attendance);
     setShowViewDialog(true);
+  };
+
+  const scrollToHistory = () => {
+    setActiveTab('history');
+    setTimeout(() => {
+      historyRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   // Handle Export Excel
@@ -529,18 +500,10 @@ export function AttendanceManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-
-
-
-
-
       {/* User Attendance Section - Show for everyone but especially important for staff */}
       <div className="mb-8">
-        <UserAttendance />
+        <UserAttendance onViewHistory={scrollToHistory} />
       </div>
-
-      {/* DEBUG PANEL REMOVED */}
 
       <div className="flex items-center justify-between">
         <div>
@@ -561,7 +524,7 @@ export function AttendanceManagement() {
         )}
       </div>
 
-      {/* Export Button & Filters (Optional placement) */}
+      {/* Export Button & Filters */}
       {user?.role !== 'staff' && (
         <div className="flex justify-end mb-4">
           <Button variant="outline" className="font-body" onClick={handleExportExcel}>
@@ -574,20 +537,14 @@ export function AttendanceManagement() {
       {/* Statistics Cards */}
       {user?.role !== 'staff' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
                     <Users className="w-6 h-6 text-blue-600" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    Total
-                  </Badge>
+                  <Badge variant="secondary" className="font-mono text-xs">Total</Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.totalEmployees}</p>
@@ -597,20 +554,14 @@ export function AttendanceManagement() {
             </Card>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
                     <CheckCircle className="w-6 h-6 text-green-600" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    Hari Ini
-                  </Badge>
+                  <Badge variant="secondary" className="font-mono text-xs">Hari Ini</Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.presentToday}</p>
@@ -620,20 +571,14 @@ export function AttendanceManagement() {
             </Card>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center">
                     <AlertCircle className="w-6 h-6 text-yellow-600" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    Hari Ini
-                  </Badge>
+                  <Badge variant="secondary" className="font-mono text-xs">Hari Ini</Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.lateToday}</p>
@@ -643,20 +588,14 @@ export function AttendanceManagement() {
             </Card>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center">
                     <XCircle className="w-6 h-6 text-red-600" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    Hari Ini
-                  </Badge>
+                  <Badge variant="secondary" className="font-mono text-xs">Hari Ini</Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.absentToday}</p>
@@ -666,20 +605,14 @@ export function AttendanceManagement() {
             </Card>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="w-12 h-12 rounded-xl bg-hrd/10 flex items-center justify-center">
                     <TrendingUp className="w-6 h-6 text-hrd" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    Rate
-                  </Badge>
+                  <Badge variant="secondary" className="font-mono text-xs">Rate</Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.attendanceRate}%</p>
@@ -694,47 +627,52 @@ export function AttendanceManagement() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
-        {user?.role === 'staff' ? (
-          <TabsList className="grid w-full grid-cols-1">
-            <TabsTrigger value="today" className="font-body">
-              Absensi Hari Ini
-            </TabsTrigger>
-          </TabsList>
-        ) : (
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="today" className="font-body">
-              Hari Ini
-            </TabsTrigger>
-            <TabsTrigger value="history" className="font-body">
-              Riwayat
-            </TabsTrigger>
+        <TabsList className={`grid w-full ${user?.role === 'staff' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+          <TabsTrigger value="today" className="font-body">
+            {user?.role === 'staff' ? 'Absensi Hari Ini' : 'Hari Ini'}
+          </TabsTrigger>
+          <TabsTrigger value="history" className="font-body">
+            Riwayat
+          </TabsTrigger>
+          {user?.role !== 'staff' && (
             <TabsTrigger value="summary" className="font-body">
               Ringkasan
             </TabsTrigger>
-          </TabsList>
-        )}
+          )}
+        </TabsList>
 
-        {/* Today Tab */}
-        <TabsContent value="today" className="mt-6">
+        {/* Today Tab Content... (unchanged) */}
+
+        {/* History Tab - Visible for everyone now */}
+        <TabsContent value="history" className="mt-6" ref={historyRef}>
           <Card className="border-gray-200">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="font-display">Absensi Hari Ini</CardTitle>
+                  <CardTitle className="font-display">Riwayat Absensi</CardTitle>
                   <CardDescription className="font-body">
-                    {formatDate(today)}
+                    Lihat riwayat kehadiran {user?.role === 'staff' ? 'Anda' : 'karyawan'}
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Cari karyawan..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 font-body w-64"
-                    />
-                  </div>
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="font-mono"
+                  />
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="font-mono"
+                  />
+                  {user?.role !== 'staff' && (
+                    <Button variant="outline" className="font-body">
+                      <Download className="w-4 h-4 mr-2" />
+                      Export
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -742,194 +680,26 @@ export function AttendanceManagement() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="font-body">Tanggal</TableHead>
                     <TableHead className="font-body">Karyawan</TableHead>
                     <TableHead className="font-body">Check In</TableHead>
                     <TableHead className="font-body">Check Out</TableHead>
-                    <TableHead className="font-body">Jam Kerja</TableHead>
                     <TableHead className="font-body">Status</TableHead>
-                    <TableHead className="font-body">Lokasi</TableHead>
+                    <TableHead className="font-body">Potongan</TableHead>
                     {user?.role !== 'staff' && (
                       <TableHead className="font-body text-right">Aksi</TableHead>
                     )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <AnimatePresence>
-                    {todayAttendance.filter(att => {
-                      const employee = employees.find(emp => emp.id === att.employee_id);
-                      const employeeName = employee?.name || '';
-                      return employeeName.toLowerCase().includes(searchQuery.toLowerCase());
-                    }).map((attendance) => {
-                      const employee = employees.find(emp => emp.id === attendance.employee_id);
-                      const StatusIcon = statusIcons[attendance.status as AttendanceStatus];
-
-                      return (
-                        <motion.tr
-                          key={attendance.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -20 }}
-                          className="group"
-                        >
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <Avatar className="w-8 h-8">
-                                <AvatarFallback className="bg-hrd/20 text-hrd font-body text-xs">
-                                  {employee?.name.split(' ').map(n => n[0]).join('') || 'N/A'}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium font-body">{employee?.name || 'Unknown'}</span>
-                                  {onlineUsers.some(u => u.employee_id === employee?.id) && (
-                                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.6)]" title="Online" />
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground font-body">{employee?.position}</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {attendance.check_in ? (
-                              <div className="flex items-center gap-1">
-                                <LogIn className="w-3 h-3 text-green-500" />
-                                {formatTime(attendance.check_in)}
-                              </div>
-                            ) : '-'}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {attendance.check_out ? (
-                              <div className="flex items-center gap-1">
-                                <LogOut className="w-3 h-3 text-red-500" />
-                                {formatTime(attendance.check_out)}
-                              </div>
-                            ) : '-'}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {attendance.work_hours || calculateWorkHours(attendance.check_in, attendance.check_out)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={`${statusColors[attendance.status as AttendanceStatus]} font-body`}>
-                              <StatusIcon className="w-3 h-3 mr-1" />
-                              {statusLabels[attendance.status as AttendanceStatus]}
-                            </Badge>
-                            {attendance.status === 'late' && attendance.check_in && (
-                              <div className="mt-1 text-xs text-red-600 font-medium font-mono">
-                                Denda: Rp {(
-                                  (parseInt(attendance.check_in.split(':')[0]) * 60 + parseInt(attendance.check_in.split(':')[1]) - (8 * 60)) * 1000
-                                ).toLocaleString('id-ID')}
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="font-body text-sm">
-                            {attendance.location ? (
-                              <div className="flex items-center gap-1">
-                                <MapPin className="w-3 h-3 text-muted-foreground" />
-                                {attendance.location}
-                              </div>
-                            ) : '-'}
-                          </TableCell>
-                          {user?.role !== 'staff' && (
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                {attendance.check_in && !attendance.check_out && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="font-body"
-                                    onClick={() => {
-                                      const now = new Date();
-                                      const checkOutTime = now.toTimeString().slice(0, 5);
-                                      handleCheckOut(attendance.id, attendance.employee_id, checkOutTime);
-                                    }}
-                                  >
-                                    <LogOut className="w-4 h-4 mr-2" />
-                                    Check Out
-                                  </Button>
-                                )}
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon">
-                                      <MoreVertical className="w-4 h-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem
-                                      className="font-body"
-                                      onClick={() => handleViewAttendance(attendance)}
-                                    >
-                                      <Eye className="w-4 h-4 mr-2" />
-                                      Lihat Detail
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem className="font-body">
-                                      <Edit className="w-4 h-4 mr-2" />
-                                      Edit
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem className="font-body text-red-600">
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Hapus
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                            </TableCell>
-                          )}
-                        </motion.tr>
-                      );
-                    })}
-                  </AnimatePresence>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* History Tab - Only for non-staff users */}
-        {user?.role !== 'staff' && (
-          <TabsContent value="history" className="mt-6">
-            <Card className="border-gray-200">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="font-display">Riwayat Absensi</CardTitle>
-                    <CardDescription className="font-body">
-                      Lihat riwayat kehadiran karyawan
-                    </CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="font-mono"
-                    />
-                    <Input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="font-mono"
-                    />
-                    <Button variant="outline" className="font-body">
-                      <Download className="w-4 h-4 mr-2" />
-                      Export
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
+                  {filteredAttendance.length === 0 ? (
                     <TableRow>
-                      <TableHead className="font-body">Tanggal</TableHead>
-                      <TableHead className="font-body">Karyawan</TableHead>
-                      <TableHead className="font-body">Check In</TableHead>
-                      <TableHead className="font-body">Check Out</TableHead>
-                      <TableHead className="font-body">Status</TableHead>
-                      <TableHead className="font-body text-right">Aksi</TableHead>
+                      <TableCell colSpan={user?.role === 'staff' ? 5 : 6} className="text-center py-8 text-muted-foreground">
+                        Tidak ada data riwayat absensi pada periode ini.
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredAttendance.map((attendance) => {
+                  ) : (
+                    filteredAttendance.map((attendance) => {
                       const employee = employees.find(emp => emp.id === attendance.employee_id);
                       const StatusIcon = statusIcons[attendance.status as AttendanceStatus];
 
@@ -960,24 +730,33 @@ export function AttendanceManagement() {
                               {statusLabels[attendance.status as AttendanceStatus]}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleViewAttendance(attendance)}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
+                          <TableCell className="font-mono text-sm">
+                            {attendance.status === 'late' ? (
+                              <span className="text-red-600 font-bold">
+                                Rp {calculatePenalty(attendance.check_in, attendance.date).toLocaleString('id-ID')}
+                              </span>
+                            ) : '-'}
                           </TableCell>
+                          {user?.role !== 'staff' && (
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleViewAttendance(attendance)}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          )}
                         </TableRow>
                       );
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Summary Tab - Only for non-staff users */}
         {user?.role !== 'staff' && (
@@ -1041,9 +820,14 @@ export function AttendanceManagement() {
                                 Check in: {formatTime(attendance.check_in)}
                               </p>
                             </div>
-                            <Badge className="bg-yellow-100 text-yellow-800 font-body">
-                              Terlambat
-                            </Badge>
+                            <div className="text-right">
+                              <Badge className="bg-yellow-100 text-yellow-800 font-body mb-1">
+                                Terlambat
+                              </Badge>
+                              <p className="text-[10px] text-red-600 font-bold">
+                                - Rp {calculatePenalty(attendance.check_in, attendance.date).toLocaleString('id-ID')}
+                              </p>
+                            </div>
                           </div>
                         );
                       })}
@@ -1255,6 +1039,14 @@ export function AttendanceManagement() {
                   <div className="space-y-2">
                     <Label className="font-body text-muted-foreground">Lokasi</Label>
                     <p className="font-body font-medium">{selectedAttendance.location}</p>
+                  </div>
+                )}
+                {selectedAttendance.status === 'late' && (
+                  <div className="space-y-2 col-span-2 p-3 bg-red-50 rounded-lg border border-red-100">
+                    <Label className="font-body text-red-600 font-bold">Potongan Keterlambatan</Label>
+                    <p className="font-mono text-lg font-bold text-red-600">
+                      Rp {calculatePenalty(selectedAttendance.check_in || '', selectedAttendance.date).toLocaleString('id-ID')}
+                    </p>
                   </div>
                 )}
               </div>

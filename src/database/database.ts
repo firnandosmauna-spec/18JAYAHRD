@@ -1,6 +1,6 @@
-import { 
-  User, Employee, LeaveRequest, Attendance, Payroll, 
-  Reward, Notification, Department, Position, Recruitment, Applicant 
+import {
+  User, Employee, LeaveRequest, Attendance, Payroll,
+  Reward, Notification, Department, Position, Recruitment, Applicant
 } from './schema';
 
 // In-memory database simulation (for demo purposes)
@@ -342,7 +342,7 @@ class HRDDatabase {
   async updateEmployee(id: number, updates: Partial<Employee>): Promise<Employee | null> {
     const index = this.employees.findIndex(emp => emp.id === id);
     if (index === -1) return null;
-    
+
     this.employees[index] = {
       ...this.employees[index],
       ...updates,
@@ -354,7 +354,7 @@ class HRDDatabase {
   async deleteEmployee(id: number): Promise<boolean> {
     const index = this.employees.findIndex(emp => emp.id === id);
     if (index === -1) return false;
-    
+
     this.employees.splice(index, 1);
     return true;
   }
@@ -378,7 +378,7 @@ class HRDDatabase {
   async updateLeaveRequest(id: number, updates: Partial<LeaveRequest>): Promise<LeaveRequest | null> {
     const index = this.leaveRequests.findIndex(req => req.id === id);
     if (index === -1) return null;
-    
+
     this.leaveRequests[index] = {
       ...this.leaveRequests[index],
       ...updates,
@@ -426,7 +426,7 @@ class HRDDatabase {
   async updatePayroll(id: number, updates: Partial<Payroll>): Promise<Payroll | null> {
     const index = this.payroll.findIndex(p => p.id === id);
     if (index === -1) return null;
-    
+
     this.payroll[index] = {
       ...this.payroll[index],
       ...updates,
@@ -470,7 +470,7 @@ class HRDDatabase {
   async markNotificationAsRead(id: number): Promise<boolean> {
     const index = this.notifications.findIndex(n => n.id === id);
     if (index === -1) return false;
-    
+
     this.notifications[index] = {
       ...this.notifications[index],
       read: true,
@@ -483,7 +483,7 @@ class HRDDatabase {
   async deleteNotification(id: number): Promise<boolean> {
     const index = this.notifications.findIndex(n => n.id === id);
     if (index === -1) return false;
-    
+
     this.notifications.splice(index, 1);
     return true;
   }
@@ -510,7 +510,7 @@ class HRDDatabase {
     const active = this.employees.filter(e => e.status === 'active').length;
     const onLeave = this.employees.filter(e => e.status === 'on-leave').length;
     const terminated = this.employees.filter(e => e.status === 'terminated').length;
-    
+
     return {
       total,
       active,
@@ -526,7 +526,7 @@ class HRDDatabase {
   async getAttendanceStats(date?: string) {
     const targetDate = date || new Date().toISOString().split('T')[0];
     const dayAttendance = this.attendance.filter(a => a.date === targetDate);
-    
+
     return {
       present: dayAttendance.filter(a => a.status === 'present').length,
       late: dayAttendance.filter(a => a.status === 'late').length,
@@ -539,11 +539,11 @@ class HRDDatabase {
   async getPayrollStats(period?: string) {
     const targetPeriod = period || new Date().toISOString().slice(0, 7);
     const periodPayroll = this.payroll.filter(p => p.period === targetPeriod);
-    
+
     const totalGross = periodPayroll.reduce((sum, p) => sum + p.base_salary + p.allowances + p.overtime_pay + p.bonus, 0);
     const totalNet = periodPayroll.reduce((sum, p) => sum + p.net_salary, 0);
     const totalDeductions = periodPayroll.reduce((sum, p) => sum + p.deductions + p.tax, 0);
-    
+
     return {
       totalEmployees: periodPayroll.length,
       totalGross,

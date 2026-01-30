@@ -73,6 +73,21 @@ export interface Database {
         Insert: Omit<EmployeeLoan, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<EmployeeLoan, 'id' | 'created_at'>>
       }
+      employee_contracts: {
+        Row: EmployeeContract
+        Insert: Omit<EmployeeContract, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<EmployeeContract, 'id' | 'created_at'>>
+      }
+      job_history: {
+        Row: JobHistory
+        Insert: Omit<JobHistory, 'id' | 'created_at'>
+        Update: Partial<Omit<JobHistory, 'id' | 'created_at'>>
+      }
+      leave_quotas: {
+        Row: LeaveQuota
+        Insert: Omit<LeaveQuota, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<LeaveQuota, 'id' | 'created_at'>>
+      }
       accounts: {
         Row: Account
         Insert: Omit<Account, 'id' | 'created_at' | 'updated_at'>
@@ -113,6 +128,26 @@ export interface Database {
         Insert: Omit<Position, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<Position, 'id' | 'created_at'>>
       }
+      projects: {
+        Row: Project
+        Insert: Omit<Project, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<Project, 'id' | 'created_at'>>
+      }
+      project_phases: {
+        Row: ProjectPhase
+        Insert: Omit<ProjectPhase, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<ProjectPhase, 'id' | 'created_at'>>
+      }
+      project_materials: {
+        Row: ProjectMaterial
+        Insert: Omit<ProjectMaterial, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<ProjectMaterial, 'id' | 'created_at'>>
+      }
+      project_workers: {
+        Row: ProjectWorker
+        Insert: Omit<ProjectWorker, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<ProjectWorker, 'id' | 'created_at'>>
+      }
     }
   }
 }
@@ -122,7 +157,7 @@ export interface Profile {
   id: string
   email: string
   name: string
-  role: 'admin' | 'manager' | 'staff'
+  role: 'admin' | 'manager' | 'staff' | 'marketing'
   avatar?: string
   modules: string[]
   employee_id?: string
@@ -135,7 +170,7 @@ export interface Employee {
   name: string
   position: string
   department: string
-  department_id?: string // Keeping optional for backward compatibility during migration
+  department_id?: string
   status: 'active' | 'inactive' | 'on-leave' | 'terminated'
   join_date: string
   salary: number
@@ -250,6 +285,42 @@ export interface EmployeeLoan {
   updated_at: string
 }
 
+export interface EmployeeContract {
+  id: string
+  employee_id: string
+  contract_number: string
+  type: 'permanent' | 'probation' | 'contract' | 'freelance'
+  start_date: string
+  end_date: string | null
+  status: 'active' | 'expired' | 'terminated'
+  document_url: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface JobHistory {
+  id: string
+  employee_id: string
+  old_position: string | null
+  new_position: string
+  old_department_id: string | null
+  new_department_id: string | null
+  change_date: string
+  reason: string | null
+  created_at: string
+}
+
+export interface LeaveQuota {
+  id: string
+  employee_id: string
+  year: number
+  total_days: number
+  used_days: number
+  remaining_days: number
+  created_at: string
+  updated_at: string
+}
+
 // Accounting Types
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense'
 export type TransactionStatus = 'draft' | 'posted' | 'reversed'
@@ -349,4 +420,71 @@ export interface Position {
   job_desc?: string
   created_at: string
   updated_at: string
+}
+
+// Project Types
+export interface Project {
+  id: string
+  name: string
+  client_name: string
+  client_phone?: string
+  location?: string
+  status: 'planning' | 'in-progress' | 'completed' | 'on-hold' | 'cancelled'
+  type?: string
+  area_sqm?: number
+  start_date?: string
+  end_date?: string
+  budget: number
+  spent: number
+  progress: number
+  description?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectPhase {
+  id: string
+  project_id: string
+  name: string
+  status: 'pending' | 'in-progress' | 'completed'
+  start_date?: string
+  end_date?: string
+  weightage: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectMaterial {
+  id: string
+  project_id: string
+  product_id: string
+  quantity_planned: number
+  quantity_used: number
+  unit: string
+  cost_per_unit: number
+  total_cost: number
+  created_at: string
+  updated_at: string
+  // Joins
+  products?: {
+    name: string
+    sku: string
+  }
+}
+
+export interface ProjectWorker {
+  id: string
+  project_id: string
+  employee_id: string
+  role: string
+  daily_rate: number
+  status: 'active' | 'inactive'
+  joined_at: string
+  created_at: string
+  updated_at: string
+  // Joins
+  employees?: {
+    name: string
+    position: string
+  }
 }

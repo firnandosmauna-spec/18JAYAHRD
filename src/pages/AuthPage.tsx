@@ -1,29 +1,47 @@
-import React, { useState, useEffect } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { RegisterForm } from '@/components/auth/RegisterForm';
+import { authService } from '@/services/authService';
 
 export function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  const sessionCheckRef = useRef(false);
 
   // Get the intended destination from location state, default to dashboard
   const from = location.state?.from?.pathname || '/dashboard';
 
-  // If user is already authenticated, redirect to dashboard
-  if (isAuthenticated && !isLoading) {
-    return <Navigate to={from} replace />;
-  }
+  // Logic: 
+  // 1. If user arrives and is ALREADY authenticated (stale session), logout immediately (Security Request).
+  // 2. If user MANUALLY logs in (isAuthenticated becomes true after being false), redirect to dashboard.
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!sessionCheckRef.current) {
+      // First time check after loading is done
+      sessionCheckRef.current = true;
+      if (isAuthenticated) {
+        logout();
+      }
+    } else {
+      // Subsequent updates - if authenticated now, it must be from a fresh login
+      if (isAuthenticated) {
+        navigate(from, { replace: true });
+      }
+    }
+  }, [isLoading, isAuthenticated, logout, navigate, from]);
 
   // Show loading while checking authentication
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 flex-col gap-4">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Memuat...</p>
+          <p className="text-gray-600 font-medium tracking-wide">MEMUAT...</p>
         </div>
       </div>
     );
@@ -53,7 +71,7 @@ export function AuthPage() {
               </svg>
             </div>
           </div>
-          <h1 className="text-4xl font-bold mb-4 tracking-tight">HRD 18JAYA</h1>
+          <h1 className="text-4xl font-bold mb-4 tracking-tight">HRD 18 JAYA</h1>
           <p className="text-lg text-blue-100/80 leading-relaxed">
             Sistem Manajemen Sumber Daya Manusia Terintegrasi.
             Kelola data karyawan, absensi, dan penggajian dengan lebih efisien dan profesional.
@@ -71,7 +89,7 @@ export function AuthPage() {
         <div className="w-full max-w-md space-y-8 py-8">
           {/* Mobile Header */}
           <div className="lg:hidden text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">HRD 18JAYA</h1>
+            <h1 className="text-2xl font-bold text-gray-900">HRD&ERP SYSTEM 18 JAYA</h1>
             <p className="text-sm text-gray-500">Sistem Manajemen SDM</p>
           </div>
 

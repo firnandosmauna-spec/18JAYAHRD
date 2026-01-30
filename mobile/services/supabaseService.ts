@@ -333,9 +333,9 @@ export const attendanceService = {
             throw new Error('Already checked in for today')
         }
 
-        // Determine status based on time (e.g. late if after 9:00)
+        // Determine status based on time (e.g. late if after 08:05)
         // This is a simple logic, can be enhanced
-        const isLate = time > '09:00:00'
+        const isLate = time > '08:05:00'
         const status = isLate ? 'late' : 'present'
 
         return await this.create({

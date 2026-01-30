@@ -5,7 +5,6 @@ import { useAuth, ModuleType } from '@/contexts/AuthContext';
 import {
   Building2,
   Users,
-  Calculator,
   Package,
   HeadphonesIcon,
   Home,
@@ -14,6 +13,7 @@ import {
   ShoppingBag,
   ChevronLeft,
   Menu,
+  Calculator,
   TrendingUp,
   X
 } from 'lucide-react';
@@ -37,13 +37,6 @@ const moduleConfig = {
     borderColor: 'border-hrd',
     icon: Users,
   },
-  accounting: {
-    color: 'bg-accounting',
-    textColor: 'text-accounting-light',
-    lightBg: 'bg-accounting/10',
-    borderColor: 'border-accounting',
-    icon: Calculator,
-  },
   inventory: {
     color: 'bg-inventory',
     textColor: 'text-inventory',
@@ -57,6 +50,13 @@ const moduleConfig = {
     lightBg: 'bg-customer/10',
     borderColor: 'border-customer',
     icon: HeadphonesIcon,
+  },
+  accounting: {
+    color: 'bg-accounting',
+    textColor: 'text-accounting',
+    lightBg: 'bg-accounting/10',
+    borderColor: 'border-accounting',
+    icon: Calculator,
   },
   project: {
     color: 'bg-[#E76F51]',

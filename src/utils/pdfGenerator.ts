@@ -21,26 +21,56 @@ const formatDate = (dateString: string) => {
     });
 };
 
-export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee) => {
+export interface PrintSettings {
+    showLogo: boolean;
+    companyName: string;
+    companyAddress: string;
+    companyContact: string; // Phone/Email
+    showSignature: boolean;
+    footerNote: string;
+    headerColor: string; // Hex code for table headers
+    tableLayout: 'side_by_side' | 'stacked';
+    headerAlignment: 'center' | 'left';
+}
+
+const defaultSettings: PrintSettings = {
+    showLogo: true,
+    companyName: 'PT. HRD 18 JAYA',
+    companyAddress: 'Jl. Contoh Alamat No. 123, Jakarta Selatan',
+    companyContact: 'Telp: (021) 12345678 | Email: hrd@jayatempo.com',
+    showSignature: true,
+    footerNote: 'Dokumen ini sah dan dicetak secara otomatis oleh sistem.',
+    headerColor: '#16a34a', // Green default
+    tableLayout: 'side_by_side',
+    headerAlignment: 'center'
+};
+
+export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, customSettings?: PrintSettings) => {
+    const settings = { ...defaultSettings, ...customSettings };
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
 
     // --- HEADER ---
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.text('PT. JAYA TEMPO', pageWidth / 2, 20, { align: 'center' });
+
+    // Header Alignment Logic
+    const headerX = settings.headerAlignment === 'center' ? pageWidth / 2 : 15;
+    const headerAlign = settings.headerAlignment as 'center' | 'left' | 'right' | 'justify';
+
+    doc.text(settings.companyName, headerX, 20, { align: headerAlign });
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text('Jl. Contoh Alamat No. 123, Jakarta Selatan', pageWidth / 2, 26, { align: 'center' });
-    doc.text('Telp: (021) 12345678 | Email: hrd@jayatempo.com', pageWidth / 2, 31, { align: 'center' });
+    doc.text(settings.companyAddress, headerX, 26, { align: headerAlign });
+    doc.text(settings.companyContact, headerX, 31, { align: headerAlign });
 
     doc.setLineWidth(0.5);
     doc.line(15, 35, pageWidth - 15, 35);
 
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.text('SLIP GAJI KARYAWAN', pageWidth / 2, 45, { align: 'center' });
+    doc.text('SLIP GAJI KARYAWAN', pageWidth / 2, 45, { align: 'center' }); // Always center title
 
     // --- EMPLOYEE DETAILS ---
     doc.setFontSize(10);
@@ -68,7 +98,6 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee) =
 
     // Right Column
     doc.text(`ID Karyawan`, rightColX, currentY);
-    // Truncate UUID for display if needed, or just show it.
     doc.text(`: ${employee.id.slice(0, 8)}...`, rightColX + 30, currentY);
 
     doc.text(`Status`, rightColX, currentY + 6);
@@ -76,48 +105,81 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee) =
 
     currentY += 15;
 
-    // Derive Overtime from Net Salary equation: Net = Base + Allow + OT - Ded
-    // OT = Net - Base - Allow + Ded
+    // Derive Overtime
     const derivedOvertime = Math.max(0, payroll.net_salary - payroll.base_salary - payroll.allowances + payroll.deductions);
 
-    // --- EARNINGS TABLE ---
+    // --- TABLES ---
     const earningsData = [
         ['Gaji Pokok', formatCurrency(payroll.base_salary)],
         ['Tunjangan', formatCurrency(payroll.allowances)],
         ['Lembur (Est.)', formatCurrency(derivedOvertime)],
     ];
 
-    autoTable(doc, {
-        startY: currentY,
-        head: [['PENERIMAAN', 'JUMLAH']],
-        body: earningsData,
-        theme: 'grid',
-        headStyles: { fillColor: [22, 163, 74], textColor: 255 }, // Green header
-        columnStyles: {
-            0: { cellWidth: 'auto' },
-            1: { halign: 'right' },
-        },
-        margin: { left: 15, right: pageWidth / 2 + 2 },
-        tableWidth: (pageWidth / 2) - 20
-    });
-
-    // --- DEDUCTIONS TABLE ---
-
     let detailedDeductions = [['Total Potongan', formatCurrency(payroll.deductions)]];
 
-    autoTable(doc, {
-        startY: currentY,
-        head: [['POTONGAN', 'JUMLAH']],
-        body: detailedDeductions,
-        theme: 'grid',
-        headStyles: { fillColor: [220, 38, 38], textColor: 255 }, // Red header
-        columnStyles: {
-            0: { cellWidth: 'auto' },
-            1: { halign: 'right' },
-        },
-        margin: { left: pageWidth / 2 + 5, right: 15 },
-        tableWidth: (pageWidth / 2) - 20
-    });
+    if (settings.tableLayout === 'stacked') {
+        // STACKED LAYOUT
+        autoTable(doc, {
+            startY: currentY,
+            head: [['PENERIMAAN', 'JUMLAH']],
+            body: earningsData,
+            theme: 'grid',
+            headStyles: { fillColor: settings.headerColor, textColor: 255 },
+            columnStyles: {
+                0: { cellWidth: 'auto' },
+                1: { halign: 'right' },
+            },
+            margin: { left: 15, right: 15 },
+            tableWidth: pageWidth - 30
+        });
+
+        // @ts-ignore
+        currentY = doc.lastAutoTable.finalY + 10;
+
+        autoTable(doc, {
+            startY: currentY,
+            head: [['POTONGAN', 'JUMLAH']],
+            body: detailedDeductions,
+            theme: 'grid',
+            headStyles: { fillColor: '#dc2626', textColor: 255 },
+            columnStyles: {
+                0: { cellWidth: 'auto' },
+                1: { halign: 'right' },
+            },
+            margin: { left: 15, right: 15 },
+            tableWidth: pageWidth - 30
+        });
+
+    } else {
+        // SIDE BY SIDE LAYOUT (Default)
+        autoTable(doc, {
+            startY: currentY,
+            head: [['PENERIMAAN', 'JUMLAH']],
+            body: earningsData,
+            theme: 'grid',
+            headStyles: { fillColor: settings.headerColor, textColor: 255 },
+            columnStyles: {
+                0: { cellWidth: 'auto' },
+                1: { halign: 'right' },
+            },
+            margin: { left: 15, right: pageWidth / 2 + 2 },
+            tableWidth: (pageWidth / 2) - 20
+        });
+
+        autoTable(doc, {
+            startY: currentY,
+            head: [['POTONGAN', 'JUMLAH']],
+            body: detailedDeductions,
+            theme: 'grid',
+            headStyles: { fillColor: '#dc2626', textColor: 255 },
+            columnStyles: {
+                0: { cellWidth: 'auto' },
+                1: { halign: 'right' },
+            },
+            margin: { left: pageWidth / 2 + 5, right: 15 },
+            tableWidth: (pageWidth / 2) - 20
+        });
+    }
 
     // Get the lower Y after tables
     // @ts-ignore
@@ -146,14 +208,24 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee) =
     const signatureY = doc.lastAutoTable.finalY + 30;
 
     // --- SIGNATURE ---
-    doc.setFontSize(10);
-    doc.text('Jakarta, ' + formatDate(new Date().toISOString()), pageWidth - 50, signatureY - 15, { align: 'center' });
+    if (settings.showSignature) {
+        doc.setFontSize(10);
+        doc.text('Jakarta, ' + formatDate(new Date().toISOString()), pageWidth - 50, signatureY - 15, { align: 'center' });
 
-    doc.text('Diterima Oleh,', 50, signatureY, { align: 'center' });
-    doc.text('Bagian Keuangan,', pageWidth - 50, signatureY, { align: 'center' });
+        doc.text('Diterima Oleh,', 50, signatureY, { align: 'center' });
+        doc.text('Bagian Keuangan,', pageWidth - 50, signatureY, { align: 'center' });
 
-    doc.text(`(${employee.name})`, 50, signatureY + 25, { align: 'center' });
-    doc.text('(_________________)', pageWidth - 50, signatureY + 25, { align: 'center' });
+        doc.text(`(${employee.name})`, 50, signatureY + 25, { align: 'center' });
+        doc.text('(_________________)', pageWidth - 50, signatureY + 25, { align: 'center' });
+    }
+
+    // --- FOOTER NOTE ---
+    if (settings.footerNote) {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(100);
+        doc.text(settings.footerNote, pageWidth / 2, 280, { align: 'center' });
+    }
 
     // Save the PDF
     doc.save(`Slip_Gaji_${employee.name}_${periodString}.pdf`);

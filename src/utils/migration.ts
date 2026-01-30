@@ -3,7 +3,7 @@ import { employeeService, departmentService } from '@/services/supabaseService'
 
 // Migration utility to convert localStorage data to Supabase
 export class DataMigration {
-  
+
   // Migrate employees from localStorage to Supabase
   static async migrateEmployeesFromLocalStorage() {
     try {
@@ -38,6 +38,7 @@ export class DataMigration {
             name: emp.name,
             position: emp.position,
             department_id: departmentId,
+            department: emp.department,
             status: emp.status || 'active',
             join_date: emp.joinDate,
             salary: emp.salary,
@@ -63,7 +64,7 @@ export class DataMigration {
 
       // Backup localStorage data before clearing
       localStorage.setItem('hrd-employees-backup', localStorageData)
-      
+
       // Clear localStorage after successful migration
       if (migratedCount > 0) {
         localStorage.removeItem('hrd-employees')
@@ -122,7 +123,7 @@ export class DataMigration {
       'hrd-payroll',
       'hrd-rewards'
     ]
-    
+
     keys.forEach(key => {
       if (localStorage.getItem(key)) {
         localStorage.removeItem(key)
@@ -160,7 +161,7 @@ export class DataMigration {
       const departments = await departmentService.getAll()
       if (departments.length === 0) {
         console.log('No departments found, seeding initial departments...')
-        
+
         const initialDepartments = [
           { name: 'IT', description: 'Information Technology Department' },
           { name: 'HRD', description: 'Human Resources Department' },
@@ -173,7 +174,7 @@ export class DataMigration {
         for (const dept of initialDepartments) {
           await departmentService.create(dept)
         }
-        
+
         console.log('Initial departments seeded successfully')
       }
 
@@ -199,7 +200,7 @@ export async function runMigrationWithFeedback(
   try {
     onProgress?.('Testing Supabase connection...')
     const connectionTest = await DataMigration.testConnection()
-    
+
     if (!connectionTest.success) {
       onError?.(connectionTest.message)
       return false
@@ -210,7 +211,7 @@ export async function runMigrationWithFeedback(
 
     onProgress?.('Checking if migration is needed...')
     const migrationNeeded = await DataMigration.checkMigrationNeeded()
-    
+
     if (!migrationNeeded) {
       onSuccess?.('No migration needed - database is already set up')
       return true
@@ -218,7 +219,7 @@ export async function runMigrationWithFeedback(
 
     onProgress?.('Migrating employee data...')
     const result = await DataMigration.migrateEmployeesFromLocalStorage()
-    
+
     if (result.success) {
       onSuccess?.(result.message)
       if (result.errors && result.errors.length > 0) {

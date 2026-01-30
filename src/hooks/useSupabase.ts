@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import {
   employeeService,
   departmentService,
@@ -8,9 +9,24 @@ import {
   rewardService,
   notificationService,
   positionService,
+  contractService,
+  jobHistoryService,
+  leaveQuotaService,
   handleSupabaseError
 } from '@/services/supabaseService'
-import type { Employee, Department, LeaveRequest, AttendanceRecord, PayrollRecord, RewardRecord, NotificationRecord, Position } from '@/lib/supabase'
+import type {
+  Employee,
+  Department,
+  LeaveRequest,
+  AttendanceRecord,
+  PayrollRecord,
+  RewardRecord,
+  NotificationRecord,
+  Position,
+  EmployeeContract,
+  JobHistory,
+  LeaveQuota
+} from '@/lib/supabase'
 
 
 // Employee Hooks
@@ -23,14 +39,33 @@ export function useEmployees() {
     try {
       setLoading(true)
       setError(null)
-      const data = await employeeService.getAll()
+
+      // Safety timeout
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out')), 5000)
+      );
+
+      const fetchPromise = employeeService.getAll();
+
+      const data = await Promise.race([fetchPromise, timeoutPromise]) as Employee[];
+
       setEmployees(data || [])
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching employees:', err)
-      setError(handleSupabaseError(err))
+      if (err.message !== 'Request timed out') {
+        setError(handleSupabaseError(err))
+      } else {
+        console.warn('⚠️ fetchEmployees timed out');
+      }
       setEmployees([]) // Set empty array on error to prevent infinite loading
     } finally {
-      setLoading(false)
+      if (process.env.NODE_ENV === 'development') {
+        // Force minimum loading time for UX (optional, but good for testing)
+        // setTimeout(() => setLoading(false), 500); 
+        setLoading(false)
+      } else {
+        setLoading(false)
+      }
     }
   }
 
@@ -528,6 +563,90 @@ export function usePositions() {
     error,
     refetch: fetchPositions
   }
+}
+
+// Contract Hooks
+export function useContracts(employeeId?: string) {
+  const [contracts, setContracts] = useState<EmployeeContract[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchContracts = async () => {
+    if (!employeeId) return;
+    try {
+      setLoading(true)
+      const data = await contractService.getByEmployee(employeeId)
+      setContracts(data)
+    } catch (err) {
+      console.error('Error fetching contracts:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchContracts()
+  }, [employeeId])
+
+  return { contracts, loading, refetch: fetchContracts }
+}
+
+// Job History Hooks
+export function useJobHistory(employeeId?: string) {
+  const [history, setHistory] = useState<JobHistory[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchHistory = async () => {
+    if (!employeeId) return;
+    try {
+      setLoading(true)
+      const data = await jobHistoryService.getByEmployee(employeeId)
+      setHistory(data)
+    } catch (err) {
+      console.error('Error fetching history:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchHistory()
+  }, [employeeId])
+
+  return { history, loading, refetch: fetchHistory }
+}
+
+// Leave Quota Hooks
+export function useLeaveQuota(employeeId?: string, year: number = new Date().getFullYear()) {
+  const [quota, setQuota] = useState<LeaveQuota | null>(null)
+  const [quotas, setQuotas] = useState<LeaveQuota[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchQuota = async () => {
+    try {
+      setLoading(true)
+      if (employeeId) {
+        const data = await leaveQuotaService.getByEmployee(employeeId, year)
+        setQuota(data)
+      } else {
+        const { data, error } = await supabase
+          .from('leave_quotas')
+          .select('*')
+          .eq('year', year);
+        if (error) throw error;
+        setQuotas(data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching quota:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchQuota()
+  }, [employeeId, year])
+
+  return { quota, quotas, loading, refetch: fetchQuota }
 }
 
 export * from './useLoans'

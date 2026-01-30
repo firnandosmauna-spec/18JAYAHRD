@@ -1,112 +1,117 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, SafeAreaView, Platform, StatusBar as RNStatusBar } from 'react-native';
-import { Stack, router } from 'expo-router';
-import { 
-  Users, 
-  Calculator, 
-  Package, 
-  Headphones,
-  Bell, 
-  Search, 
-  Settings,
-  Building2,
-  ShoppingCart,
-  ShoppingBag,
+import { View, Text, ScrollView, TouchableOpacity, SafeAreaView, Platform } from 'react-native';
+import { router } from 'expo-router';
+import {
+  CalendarCheck,
+  Calendar, // Changed from CalendarDays
+  CreditCard,
+  DollarSign,
+  Gift,
   LogOut,
-  ChevronRight
+  User,
+  Layers // Added for Pipeline
 } from 'lucide-react-native';
-import { authService } from '../../services/authService';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { Avatar } from '../../components/ui/avatar';
-import { H2, H3, P, Small, Muted, Large } from '../../components/ui/typography';
+import { supabase } from '../../lib/supabase';
+import { Card, CardContent } from '../../components/ui/card';
+import { H2, H3, P, Small, Large } from '../../components/ui/typography';
 import { Badge } from '../../components/ui/badge';
 import { cn } from '../../lib/utils';
 
-// Module Config
 const modules = [
   {
-    id: 'hrd',
-    name: 'HRD',
-    description: 'Kelola karyawan, cuti, absensi',
-    icon: Users,
-    color: 'text-rose-500',
-    bgColor: 'bg-rose-50',
-    route: '/(app)/hrd',
-    notifications: 8,
-  },
-  {
-    id: 'accounting',
-    name: 'Akuntansi',
-    description: 'Pembukuan, jurnal, invoice',
-    icon: Calculator,
-    color: 'text-violet-500',
-    bgColor: 'bg-violet-50',
-    route: '/(app)/accounting',
-    notifications: 5,
-  },
-  {
-    id: 'inventory',
-    name: 'Persediaan',
-    description: 'Stok barang, gudang',
-    icon: Package,
-    color: 'text-emerald-500',
+    id: 'attendance',
+    name: 'Absensi',
+    description: 'Check-in & Check-out',
+    icon: CalendarCheck,
+    color: '#059669', // emerald-600
     bgColor: 'bg-emerald-50',
-    route: '/(app)/inventory',
-    notifications: 15,
+    route: '/(app)/attendance',
+    notifications: 0,
   },
   {
-    id: 'customer',
-    name: 'CS',
-    description: 'Tiket support, keluhan',
-    icon: Headphones,
-    color: 'text-cyan-500', 
-    bgColor: 'bg-cyan-50',
-    route: '/(app)/customer',
-    notifications: 23,
-  },
-  {
-    id: 'project',
-    name: 'Proyek',
-    description: 'Manajemen proyek',
-    icon: Building2,
-    color: 'text-orange-500',
-    bgColor: 'bg-orange-50',
-    route: '/(app)/projects',
-    notifications: 5,
-  },
-  {
-    id: 'sales',
-    name: 'Penjualan',
-    description: 'Penjualan, pelanggan',
-    icon: ShoppingCart,
-    color: 'text-blue-600',
+    id: 'leave',
+    name: 'Izin Cuti',
+    description: 'Ajukan & Pantau Cuti',
+    icon: Calendar, // Updated to match Web
+    color: '#2563eb', // blue-600
     bgColor: 'bg-blue-50',
-    route: '/(app)/sales',
-    notifications: 8,
+    route: '/(app)/leave',
+    notifications: 0,
   },
   {
-    id: 'purchase',
-    name: 'Pembelian',
-    description: 'Pembelian, supplier',
-    icon: ShoppingBag,
-    color: 'text-orange-600',
+    id: 'loan',
+    name: 'Kasbon',
+    description: 'Pinjaman Karyawan',
+    icon: CreditCard,
+    color: '#ea580c', // orange-600
     bgColor: 'bg-orange-50',
-    route: '/(app)/purchase',
-    notifications: 4,
+    route: '/(app)/loan',
+    notifications: 0,
+  },
+  {
+    id: 'payroll',
+    name: 'Payroll',
+    description: 'Slip Gaji & Riwayat',
+    icon: DollarSign,
+    color: '#16a34a', // green-600
+    bgColor: 'bg-green-50',
+    route: '/(app)/payroll',
+    notifications: 0,
+  },
+  {
+    id: 'reward',
+    name: 'Reward',
+    description: 'Pencapaian & Bonus',
+    icon: Gift,
+    color: '#9333ea', // purple-600
+    bgColor: 'bg-purple-50',
+    route: '/(app)/reward',
+    notifications: 0,
+  },
+  {
+    id: 'pipeline',
+    name: 'Pipeline',
+    description: 'Progres Sales & Deal',
+    icon: Layers,
+    color: '#0ea5e9', // sky-500
+    bgColor: 'bg-sky-50',
+    route: '/(app)/pipeline',
+    notifications: 0,
   },
 ];
 
+// ... (existing helper functions if any, or component start)
+
 export default function Dashboard() {
-  const [user, setUser] = React.useState<any>(null);
+  // ... (existing state and effects)
+  const [profile, setProfile] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    authService.getUser().then((user) => setUser(user));
+    fetchProfile();
   }, []);
 
+  const fetchProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        setProfile(data);
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
-    await authService.signOut();
-    router.replace('/login');
+    await supabase.auth.signOut();
+    router.replace('/(auth)/login');
   };
 
   return (
@@ -116,21 +121,16 @@ export default function Dashboard() {
         <View className="px-6 py-4 bg-white border-b border-gray-200 flex-row items-center justify-between">
           <View className="flex-row items-center gap-3">
             <View className="w-10 h-10 bg-slate-900 rounded-xl items-center justify-center">
-              <Building2 size={24} color="white" />
+              <User size={24} color="white" />
             </View>
-            <H3>BusinessHub</H3>
+            <View>
+              <H3>Staff Portal</H3>
+              <Small className="text-gray-500">HRD System</Small>
+            </View>
           </View>
           <View className="flex-row items-center gap-4">
-            <TouchableOpacity onPress={() => {}}>
-              <View className="relative">
-                <Bell size={24} className="text-gray-500" color="#64748b" />
-                <View className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full items-center justify-center">
-                  <Text className="text-[10px] text-white font-bold">5</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
             <TouchableOpacity onPress={handleLogout}>
-              <Avatar fallback={user?.name?.charAt(0).toUpperCase()} />
+              <LogOut size={24} color="#ef4444" />
             </TouchableOpacity>
           </View>
         </View>
@@ -138,35 +138,32 @@ export default function Dashboard() {
         <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }}>
           {/* Welcome Message */}
           <View className="mb-8">
-            <H2>Selamat Datang, {user?.name?.split(' ')[0]}!</H2>
+            <H2>Halo, {profile?.name?.split(' ')[0] || 'Staff'}!</H2>
             <P className="text-gray-500 mt-1">
-              Pilih modul untuk memulai pekerjaan Anda hari ini
+              Selamat bekerja, semoga harimu menyenangkan.
             </P>
           </View>
 
           {/* Module Grid */}
-          <View className="flex-row flex-wrap gap-4 justify-between">
+          <View className="flex-row flex-wrap justify-between">
             {modules.map((module) => (
-              <TouchableOpacity 
-                key={module.id} 
-                className="w-[48%] mb-4"
-                onPress={() => {
-                   alert(`Navigating to ${module.name} (Local DB Mode)`);
-                }}
+              <TouchableOpacity
+                key={module.id}
+                style={{ width: '48%', marginBottom: 16 }}
+                onPress={() => router.push(module.route as any)}
               >
-                <Card className="h-full border-2 border-transparent hover:border-blue-500 active:border-blue-500">
+                <Card className="border-2 border-transparent active:border-blue-500 rounded-2xl">
                   <CardContent className="p-4 pt-4">
                     <View className="flex-row justify-between items-start mb-3">
-                      <View className={cn("w-12 h-12 rounded-xl items-center justify-center", module.bgColor)}>
-                         <module.icon 
-                           size={24} 
-                           className={module.color} 
-                           color="#4b5563"
-                         />
+                      <View className={cn("w-14 h-14 rounded-xl items-center justify-center", module.bgColor)}>
+                        <module.icon
+                          size={28}
+                          color={module.color}
+                        />
                       </View>
                       {module.notifications > 0 && (
-                        <Badge className={cn("px-2 py-0.5", module.bgColor.replace('/10', ''))}>
-                          <Text className={cn("text-xs font-bold", module.color)}>{module.notifications}</Text>
+                        <Badge className="px-2 py-0.5 bg-rose-100">
+                          <Text className="text-xs font-bold text-rose-600">{module.notifications}</Text>
                         </Badge>
                       )}
                     </View>
@@ -178,13 +175,6 @@ export default function Dashboard() {
             ))}
           </View>
 
-          {/* Logout Button */}
-          <Button 
-            variant="destructive" 
-            className="mt-8"
-            onPress={handleLogout}
-            label="Log Out"
-          />
         </ScrollView>
       </SafeAreaView>
     </View>

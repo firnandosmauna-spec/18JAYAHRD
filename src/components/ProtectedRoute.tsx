@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 
 export default function ProtectedRoute({ children, requiredModule }: ProtectedRouteProps) {
   const location = useLocation();
-  const { isAuthenticated, isLoading, hasModuleAccess } = useAuth();
+  const { isAuthenticated, isLoading, hasModuleAccess, user } = useAuth();
 
   // Log current state
   useEffect(() => {
@@ -26,14 +26,22 @@ export default function ProtectedRoute({ children, requiredModule }: ProtectedRo
       <div className="min-h-screen bg-[#FAFAF9] flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-hrd/30 border-t-hrd rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground font-body">Memuat...</p>
+          <p className="text-muted-foreground font-body">MEMERIKSA PERIZINAN...</p>
+          <div className="mt-4 text-xs text-red-500 font-mono bg-red-50 p-2 rounded">
+            DEBUG: Loading={String(isLoading)} Auth={String(isAuthenticated)}
+            <br />
+            Path={location.pathname}
+            <br />
+            User={user?.email || 'None'} Role={user?.role || 'None'}
+          </div>
         </div>
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/" state={{ from: location }} replace />;
+    // If not authenticated, always send to /auth
+    return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
   if (requiredModule && !hasModuleAccess(requiredModule)) {

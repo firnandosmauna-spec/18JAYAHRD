@@ -8,14 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/ui/use-toast';
-import { 
-  Building2, 
-  Lock, 
-  Mail, 
-  Eye, 
+import {
+  Building2,
+  Lock,
+  Mail,
+  Eye,
   EyeOff,
   Users,
-  Calculator,
   Package,
   HeadphonesIcon
 } from 'lucide-react';
@@ -27,7 +26,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -37,9 +36,9 @@ export default function LoginPage() {
       const start = Date.now();
       const { status, error } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
       const duration = Date.now() - start;
-      
+
       if (error) throw error;
-      
+
       toast({
         title: "Koneksi Berhasil",
         description: `Terhubung ke Supabase dalam ${duration}ms. Status: ${status}`,
@@ -67,12 +66,12 @@ export default function LoginPage() {
     try {
       // Add a safety timeout wrapper
       const loginPromise = login(email, password);
-      const timeoutPromise = new Promise<boolean>((_, reject) => 
+      const timeoutPromise = new Promise<boolean>((_, reject) =>
         setTimeout(() => reject(new Error('Login timeout - server tidak merespon')), 15000)
       );
 
       const success = await Promise.race([loginPromise, timeoutPromise]);
-      
+
       if (success) {
         navigate('/dashboard');
       } else {
@@ -88,7 +87,6 @@ export default function LoginPage() {
 
   const moduleIcons = [
     { icon: Users, color: 'text-hrd', label: 'HRD' },
-    { icon: Calculator, color: 'text-accounting-light', label: 'Akuntansi' },
     { icon: Package, color: 'text-inventory', label: 'Persediaan' },
     { icon: HeadphonesIcon, color: 'text-customer', label: 'Pelayanan' },
   ];
@@ -96,7 +94,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#FAFAF9] flex">
       {/* Left Panel - Branding */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, x: -50 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.6 }}
@@ -125,9 +123,9 @@ export default function LoginPage() {
             <span className="text-[#14FFEC]">Dalam Satu Platform</span>
           </h1>
           <p className="text-white/70 font-body text-lg max-w-md">
-            Integrasikan HRD, Akuntansi, Persediaan, dan Pelayanan Konsumen dalam satu sistem yang powerful dan mudah digunakan.
+            Integrasikan HRD, Persediaan, dan Pelayanan Konsumen dalam satu sistem yang powerful dan mudah digunakan.
           </p>
-          
+
           {/* Module Icons */}
           <div className="flex gap-6 pt-4">
             {moduleIcons.map((item, index) => (

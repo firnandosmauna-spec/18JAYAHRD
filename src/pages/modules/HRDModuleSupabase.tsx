@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import ModuleLayout from '@/components/layout/ModuleLayout';
 import {
   Users,
+  User,
   UserPlus,
   Calendar,
   Clock,
@@ -81,84 +82,32 @@ import { RewardManagement } from '@/components/hrd/RewardManagement';
 import PositionsPage from '@/pages/hrd/PositionsPage';
 import SettingsPage from '@/pages/hrd/SettingsPage'; // Import Settings Page
 import { Settings as SettingsIcon } from 'lucide-react'; // Rename to avoid conflict if Settings is already imported
+import { NotificationProvider, useNotificationsContext } from '@/contexts/NotificationContext';
 
 // Supabase Hooks
-import { useEmployees, useDepartments, useNotifications, useLeaveRequests, useAttendance, usePayroll, useRewards, useLoans, usePositions } from '@/hooks/useSupabase';
-// Duplicate removed
+import {
+  useEmployees,
+  useDepartments,
+  useNotifications,
+  useLeaveRequests,
+  useAttendance,
+  usePayroll,
+  useRewards,
+  useLoans,
+  usePositions,
+  useContracts,
+  useJobHistory,
+  useLeaveQuota
+} from '@/hooks/useSupabase';
 import { usePermissions } from '@/hooks/usePermissions';
+import { ESSPortal } from '@/components/hrd/ESSPortal';
 import { supabase } from '@/lib/supabase';
 import type { Employee } from '@/lib/supabase';
 import { DataMigration } from '@/utils/migration';
+import { userService, type AppUser } from '@/services/userService';
 
 // Navigation items
 
-
-// Notification Context (using Supabase)
-interface NotificationContextType {
-  notifications: any[];
-  unreadCount: number;
-  addNotification: (notification: any) => void;
-  markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
-  clearNotification: (id: string) => void;
-}
-
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
-
-export function useNotificationsContext() {
-  const context = useContext(NotificationContext);
-  if (!context) {
-    throw new Error('useNotificationsContext must be used within NotificationProvider');
-  }
-  return context;
-}
-
-function NotificationProvider({ children }: { children: ReactNode }) {
-  const {
-    notifications,
-    unreadCount,
-    addNotification: addSupabaseNotification,
-    markAsRead,
-    markAllAsRead,
-    deleteNotification
-  } = useNotifications();
-
-  const addNotification = async (notification: any) => {
-    try {
-      await addSupabaseNotification({
-        title: notification.title,
-        message: notification.message,
-        type: notification.type,
-        module: notification.module,
-        user_id: null, // System notification
-        read: false
-      });
-    } catch (error) {
-      console.error('Failed to add notification:', error);
-    }
-  };
-
-  const clearNotification = async (id: string) => {
-    try {
-      await deleteNotification(id);
-    } catch (error) {
-      console.error('Failed to delete notification:', error);
-    }
-  };
-
-  return (
-    <NotificationContext.Provider value={{
-      notifications,
-      unreadCount,
-      addNotification,
-      markAsRead,
-      markAllAsRead,
-      clearNotification
-    }}>
-      {children}
-    </NotificationContext.Provider>
-  );
-}
 
 // Notification Bell Component
 function NotificationBell() {
@@ -357,7 +306,6 @@ function EmployeeListSupabase() {
   const { departments } = useDepartments();
   const { attendance: todayAttendance } = useAttendance(); // Fetch today's attendance
   const { toast } = useToast();
-  // Track online users from Global Auth (Stable)
   const { user, onlineUsers } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -391,6 +339,25 @@ function EmployeeListSupabase() {
     address: ''
   });
 
+  // Fetch users for linking status
+  const [users, setUsers] = useState<AppUser[]>([]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const data = await userService.getAllUsers();
+        if (data && Array.isArray(data)) {
+          setUsers(data as AppUser[]);
+        } else {
+          setUsers([]);
+        }
+      } catch (err) {
+        console.error("Failed to load users for linking:", err);
+      }
+    };
+    loadUsers();
+  }, []);
+
   const filteredEmployees = employees.filter(emp => {
     // Staff filtering: only see own data
     if (user?.role === 'staff') {
@@ -422,66 +389,116 @@ function EmployeeListSupabase() {
     });
   };
 
-  // Handle position change to auto-fill department and salary
-  const handlePositionChange = (title: string) => {
-    // Basic normalization for matching
-    const searchTitle = title.trim();
-    const selectedPos = positions.find(p => p.title.trim() === searchTitle);
+  // Derive filters from positions
+  // RESTRICTED LEVELS: As per request, only these 3 are allowed for new selection.
+  const uniqueLevels = ['Administrator', 'Staf', 'Manager'];
 
-    setFormData(prev => {
-      const newData = { ...prev, position: title };
+  // Create a combined list of departments from both the Departments table and distinct names in Positions
+  const derivedDepartments = [...departments];
+  const distinctPositionDepts = Array.from(new Set(positions.map(p => p.department))).filter(Boolean);
 
-      if (selectedPos) {
-        // @ts-ignore
-        const rawValues = selectedPos.department || selectedPos.Department || selectedPos.dept || selectedPos.bagian || '';
+  distinctPositionDepts.forEach(posDeptName => {
+    // Check if this name already exists in departments array (case-insensitive)
+    const exists = derivedDepartments.some(d => d.name.trim().toLowerCase() === posDeptName.trim().toLowerCase());
+    if (!exists) {
+      // Add as a pseudo-department
+      // We use the name itself as the ID for purely local selection handling if needed, 
+      // but better to keep it clean.
+      derivedDepartments.push({
+        id: `temp-${posDeptName}`, // Temporary ID
+        name: posDeptName,
+        created_at: '',
+        updated_at: ''
+      });
+    }
+  });
 
-        let targetDeptId = '';
+  // Filter departments based on selected Level (formData.position)
+  // MODIFIED: We now showing ALL departments always.
+  // This allows users to select ANY Department for a given Level (e.g. Staf),
+  // even if that specific combination doesn't exist in the 'positions' table yet.
+  const filteredDepartments = derivedDepartments;
 
-        // Check if raw value is valid
-        if (rawValues) {
-          // CASE 1: Value is already a UUID (long string) -> Use directly
-          if (rawValues.length > 20) { // Heuristic: UUIDs are typically longer than common department names
-            targetDeptId = rawValues;
-          }
-          // CASE 2: Value is a NAME (e.g. "HRD") -> Find UUID from departments list
-          else {
-            const foundDept = departments.find(d => d.name.toLowerCase() === rawValues.toLowerCase());
-            if (foundDept) {
-              targetDeptId = foundDept.id;
-            }
-          }
+  // Auto-fill Salary when Position (Level) and Department are selected
+  useEffect(() => {
+    if (formData.position && formData.department) {
+      // Find department name either by ID (if UUID) or if it's a temp ID
+      const selectedDeptObj = derivedDepartments.find(d => d.id === formData.department);
+      const deptName = selectedDeptObj?.name;
+
+      if (deptName) {
+        const matchedPosition = positions.find(p =>
+          p.level === formData.position &&
+          p.department?.trim().toLowerCase() === deptName.trim().toLowerCase()
+        );
+        if (matchedPosition && matchedPosition.gaji_pokok) {
+          setFormData(prev => ({ ...prev, salary: matchedPosition.gaji_pokok.toString() }));
+          toast({
+            title: "Info Gaji",
+            description: `Gaji otomatis diisi: ${formatCurrency(matchedPosition.gaji_pokok)}`,
+          });
         }
-
-        newData.department = targetDeptId;
-        newData.salary = selectedPos.gaji_pokok ? selectedPos.gaji_pokok.toString() : '';
-
-        // Feedback to user
-        const deptName = departments.find(d => d.id === targetDeptId)?.name || '(Pilih Manual)';
-
-        toast({
-          title: "Posisi Dipilih: " + selectedPos.title,
-          description: `Dept: ${deptName}, Gaji: ${newData.salary || '(Kosong)'}`,
-        });
       }
-      return newData;
-    });
+    }
+  }, [formData.position, formData.department, positions, derivedDepartments]);
+
+  // Handle position change: update form data
+  const handlePositionChange = (level: string) => {
+    console.log("DEBUG: Selected Level:", level);
+    setFormData(prev => ({ ...prev, position: level, department: '' })); // Reset department when level changes
+
+    // Auto-select department if only one department has this level
+    const associatedDepts = positions
+      .filter(p => p.level === level)
+      .map(p => p.department);
+
+
+    if (associatedDepts.length === 1) {
+      const deptName = associatedDepts[0];
+      // Find dept object in derived list
+      const dept = derivedDepartments.find(d => d.name.trim().toLowerCase() === deptName.trim().toLowerCase());
+      if (dept) {
+        console.log("DEBUG: Auto-selecting single dept:", dept.name);
+        setFormData(prev => ({
+          ...prev,
+          position: level,
+          department: dept.id
+        }));
+      }
+    }
   };
 
-  // Handle add employee
   const handleAddEmployee = async () => {
     try {
-      if (!formData.name || !formData.position || !formData.department || !formData.salary || !formData.join_date) {
+      // Check for missing fields individually to give better feedback
+      const missingFields = [];
+      if (!formData.name) missingFields.push("Nama Lengkap");
+      if (!formData.position) missingFields.push("Posisi");
+      if (!formData.department) missingFields.push("Departemen");
+      if (!formData.salary) missingFields.push("Gaji Pokok");
+      if (!formData.join_date) missingFields.push("Tanggal Bergabung");
+      if (!formData.email) missingFields.push("Email Resmi");
+
+      if (missingFields.length > 0) {
+        console.warn("DEBUG: Validation failed - missing fields:", missingFields);
         addNotification({
-          title: 'Form Tidak Lengkap',
-          message: 'Mohon lengkapi semua field yang wajib diisi',
+          title: 'Data Belum Lengkap',
+          message: `Mohon isi field berikut: ${missingFields.join(', ')}`,
           type: 'warning',
           module: 'employee'
+        });
+        toast({
+          variant: "destructive",
+          title: "Gagal Menyimpan",
+          description: `Mohon lengkapi: ${missingFields.join(', ')}`,
         });
         return;
       }
 
+      console.log("DEBUG: Validation passed");
       const salaryNum = parseInt(formData.salary);
       if (isNaN(salaryNum) || salaryNum <= 0) {
+        console.warn("DEBUG: Validation failed - invalid salary");
         addNotification({
           title: 'Gaji Tidak Valid',
           message: 'Mohon masukkan gaji yang valid (angka positif)',
@@ -491,14 +508,29 @@ function EmployeeListSupabase() {
         return;
       }
 
+      // Auto-construct full title: "{Level} - {Department}"
+      // e.g., "Staff - HRD"
+      // Find selected dept object. 
+      // NOTE: derivedDepartments is inside the component scope but we need it here. 
+      // It is safer to recalculate name or use the one we just built.
+      // But wait... handleAddEmployee is inside the component. We can access derivedDepartments!
+      const selectedDeptObj = derivedDepartments.find(d => d.id === formData.department);
+      const selectedDeptName = selectedDeptObj?.name || '';
+
+      const fullJobTitle = `${formData.position} - ${selectedDeptName}`;
+
+      // Handle department ID logic:
+      // If ID starts with "temp-", it means it's a name-only department (no UUID).
+      // So we send null for department_id.
+      const isTempId = formData.department.startsWith('temp-');
+      const finalDeptId = isTempId ? null : formData.department;
+
       const newEmployee = {
         name: formData.name.trim(),
-        position: formData.position.trim(),
-        // For display purposes or legacy, we might keep department (name), 
-        // BUT better to lookup the name if needed. 
-        // Supabase trigger might handle name but simpler to just store what we have.
-        department: departments.find(d => d.id === formData.department)?.name || '',
-        department_id: formData.department, // Ensure UUID is sent for FK
+        position: fullJobTitle,
+        department: selectedDeptName,
+
+        department_id: finalDeptId, // Send proper UUID or null
         status: 'active' as const,
         join_date: formData.join_date,
         salary: salaryNum,
@@ -515,7 +547,9 @@ function EmployeeListSupabase() {
         customer_rating: null,
       };
 
-      await addEmployee(newEmployee);
+      console.log("DEBUG: Sending to addEmployee:", newEmployee);
+      const result = await addEmployee(newEmployee);
+      console.log("DEBUG: addEmployee successful, result:", result);
 
       addNotification({
         title: 'Karyawan Ditambahkan',
@@ -532,6 +566,7 @@ function EmployeeListSupabase() {
       setShowAddDialog(false);
       resetForm();
     } catch (error) {
+      console.error("DEBUG: addEmployee error:", error);
       addNotification({
         title: 'Gagal Menambah Karyawan',
         message: `Error: ${error}`,
@@ -571,10 +606,21 @@ function EmployeeListSupabase() {
         return;
       }
 
+      // Logic to find selected department object using derivedDepartments (includes temp ones)
+      const selectedDeptObj = derivedDepartments.find(d => d.id === formData.department);
+      const selectedDeptName = selectedDeptObj?.name || '';
+
+      const fullJobTitle = `${formData.position} - ${selectedDeptName}`;
+
+      // Handle department ID logic:
+      // If ID starts with "temp-", it means it's a name-only department (no UUID).
+      const isTempId = formData.department.startsWith('temp-');
+      const finalDeptId = isTempId ? null : formData.department;
+
       const updates = {
         name: formData.name.trim(),
-        position: formData.position.trim(),
-        department: formData.department.trim(),
+        position: fullJobTitle,
+        department: selectedDeptName,
         salary: salaryNum,
         join_date: formData.join_date,
         bank_account: formData.bank_account || null,
@@ -582,7 +628,7 @@ function EmployeeListSupabase() {
         phone: formData.phone || null,
         email: formData.email || null,
         address: formData.address || null,
-        department_id: null
+        department_id: finalDeptId
       };
 
       await updateEmployee(selectedEmployee.id, updates);
@@ -627,10 +673,25 @@ function EmployeeListSupabase() {
   // Handle edit button click
   const handleEditClick = (employee: Employee) => {
     setSelectedEmployee(employee);
+
+    // Parse combined title back to components if possible
+    // Format: "{Level} - {Department}"
+    let level = employee.position;
+    if (employee.position && employee.position.includes(' - ')) {
+      const parts = employee.position.split(' - ');
+      if (parts.length >= 2) {
+        // Heuristic: Last part is department, rest is level
+        const deptPart = parts.pop();
+        level = parts.join(' - ');
+      }
+    }
+
     setFormData({
       name: employee.name,
-      position: employee.position,
-      department: employee.department || '',
+      position: level, // extracted level
+      // Attempt to match department to derived list
+      // Prefer ID if it matches, otherwise find by name
+      department: employee.department_id || derivedDepartments.find(d => d.name === employee.department)?.id || '',
       salary: employee.salary.toString(),
       join_date: employee.join_date,
       bank_account: employee.bank_account || '',
@@ -679,17 +740,19 @@ function EmployeeListSupabase() {
     }
   };
 
+  // Removed early returns to prevent "Rendered fewer hooks" error
+  /*
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-hrd" />
-          <p className="text-muted-foreground font-body">Memuat data karyawan...</p>
+          <p className="text-muted-foreground font-body">MENGAMBIL DATA KARYAWAN...</p>
         </div>
       </div>
     );
   }
-
+   
   if (error) {
     return (
       <div className="space-y-6">
@@ -702,9 +765,10 @@ function EmployeeListSupabase() {
       </div>
     );
   }
+  */
 
   return (
-    <div className="space-y-6" >
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Daftar Karyawan</h1>
@@ -719,6 +783,7 @@ function EmployeeListSupabase() {
           <Button
             className="bg-hrd hover:bg-hrd-dark font-body"
             onClick={() => {
+              console.log("DEBUG: Add Employee Button Clicked!");
               resetForm();
               setShowAddDialog(true);
             }}
@@ -729,287 +794,242 @@ function EmployeeListSupabase() {
         )}
       </div>
 
-      {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4" >
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Cari karyawan..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 font-body"
-          />
-        </div>
-        <Button variant="outline" className="font-body">
-          <Filter className="w-4 h-4 mr-2" />
-          Filter
-        </Button>
-      </div >
-
       {/* Employee Table */}
-      < Card className="border-gray-200" >
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
+      <div className="rounded-md border border-gray-200">
+        <Table>
+          <TableHeader className="bg-gray-50">
+            <TableRow>
+              <TableHead className="w-[250px] font-body">Karyawan</TableHead>
+              <TableHead className="font-body">Posisi</TableHead>
+              <TableHead className="font-body">Departemen</TableHead>
+              <TableHead className="font-body">Status</TableHead>
+              <TableHead className="font-body">Akun Pengguna</TableHead>
+              <TableHead className="text-right font-body">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
               <TableRow>
-                <TableHead className="font-body">Karyawan</TableHead>
-                <TableHead className="font-body">Posisi</TableHead>
-                <TableHead className="font-body">Departemen</TableHead>
-                <TableHead className="font-body">Status</TableHead>
-                <TableHead className="font-body">Tanggal Bergabung</TableHead>
-                <TableHead className="font-body">Durasi Kerja</TableHead>
-                {user?.role !== 'staff' && (
-                  <TableHead className="font-body text-right">Aksi</TableHead>
-                )}
+                <TableCell colSpan={6} className="h-24 text-center font-body text-muted-foreground">
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Memuat data...</span>
+                  </div>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredEmployees.map((employee) => (
-                <TableRow key={employee.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-8 h-8">
-                        <AvatarFallback className="bg-hrd/20 text-hrd font-body text-xs">
-                          {employee.name.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex flex-col">
-                        <span className="font-medium font-body">{employee.name}</span>
-                        <span className="text-[10px] text-gray-400 font-mono">{employee.id}</span>
-                        {/* Attendance Indicator */}
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          {(() => {
-                            const isConnected = onlineUsers.some(u => u.employee_id === employee.id);
-                            const attendanceRec = todayAttendance?.find(a => a.employee_id === employee.id);
-                            const isWorking = attendanceRec?.check_in && !attendanceRec.check_out;
-                            const hasCheckedOut = attendanceRec?.check_out;
+            ) : filteredEmployees.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center font-body text-muted-foreground">
+                  Tidak ada karyawan ditemukan.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredEmployees.map((employee) => {
+                const linkedUser = users.find(u =>
+                  u.employee_id === employee.id ||
+                  (u.email && employee.email && u.email.toLowerCase() === employee.email.toLowerCase())
+                );
 
-                            // Determine status Label
-                            let statusLabel = 'Offline';
-                            let statusColor = 'text-muted-foreground';
-                            let dotColor = 'bg-red-400';
-
-                            if (isConnected) {
-                              statusLabel = 'Online';
-                              statusColor = 'text-green-600 font-medium';
-                              dotColor = 'bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.6)]';
-
-                              if (isWorking) statusLabel = 'Online (Bekerja)';
-                              else if (hasCheckedOut) statusLabel = 'Online (Standby)';
-                            } else {
-                              if (hasCheckedOut) statusLabel = 'Offline (Pulang)';
-                            }
-
-                            return (
-                              <>
-                                <div
-                                  className={`w-2 h-2 rounded-full ${dotColor}`}
-                                  title={isConnected ? "Terhubung ke Aplikasi" : "Tidak Terhubung"}
-                                />
-                                <span className={`text-[10px] ${statusColor}`}>
-                                  {statusLabel}
-                                </span>
-                              </>
-                            );
-                          })()}
+                return (
+                  <TableRow key={employee.id} className="hover:bg-gray-50">
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="w-9 h-9 border border-gray-100">
+                          <AvatarFallback className="bg-hrd/10 text-hrd text-xs font-body font-bold">
+                            {employee.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <span className="font-medium font-body text-sm text-[#1C1C1E]">{employee.name}</span>
+                          <span className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">{employee.email || '-'}</span>
                         </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-body">{employee.position}</TableCell>
-                  <TableCell className="font-body">
-                    {employee.department || '-'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={employee.status === 'active' ? 'default' : 'secondary'}
-                      className="font-body"
-                    >
-                      {employee.status === 'active' ? 'Aktif' :
-                        employee.status === 'on-leave' ? 'Cuti' :
-                          employee.status === 'inactive' ? 'Tidak Aktif' : 'Terminated'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">{employee.join_date}</TableCell>
-                  <TableCell className="font-body text-sm">
-                    <EmployeeDuration joinDate={employee.join_date} />
-                  </TableCell>
-                  {user?.role !== 'staff' && (
+                    </TableCell>
+                    <TableCell className="font-body text-sm font-medium text-gray-700">{employee.position}</TableCell>
+                    <TableCell className="font-body text-sm text-gray-600">
+                      {departments.find(d => d.id === employee.department_id)?.name || employee.department || '-'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={
+                        employee.status === 'active' ? 'default' :
+                          employee.status === 'on-leave' ? 'secondary' : 'outline'
+                      } className={`font-body text-xs capitalize ${employee.status === 'active' ? 'bg-green-100 text-green-700 hover:bg-green-200 border-green-200' : ''}`}>
+                        {employee.status === 'active' ? 'Aktif' :
+                          employee.status === 'on-leave' ? 'Cuti' :
+                            employee.status === 'inactive' ? 'Nonaktif' : employee.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {linkedUser ? (
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full w-fit border border-blue-100">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span>Terhubung</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full w-fit border border-amber-100">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          <span>Belum Ada</span>
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            className="font-body"
-                            onClick={() => handleViewEmployee(employee)}
-                          >
-                            Lihat Detail
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="font-body"
-                            onClick={() => handleEditClick(employee)}
-                          >
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="font-body text-destructive"
-                            onClick={() => {
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-hrd hover:bg-hrd/10" onClick={() => handleViewEmployee(employee)} title="Lihat Detail">
+                          <FileText className="w-4 h-4" />
+                        </Button>
+                        {user?.role !== 'staff' && (
+                          <>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-blue-600 hover:bg-blue-50" onClick={() => handleEditClick(employee)} title="Edit">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-red-600 hover:bg-red-50" onClick={() => {
                               setSelectedEmployee(employee);
                               setShowDeleteDialog(true);
-                            }}
-                          >
-                            Hapus
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            }} title="Hapus">
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card >
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-      {/* Add Employee Dialog */}
-      < Dialog open={showAddDialog} onOpenChange={setShowAddDialog} >
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-display">Tambah Karyawan Baru</DialogTitle>
-            <DialogDescription className="font-body">
-              Masukkan data karyawan baru
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="font-body">Nama Lengkap <span className="text-red-500">*</span></Label>
-              <Input
-                placeholder="Nama karyawan"
-                className="font-body"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body">Posisi <span className="text-red-500">*</span></Label>
-              <Select
-                value={formData.position}
-                onValueChange={handlePositionChange}
+      {/* Add Employee Dialog - MANUAL OVERLAY */}
+      {showAddDialog && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto border border-gray-200">
+            <div className="flex justify-between items-center mb-6 border-b pb-4">
+              <div>
+                <h2 className="text-xl font-bold font-display text-gray-900">Tambah Karyawan Baru</h2>
+                <p className="text-sm text-muted-foreground">Isi formulir di bawah ini</p>
+              </div>
+              <button
+                onClick={() => setShowAddDialog(false)}
+                className="text-gray-400 hover:text-red-500 transition-colors bg-gray-100 items-center justify-center flex w-8 h-8 rounded-full"
               >
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih posisi" />
-                </SelectTrigger>
-                <SelectContent>
-                  {positions.map((pos) => (
-                    <SelectItem key={pos.id} value={pos.title} className="font-body">
-                      {pos.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                ✕
+              </button>
             </div>
-            <div className="space-y-2">
-              <Label className="font-body">Departemen <span className="text-red-500">*</span></Label>
-              <Select
-                value={formData.department}
-                onValueChange={(val) => setFormData({ ...formData, department: val })}
-              >
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih departemen" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.map((dept) => (
-                    <SelectItem key={dept.id} value={dept.id} className="font-body">
-                      {dept.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
 
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body">Gaji Pokok <span className="text-red-500">*</span></Label>
-              <Input
-                type="number"
-                placeholder="15000000"
-                className="font-mono"
-                value={formData.salary}
-                onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body">Tanggal Bergabung <span className="text-red-500">*</span></Label>
-              <Input
-                type="date"
-                className="font-mono"
-                value={formData.join_date}
-                onChange={(e) => setFormData({ ...formData, join_date: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body">Email</Label>
-              <Input
-                type="email"
-                placeholder="email@company.com"
-                className="font-body"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body">Nomor Telepon</Label>
-              <Input
-                placeholder="08123456789"
-                className="font-mono"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body">Nomor Rekening</Label>
-              <Input
-                placeholder="1234567890"
-                className="font-mono"
-                value={formData.bank_account}
-                onChange={(e) => setFormData({ ...formData, bank_account: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body">Bank</Label>
-              <Select value={formData.bank} onValueChange={(value) => setFormData({ ...formData, bank: value })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih bank" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BCA" className="font-body">BCA</SelectItem>
-                  <SelectItem value="Mandiri" className="font-body">Mandiri</SelectItem>
-                  <SelectItem value="BNI" className="font-body">BNI</SelectItem>
-                  <SelectItem value="BRI" className="font-body">BRI</SelectItem>
-                  <SelectItem value="CIMB" className="font-body">CIMB Niaga</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="font-body">Nama Lengkap <span className="text-red-500">*</span></Label>
+                <Input
+                  placeholder="Contoh: Budi Santoso"
+                  className="font-body"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="font-body">Posisi <span className="text-red-500">*</span></Label>
+                  <Select
+                    value={formData.position}
+                    onValueChange={handlePositionChange}
+                  >
+                    <SelectTrigger className="font-body">
+                      <SelectValue placeholder="Pilih..." />
+                    </SelectTrigger>
+                    <SelectContent className="z-[999999]">
+                      {uniqueLevels.map((level) => (
+                        <SelectItem key={level} value={level} className="font-body">
+                          {level}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-body">Departemen <span className="text-red-500">*</span></Label>
+                  <Select
+                    value={formData.department}
+                    onValueChange={(val) => setFormData({ ...formData, department: val })}
+                  >
+                    <SelectTrigger className="font-body">
+                      <SelectValue placeholder="Pilih..." />
+                    </SelectTrigger>
+                    <SelectContent className="z-[999999]">
+                      {filteredDepartments.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.id} className="font-body">
+                          {dept.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-lg bg-blue-50 p-3 border border-blue-100">
+                <Label className="font-body text-blue-700">Email Resmi (Wajib) <span className="text-red-500">*</span></Label>
+                <Input
+                  type="email"
+                  placeholder="nama.karyawan@perusahaan.com"
+                  className="font-body bg-white border-blue-200 focus:ring-blue-500"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+                <p className="text-[11px] text-blue-600 font-medium">
+                  ⓘ Penting: Email ini digunakan untuk menghubungkan akun saat register.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="font-body">Gaji Pokok</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-gray-500 text-sm">Rp</span>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      className="font-mono pl-9"
+                      value={formData.salary}
+                      onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-body">Tanggal Gabung</Label>
+                  <Input
+                    type="date"
+                    className="font-mono"
+                    value={formData.join_date}
+                    onChange={(e) => setFormData({ ...formData, join_date: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-end mt-8 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => { setShowAddDialog(false); resetForm(); }}
+                  className="font-body"
+                >
+                  Batal
+                </Button>
+                <Button
+                  onClick={handleAddEmployee}
+                  className="bg-hrd hover:bg-hrd-dark font-body text-white w-32 shadow-lg"
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Simpan
+                </Button>
+              </div>
             </div>
           </div>
+        </div>
+      )}
 
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); }} className="font-body">
-              Batal
-            </Button>
-            <Button onClick={handleAddEmployee} className="bg-hrd hover:bg-hrd-dark font-body">
-              <UserPlus className="w-4 h-4 mr-2" />
-              Tambah
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog >
 
       {/* Edit Employee Dialog */}
-      < Dialog open={showEditDialog} onOpenChange={setShowEditDialog} >
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display">Edit Karyawan</DialogTitle>
@@ -1037,9 +1057,9 @@ function EmployeeListSupabase() {
                   <SelectValue placeholder="Pilih posisi" />
                 </SelectTrigger>
                 <SelectContent>
-                  {positions.map((pos) => (
-                    <SelectItem key={pos.id} value={pos.title} className="font-body">
-                      {pos.title}
+                  {uniqueLevels.map((level) => (
+                    <SelectItem key={level} value={level} className="font-body">
+                      {level}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1047,12 +1067,21 @@ function EmployeeListSupabase() {
             </div>
             <div className="space-y-2">
               <Label className="font-body">Departemen</Label>
-              <Input
+              <Select
                 value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="font-body"
-                placeholder="Departemen (Terisi otomatis dari Posisi)"
-              />
+                onValueChange={(val) => setFormData({ ...formData, department: val })}
+              >
+                <SelectTrigger className="font-body">
+                  <SelectValue placeholder="Pilih..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredDepartments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id} className="font-body">
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label className="font-body">Gaji Pokok <span className="text-red-500">*</span></Label>
@@ -1126,10 +1155,10 @@ function EmployeeListSupabase() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog >
+      </Dialog>
 
       {/* View Employee Dialog */}
-      < Dialog open={showViewDialog} onOpenChange={setShowViewDialog} >
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog} >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display">Detail Karyawan</DialogTitle>
@@ -1138,74 +1167,84 @@ function EmployeeListSupabase() {
             </DialogDescription>
           </DialogHeader>
           {selectedEmployee && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <Avatar className="w-16 h-16">
-                  <AvatarFallback className="bg-hrd/20 text-hrd font-body text-lg">
-                    {selectedEmployee.name.split(' ').map(n => n[0]).join('')}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="font-display text-xl font-bold text-[#1C1C1E]">{selectedEmployee.name}</h3>
-                  <p className="text-muted-foreground font-body">{selectedEmployee.position}</p>
-                  <Badge
-                    variant={selectedEmployee.status === 'active' ? 'default' : 'secondary'}
-                    className="font-body mt-1"
-                  >
-                    {selectedEmployee.status === 'active' ? 'Aktif' :
-                      selectedEmployee.status === 'on-leave' ? 'Cuti' :
-                        selectedEmployee.status === 'inactive' ? 'Tidak Aktif' : 'Terminated'}
-                  </Badge>
-                </div>
-              </div>
+            <Tabs defaultValue="general" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 mb-4">
+                <TabsTrigger value="general" className="font-body">Umum</TabsTrigger>
+                <TabsTrigger value="contract" className="font-body">Kontrak</TabsTrigger>
+                <TabsTrigger value="history" className="font-body">Riwayat</TabsTrigger>
+              </TabsList>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="font-body text-muted-foreground">Departemen</Label>
-                  <p className="font-body font-medium">
-                    {departments.find(d => d.id === selectedEmployee.department_id)?.name || 'N/A'}
-                  </p>
+              <TabsContent value="general" className="space-y-4">
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <Avatar className="w-16 h-16">
+                    <AvatarFallback className="bg-hrd/20 text-hrd font-body text-lg">
+                      {selectedEmployee.name.split(' ').map(n => n[0]).join('')}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="font-display text-xl font-bold text-[#1C1C1E]">{selectedEmployee.name}</h3>
+                    <p className="text-muted-foreground font-body">{selectedEmployee.position}</p>
+                    <Badge
+                      variant={selectedEmployee.status === 'active' ? 'default' : 'secondary'}
+                      className="font-body mt-1"
+                    >
+                      {selectedEmployee.status === 'active' ? 'Aktif' :
+                        selectedEmployee.status === 'on-leave' ? 'Cuti' :
+                          selectedEmployee.status === 'inactive' ? 'Tidak Aktif' : 'Terminated'}
+                    </Badge>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label className="font-body text-muted-foreground">Tanggal Bergabung</Label>
-                  <p className="font-mono font-medium">{selectedEmployee.join_date}</p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="font-body text-muted-foreground">Departemen</Label>
+                    <p className="font-body font-medium">
+                      {departments.find(d => d.id === selectedEmployee.department_id)?.name || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="font-body text-muted-foreground">Tanggal Bergabung</Label>
+                    <p className="font-mono font-medium">{selectedEmployee.join_date}</p>
+                  </div>
+                  {user?.role !== 'staff' && (
+                    <div className="space-y-2">
+                      <Label className="font-body text-muted-foreground">Gaji Pokok</Label>
+                      <p className="font-mono font-medium">{formatCurrency(selectedEmployee.salary)}</p>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label className="font-body text-muted-foreground">Skor Kehadiran</Label>
+                    <p className="font-mono font-medium">{selectedEmployee.attendance_score}%</p>
+                  </div>
+                  {selectedEmployee.email && (
+                    <div className="space-y-2">
+                      <Label className="font-body text-muted-foreground">Email</Label>
+                      <p className="font-body font-medium">{selectedEmployee.email}</p>
+                    </div>
+                  )}
+                  {selectedEmployee.phone && (
+                    <div className="space-y-2">
+                      <Label className="font-body text-muted-foreground">Telepon</Label>
+                      <p className="font-mono font-medium">{selectedEmployee.phone}</p>
+                    </div>
+                  )}
+                  {user?.role !== 'staff' && selectedEmployee.bank_account && (
+                    <div className="space-y-2">
+                      <Label className="font-body text-muted-foreground">Rekening Bank</Label>
+                      <p className="font-mono font-medium">{selectedEmployee.bank_account}</p>
+                    </div>
+                  )}
                 </div>
-                {user?.role !== 'staff' && (
-                  <div className="space-y-2">
-                    <Label className="font-body text-muted-foreground">Gaji Pokok</Label>
-                    <p className="font-mono font-medium">{formatCurrency(selectedEmployee.salary)}</p>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label className="font-body text-muted-foreground">Skor Kehadiran</Label>
-                  <p className="font-mono font-medium">{selectedEmployee.attendance_score}%</p>
-                </div>
-                {selectedEmployee.email && (
-                  <div className="space-y-2">
-                    <Label className="font-body text-muted-foreground">Email</Label>
-                    <p className="font-body font-medium">{selectedEmployee.email}</p>
-                  </div>
-                )}
-                {selectedEmployee.phone && (
-                  <div className="space-y-2">
-                    <Label className="font-body text-muted-foreground">Telepon</Label>
-                    <p className="font-mono font-medium">{selectedEmployee.phone}</p>
-                  </div>
-                )}
-                {user?.role !== 'staff' && selectedEmployee.bank_account && (
-                  <div className="space-y-2">
-                    <Label className="font-body text-muted-foreground">Rekening Bank</Label>
-                    <p className="font-mono font-medium">{selectedEmployee.bank_account}</p>
-                  </div>
-                )}
-                {user?.role !== 'staff' && selectedEmployee.bank && (
-                  <div className="space-y-2">
-                    <Label className="font-body text-muted-foreground">Bank</Label>
-                    <p className="font-body font-medium">{selectedEmployee.bank}</p>
-                  </div>
-                )}
-              </div>
-            </div>
+              </TabsContent>
+
+              <TabsContent value="contract" className="space-y-4">
+                <EmployeeContractTab employeeId={selectedEmployee.id} />
+              </TabsContent>
+
+              <TabsContent value="history" className="space-y-4">
+                <EmployeeHistoryTab employeeId={selectedEmployee.id} />
+              </TabsContent>
+            </Tabs>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowViewDialog(false)} className="font-body">
@@ -1224,10 +1263,10 @@ function EmployeeListSupabase() {
             )}
           </DialogFooter>
         </DialogContent>
-      </Dialog >
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      < Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog} >
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display">Konfirmasi Hapus Karyawan</DialogTitle>
@@ -1266,10 +1305,11 @@ function EmployeeListSupabase() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog >
-    </div >
+      </Dialog>
+    </div>
   );
 }
+
 
 // Dashboard Component
 function HRDDashboard() {
@@ -1569,7 +1609,10 @@ function HRDDashboard() {
             <Button
               variant="outline"
               className="h-20 flex-col gap-2 font-body hover:bg-hrd/5 hover:border-hrd transition-colors"
-              onClick={() => navigate('/hrd/employees?add=true')}
+              onClick={() => {
+                alert('DEBUG: Klik dari Dashboard HRD...');
+                navigate('/hrd/employees?add=true');
+              }}
             >
               <UserPlus className="w-6 h-6 text-hrd" />
               Tambah Karyawan
@@ -1628,6 +1671,7 @@ export default function HRDModuleSupabase() {
   // Generate navigation items based on dynamic permissions
   const filteredNavItems = [
     ...(checkAccess('Dashboard') !== 'none' ? [{ label: 'Dashboard', href: '/hrd', icon: Users }] : []),
+    { label: 'Portal Mandiri', href: '/hrd/portal', icon: User },
     ...(checkAccess('Karyawan') !== 'none' ? [{ label: 'Karyawan', href: '/hrd/employees', icon: Users }] : []),
     ...(checkAccess('Posisi Jabatan') !== 'none' ? [{ label: 'Posisi Jabatan', href: '/hrd/positions', icon: Briefcase }] : []),
     ...(checkAccess('Rekrutmen') !== 'none' ? [{ label: 'Rekrutmen', href: '/hrd/recruitment', icon: UserPlus }] : []),
@@ -1655,7 +1699,7 @@ export default function HRDModuleSupabase() {
         }
 
         // Test basic connection
-        const { error } = await supabase.from('departments').select('count').limit(1);
+        const { error } = await supabase.from('departments').select('id').limit(1);
         if (error) {
           setSupabaseError(`Koneksi Supabase gagal: ${error.message}`);
           return;
@@ -1732,9 +1776,10 @@ export default function HRDModuleSupabase() {
         <Routes>
           <Route index element={
             ['staff', 'marketing'].includes(user?.role || '')
-              ? <Navigate to="/hrd/employees" replace />
+              ? <Navigate to="/hrd/portal" replace />
               : <HRDDashboard />
           } />
+          <Route path="portal" element={<ESSPortal />} />
           <Route path="employees" element={<EmployeeListSupabase />} />
           <Route
             path="positions"
@@ -1756,5 +1801,85 @@ export default function HRDModuleSupabase() {
         onOpenChange={setShowMigrationDialog}
       />
     </NotificationProvider>
+  );
+}
+
+// --- Sub-components for Employee Details ---
+
+function EmployeeContractTab({ employeeId }: { employeeId: string }) {
+  const { contracts, loading } = useContracts(employeeId);
+
+  if (loading) return <div className="p-4 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-hrd" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h4 className="font-display font-medium text-sm text-muted-foreground uppercase tracking-wider">Riwayat Kontrak</h4>
+        <Button size="sm" variant="outline" className="text-xs border-hrd/50 text-hrd hover:bg-hrd/10 font-body h-7">Tambah Kontrak</Button>
+      </div>
+      <div className="space-y-2">
+        {contracts.length === 0 ? (
+          <div className="text-center py-8 border-2 border-dashed rounded-xl border-gray-100">
+            <p className="text-sm text-muted-foreground font-body">Belum ada data kontrak</p>
+          </div>
+        ) : (
+          contracts.map(contract => (
+            <div key={contract.id} className="p-3 border rounded-lg bg-white shadow-sm hover:border-hrd/30 transition-colors">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-medium font-body text-sm">{contract.contract_number}</p>
+                  <p className="text-xs text-hrd font-medium mt-0.5">{contract.type}</p>
+                </div>
+                <Badge variant={contract.status === 'active' ? 'default' : 'secondary'} className="text-[10px] uppercase">
+                  {contract.status === 'active' ? 'Aktif' : 'Selesai'}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-3">
+                <Calendar className="w-3 h-3" />
+                <span>{contract.start_date} s/d {contract.end_date || 'Permanen'}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EmployeeHistoryTab({ employeeId }: { employeeId: string }) {
+  const { history, loading } = useJobHistory(employeeId);
+
+  if (loading) return <div className="p-4 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-hrd" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h4 className="font-display font-medium text-sm text-muted-foreground uppercase tracking-wider">Riwayat Jabatan</h4>
+        <Button size="sm" variant="outline" className="text-xs border-hrd/50 text-hrd hover:bg-hrd/10 font-body h-7">Tambah Riwayat</Button>
+      </div>
+      <div className="space-y-6 relative ml-2 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-100">
+        {history.length === 0 ? (
+          <div className="text-center py-8 border-2 border-dashed rounded-xl border-gray-100 ml-0">
+            <p className="text-sm text-muted-foreground font-body">Belum ada riwayat jabatan</p>
+          </div>
+        ) : (
+          history.map(item => (
+            <div key={item.id} className="relative pl-6">
+              <div className="absolute left-[-3.5px] top-1.5 w-2 h-2 rounded-full bg-hrd border-2 border-white shadow-sm shadow-hrd/20" />
+              <p className="font-bold text-sm text-[#1C1C1E]">{item.new_position}</p>
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
+                <Calendar className="w-3 h-3" />
+                <span>Efektif sejak {item.change_date}</span>
+              </div>
+              {item.reason && (
+                <div className="mt-2 p-2 bg-gray-50 rounded text-xs italic text-gray-600 border-l-2 border-gray-200">
+                  {item.reason}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }

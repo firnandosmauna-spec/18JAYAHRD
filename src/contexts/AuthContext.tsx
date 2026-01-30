@@ -39,15 +39,15 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const getDefaultModules = (role: UserRole): ModuleType[] => {
   switch (role) {
     case 'admin':
-      return ['hrd', 'accounting', 'inventory', 'customer', 'project', 'sales', 'purchase'];
+      return ['hrd', 'accounting', 'inventory', 'customer', 'project', 'sales', 'purchase', 'marketing'];
     case 'manager':
       return ['hrd', 'accounting', 'sales', 'purchase'];
     case 'marketing':
-      return ['marketing', 'hrd'];
+      return ['marketing', 'sales', 'hrd'];
     case 'staff':
-      return ['hrd', 'accounting'];
+      return ['hrd', 'accounting', 'marketing'];
     default:
-      return ['hrd', 'accounting'];
+      return ['hrd'];
   }
 };
 
@@ -56,243 +56,158 @@ const getDefaultModules = (role: UserRole): ModuleType[] => {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-
-  // Broadcast presence via hook, and capture onlineUsers state
-  const { onlineUsers } = usePresence(user ? {
-    id: user.id,
-    role: user.role,
-    employee_id: user.employee_id
-  } : undefined);
-
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Ref to track if we are in the middle of a registration flow
-  const isRegisteringRef = React.useRef(false);
+  // Stable empty array for onlineUsers
+  const [onlineUsers] = useState<any[]>([]);
 
-  const loadUserProfile = async (supabaseUser: SupabaseUser) => {
-    logger.addLog(`📥 Loading profile for user: ${supabaseUser.id}`, 'info');
+  const fetchProfile = async (userId: string, metadata: any) => {
+    console.log(`📥 [Auth] Fetching profile for ${userId}...`);
 
-    // Create fallback user immediately
-    const userRole = (supabaseUser.user_metadata?.role as UserRole) || 'admin';
-    let fallbackUser: User = {
-      id: supabaseUser.id,
-      email: supabaseUser.email || '',
-      name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'User',
-      role: userRole,
-      modules: (supabaseUser.user_metadata?.modules as ModuleType[]) || getDefaultModules(userRole),
-    };
+    // Safety timeout for profile fetch specifically
+    const profileTimeout = new Promise<null>((resolve) =>
+      setTimeout(() => {
+        console.warn('⚠️ [Auth] Profile fetch timed out, using fallback');
+        resolve(null);
+      }, 3000)
+    );
 
     try {
-      // Try to get profile with timeout
-      const profilePromise = authService.getUserProfile(supabaseUser.id);
-      const timeoutPromise = new Promise<null>((resolve) =>
-        setTimeout(() => {
-          logger.addLog('⏱️ Profile fetch timeout, using fallback', 'warning');
-          resolve(null);
-        }, 5000) // 5s profile timeout (Reduced from 15s for speed)
-      );
+      const data = await Promise.race([
+        authService.getUserProfile(userId),
+        profileTimeout
+      ]);
 
-      const userProfile = await Promise.race([profilePromise, timeoutPromise]);
-      logger.addLog(`📦 Profile result: ${userProfile ? 'Found' : 'Timeout/Not found'}`, 'info');
-
-      if (userProfile) {
-        setProfile(userProfile);
-
-        // SELF-HEALING: Check if user_metadata is out of sync with profile
-        // This fixes the "flashing" issue where fallback user (from metadata) has different permissions than DB profile
-        const metadataModules = supabaseUser.user_metadata?.modules as ModuleType[] | undefined;
-        const profileModules = userProfile.modules as ModuleType[];
-
-        const metadataRole = supabaseUser.user_metadata?.role;
-        const profileRole = userProfile.role;
-
-        const modulesChanged = JSON.stringify(metadataModules) !== JSON.stringify(profileModules);
-        const roleChanged = metadataRole !== profileRole;
-
-        if (modulesChanged || roleChanged) {
-          logger.addLog('🔄 Syncing stale user_metadata with profile...', 'info');
-          supabase.auth.updateUser({
-            data: {
-              role: profileRole,
-              modules: profileModules,
-              name: userProfile.name // might as well sync name too
-            }
-          }).then(({ error }) => {
-            if (error) console.error('Failed to self-heal metadata:', error);
-            else logger.addLog('✅ User metadata self-healed', 'success');
-          });
-        }
-
-        // If profile exists but has no employee_id, try to find it via direct lookup with timeout
-        let empId = userProfile.employee_id;
-
-        // Removed !isProfileAdmin check to ensure Admins get looked up too
-        if (!empId && supabaseUser.email) {
-          try {
-            // Wrap Supabase call in a short timeout race to prevent hanging
-            const lookupPromise = supabase
-              .from('employees')
-              .select('id')
-              .eq('email', supabaseUser.email)
-              .maybeSingle();
-
-            const lookupTimeoutPromise = new Promise<{ data: { id: string } | null, error: any }>((resolve) =>
-              setTimeout(() => resolve({ data: null, error: 'timeout' }), 4000) // Reduced to 4s
-            );
-
-            const result = await Promise.race([lookupPromise, lookupTimeoutPromise]);
-
-            if (result.data) {
-              empId = result.data.id;
-              logger.addLog('✅ Found employee_id via extra lookup', 'success');
-            }
-          } catch (err) {
-            console.error('Extra employee lookup failed', err);
-          }
-        }
-
+      if (data) {
+        console.log('✅ [Auth] Profile loaded successfully');
+        setProfile(data);
         setUser({
-          id: userProfile.id,
-          email: userProfile.email,
-          name: userProfile.name,
-          role: userProfile.role as UserRole,
-          avatar: userProfile.avatar,
-          modules: userProfile.modules as ModuleType[],
-          employee_id: empId,
+          id: data.id,
+          email: data.email,
+          name: data.name,
+          role: data.role as UserRole,
+          avatar: data.avatar,
+          modules: (data.modules as ModuleType[]) || getDefaultModules(data.role as UserRole),
+          employee_id: data.employee_id,
         });
-        logger.addLog('✅ User state updated from profile', 'success');
       } else {
-        // Use fallback immediately, but try to find employee_id first
-        if (supabaseUser.email) {
-          try {
-            // Wrap Supabase call in a short timeout race
-            const lookupPromise = supabase
-              .from('employees')
-              .select('id')
-              .eq('email', supabaseUser.email)
-              .maybeSingle();
-
-            const lookupTimeoutPromise = new Promise<{ data: { id: string } | null, error: any }>((resolve) =>
-              setTimeout(() => resolve({ data: null, error: 'timeout' }), 4000) // Reduced to 4s
-            );
-
-            const result = await Promise.race([lookupPromise, lookupTimeoutPromise]);
-
-            if (result.data) {
-              fallbackUser = { ...fallbackUser, employee_id: result.data.id };
-              logger.addLog('✅ Found employee_id via fallback lookup', 'success');
-            }
-          } catch (err) {
-            console.error('Fallback employee lookup failed', err);
-          }
-        }
-
-        logger.addLog('⚡ Using fallback user', 'warning');
-        setUser(fallbackUser);
-        setProfile(null);
+        console.log('⚠️ [Auth] Profile not found or timed out, using metadata fallback');
+        const role = (metadata?.role as UserRole) || 'staff';
+        setUser({
+          id: userId,
+          email: metadata?.email || '',
+          name: metadata?.name || 'User',
+          role: role,
+          modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
+        });
       }
     } catch (error) {
-      logger.addLog('❌ Error loading profile, using fallback', 'error', error);
-      setUser(fallbackUser);
-      setProfile(null);
+      console.error('❌ [Auth] Error in fetchProfile:', error);
     }
   };
 
   useEffect(() => {
     let mounted = true;
 
-    const initAuth = async () => {
-      logger.addLog('🔄 Initializing auth...', 'info');
-
+    // Initialize session
+    const initSession = async () => {
+      console.log('🔄 [Auth] Initializing session...');
       try {
-        const session = await authService.getCurrentSession();
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!mounted) return;
 
-        if (!mounted) {
-          logger.addLog('⚠️ Component unmounted, skipping auth init', 'warning');
-          return;
-        }
+        if (currentSession) {
+          console.log('👤 [Auth] Session found');
+          setSession(currentSession);
 
-        logger.addLog(`📋 Session status: ${session ? 'Found' : 'None'}`, 'info', { email: session?.user?.email });
-        setSession(session);
+          // Set immediate user state from metadata so isAuthenticated is true right away
+          const metadata = currentSession.user.user_metadata;
+          const role = (metadata?.role as UserRole) || 'staff';
+          setUser({
+            id: currentSession.user.id,
+            email: currentSession.user.email || '',
+            name: metadata?.name || 'User',
+            role: role,
+            modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
+          });
 
-        if (session?.user) {
-          logger.addLog('👤 User found in session, loading profile...', 'info');
-          try {
-            await loadUserProfile(session.user);
-          } catch (error) {
-            logger.addLog('❌ Profile load failed', 'error', error);
-          }
+          // Then fetch full profile in background
+          fetchProfile(currentSession.user.id, metadata);
+        } else {
+          console.log('📋 [Auth] No session found');
         }
       } catch (error) {
-        logger.addLog('❌ Auth init error', 'error', error);
+        console.error('❌ [Auth] Session init error:', error);
       } finally {
         if (mounted) {
-          logger.addLog('✅ Auth init complete, stopping loading', 'info');
+          console.log('🏁 [Auth] Setting isLoading to false');
           setIsLoading(false);
         }
       }
     };
 
-    // Start initialization
-    initAuth();
+    initSession();
 
-    // Safety timeout - absolutely force loading to false after 3 seconds
-    const safetyTimeout = setTimeout(() => {
+    // Safety timeout: force loading to false after 5 seconds NO MATTER WHAT
+    const safetyTimer = setTimeout(() => {
       if (mounted) {
-        logger.addLog('⏰ SAFETY TIMEOUT - forcing isLoading to false', 'warning');
-        setIsLoading(false);
+        setIsLoading(prev => {
+          if (prev) console.warn('🚨 [Auth] GLOBAL SAFETY TIMEOUT: Forcing isLoading to false');
+          return false;
+        });
       }
-    }, 8000); // Reduced to 8s from 15s
+    }, 5000);
 
     // Listen for auth changes
-    const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
       if (!mounted) return;
+      console.log(`🔔 [Auth] Auth event: ${event}`);
 
-      // Skip updating state if we are in the middle of registration
-      if (isRegisteringRef.current) {
-        logger.addLog(`🔔 Auth state changed: ${event} (Ignored during registration)`, 'info');
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setIsLoading(false);
         return;
       }
 
-      logger.addLog(`🔔 Auth state changed: ${event}`, 'info', { email: session?.user?.email });
-      setSession(session);
+      if (currentSession) {
+        setSession(currentSession);
 
-      if (session?.user) {
-        try {
-          await loadUserProfile(session.user);
-        } catch (error) {
-          logger.addLog('❌ Profile load failed on auth change', 'error', error);
+        // Ensure user is set immediately from metadata if not already set
+        if (!user || user.id !== currentSession.user.id) {
+          const metadata = currentSession.user.user_metadata;
+          const role = (metadata?.role as UserRole) || 'staff';
+          setUser({
+            id: currentSession.user.id,
+            email: currentSession.user.email || '',
+            name: metadata?.name || 'User',
+            role: role,
+            modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
+          });
+
+          fetchProfile(currentSession.user.id, metadata);
         }
-      } else {
-        setUser(null);
-        setProfile(null);
       }
+
+      setIsLoading(false);
     });
 
     return () => {
-      logger.addLog('🧹 Cleaning up auth context', 'info');
       mounted = false;
-      clearTimeout(safetyTimeout);
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    setIsLoading(true);
-    logger.addLog(`🔑 Attempting login for: ${email}`, 'info');
     try {
-      const { user: supabaseUser, session } = await authService.signIn({ email, password });
-      if (supabaseUser && session) {
-        setSession(session);
-        await loadUserProfile(supabaseUser);
-        logger.addLog('✅ Login successful', 'success', { userId: supabaseUser.id });
-        return true;
-      }
-      logger.addLog('❌ Login failed: no user or session returned', 'error');
-      return false;
-    } catch (error: any) {
-      logger.addLog('❌ Login error', 'error', { message: error.message, error });
+      setIsLoading(true);
+      await authService.signIn({ email, password });
+      return true;
+    } catch (error) {
+      console.error('Login error:', error);
       return false;
     } finally {
       setIsLoading(false);
@@ -308,146 +223,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     position?: string,
     department?: string
   ): Promise<boolean> => {
-    isRegisteringRef.current = true; // Block auth state updates
-    logger.addLog(`📝 Registering new user: ${email}`, 'info', { name, role, modules });
-
     try {
-      // 1. Whitelist Check: Verify if email exists in employees table
-      if (role !== 'admin') {
-        const { data: employeeData, error: empError } = await supabase
-          .from('employees')
-          .select('id, name, position, department')
-          .eq('email', email)
-          .single();
-
-        if (empError || !employeeData) {
-          logger.addLog('❌ Registration blocked: Email not found in Employee whitelist', 'warning');
-          const errorMsg = 'MAAF DATA ANDA BELUM MASUK, SILAHKAN HUBUNGI ADMIN';
-          throw new Error(errorMsg);
-        }
-
-        // Validate Name, Position, and Department
-        const nameMatch = employeeData.name.trim().toLowerCase() === name.trim().toLowerCase();
-        let positionMatch = true;
-        let departmentMatch = true;
-
-        if (role === 'staff') {
-          if (!position || !department) {
-            const errorMsg = 'MAAF DATA ANDA BELUM MASUK, SILAHKAN HUBUNGI ADMIN (Mohon lengkapi Posisi dan Departemen)';
-            throw new Error(errorMsg);
-          }
-          positionMatch = (employeeData.position || '').trim().toLowerCase() === position.trim().toLowerCase();
-          departmentMatch = (employeeData.department || '').trim().toLowerCase() === department.trim().toLowerCase();
-        }
-
-        if (!nameMatch || !positionMatch || !departmentMatch) {
-          logger.addLog('❌ Registration blocked: Data mismatch', 'warning', {
-            expected: { name: employeeData.name, pos: employeeData.position, dept: employeeData.department },
-            received: { name, pos: position, dept: department }
-          });
-          const errorMsg = 'MAAF DATA ANDA BELUM MASUK, SILAHKAN HUBUNGI ADMIN';
-          throw new Error(errorMsg);
-        }
-
-        logger.addLog('✅ Whitelist check passed', 'success', { employeeId: employeeData.id });
-      }
-
-      const finalModules = modules || getDefaultModules(role);
-      const { user: supabaseUser } = await authService.signUp({
-        email,
-        password,
-        name,
-        role,
-        modules: finalModules
-      });
-
-      if (supabaseUser) {
-        logger.addLog('✅ Registration successful', 'success', { userId: supabaseUser.id });
-
-        // 2. Link Employee ID to Profile if found
-        if (role !== 'admin') {
-          try {
-            // Retrieve again to be safe
-            const { data: employeeData } = await supabase
-              .from('employees')
-              .select('id')
-              .eq('email', email)
-              .single();
-
-            if (employeeData) {
-              // Update profile
-              const { error: updateError } = await supabase
-                .from('profiles')
-                .update({ employee_id: employeeData.id })
-                .eq('id', supabaseUser.id);
-
-              if (updateError) console.error('Failed to link employee_id to profile:', updateError);
-              else logger.addLog('✅ Linked Profile to Employee ID', 'success');
-            }
-          } catch (linkErr) {
-            console.error('Error linking employee:', linkErr);
-          }
-        }
-
-        // Wait a moment to ensure any pending auth events are ignored
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        isRegisteringRef.current = false; // Unblock updates
-        return true;
-      }
-
-      logger.addLog('❌ Registration failed: no user returned', 'error');
-      isRegisteringRef.current = false;
-      return false;
-    } catch (error: any) {
-      logger.addLog('❌ Register error', 'error', { message: error.message, error });
-      isRegisteringRef.current = false;
-      throw error; // Rethrow so the UI can show the specific "whitelist" message
+      setIsLoading(true);
+      await authService.signUp({ email, password, name, role, modules });
+      return true;
+    } catch (error) {
+      console.error('Register error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = async (): Promise<void> => {
+    console.log('🚪 [Auth] Initiating logout...');
     try {
-      logger.addLog('🚪 Logging out...', 'info');
-      await authService.signOut();
-      // Clear all auth state
+      setIsLoading(true);
+      // Clear state IMMEDIATELY to trigger UI changes even before network request completes
       setUser(null);
       setProfile(null);
       setSession(null);
-      setIsLoading(false);
-      logger.addLog('✅ Logout successful', 'success');
+
+      await authService.signOut();
+      console.log('✅ [Auth] Logout successful');
     } catch (error) {
-      setSession(null);
+      console.error('❌ [Auth] Logout error:', error);
+    } finally {
       setIsLoading(false);
-      logger.addLog('Logout failed (state cleared anyway)', 'error', error);
     }
   };
 
   const updateProfile = async (updates: Partial<Profile>): Promise<boolean> => {
     if (!user) return false;
-
     try {
-      logger.addLog('Updating profile...', 'info', updates);
-      const updatedProfile = await authService.updateUserProfile(user.id, updates);
-
-      if (updatedProfile) {
-        setProfile(updatedProfile);
-        setUser({
-          ...user,
-          name: updatedProfile.name,
-          role: updatedProfile.role as UserRole,
-          avatar: updatedProfile.avatar,
-          modules: updatedProfile.modules as ModuleType[],
-          employee_id: updatedProfile.employee_id,
-        });
-        logger.addLog('Profile updated successfully', 'success');
+      const data = await authService.updateUserProfile(user.id, updates);
+      if (data) {
+        setProfile(data);
+        setUser(prev => prev ? ({
+          ...prev,
+          name: data.name,
+          role: data.role as UserRole,
+          modules: (data.modules as ModuleType[]) || prev.modules,
+          employee_id: data.employee_id
+        }) : null);
         return true;
       }
-
-      logger.addLog('Profile update returned null', 'warning');
       return false;
     } catch (error) {
-      logger.addLog('Update profile error', 'error', error);
+      console.error('Update profile error:', error);
       return false;
     }
   };
@@ -461,7 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     profile,
     session,
-    isAuthenticated: !!user && !!session,
+    isAuthenticated: !!session, // Base authentication on session existence for speed
     isLoading,
     login,
     register,
@@ -477,6 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
+
 
 export function useAuth() {
   const context = useContext(AuthContext);
