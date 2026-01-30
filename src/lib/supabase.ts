@@ -3,26 +3,26 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase configuration missing:', {
-    url: supabaseUrl ? 'configured' : 'missing',
-    key: supabaseAnonKey ? 'configured' : 'missing'
-  });
-  throw new Error('Missing Supabase environment variables. Please check your .env file.')
+// Check configuration status
+export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
+
+if (!isSupabaseConfigured) {
+  console.warn('Supabase configuration missing. App will start in Setup Mode.');
 }
 
-if (supabaseUrl.includes('your_supabase') || supabaseAnonKey.includes('your_supabase')) {
-  console.error('Supabase configuration contains placeholder values');
-  throw new Error('Supabase environment variables contain placeholder values. Please update with your actual Supabase credentials.')
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
+// Create client with placeholders if missing to prevent crash, 
+// but App.tsx will block usage if !isSupabaseConfigured
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
   }
-})
+)
 
 // Database Types
 export interface Database {
