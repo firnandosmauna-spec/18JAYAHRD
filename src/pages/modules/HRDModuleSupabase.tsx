@@ -101,7 +101,7 @@ import {
 } from '@/hooks/useSupabase';
 import { usePermissions } from '@/hooks/usePermissions';
 import { ESSPortal } from '@/components/hrd/ESSPortal';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import type { Employee } from '@/lib/supabase';
 import { DataMigration } from '@/utils/migration';
 import { userService, type AppUser } from '@/services/userService';
