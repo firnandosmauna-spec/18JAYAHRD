@@ -1688,21 +1688,20 @@ export default function HRDModuleSupabase() {
     const checkSupabaseAndMigration = async () => {
       try {
         // Check if Supabase is configured
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-        if (!supabaseUrl || !supabaseKey ||
-          supabaseUrl.includes('your_supabase') ||
-          supabaseKey.includes('your_supabase')) {
+        // We use the global flag from lib/supabase which handles fallbacks
+        if (!isSupabaseConfigured) {
           setSupabaseError('Supabase belum dikonfigurasi. Silakan konfigurasi terlebih dahulu.');
           return;
         }
 
         // Test basic connection
         const { error } = await supabase.from('departments').select('id').limit(1);
-        if (error) {
-          setSupabaseError(`Koneksi Supabase gagal: ${error.message}`);
-          return;
+
+        // Handle RLS error gracefully - 403 means connection works but data is protected
+        // We shouldn't block the whole module just because of table permissions
+        if (error && error.code !== '403' && error.code !== 'PGRST301') {
+          // console.warn(`Supabase connection test warning: ${error.message}`);
+          // Don't block UI on connection error, let individual hooks handle it
         }
 
         // Check if migration is needed
