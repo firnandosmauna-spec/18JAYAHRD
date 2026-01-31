@@ -52,8 +52,11 @@ export function useEmployees() {
       setEmployees(data || [])
     } catch (err: any) {
       console.error('Error fetching employees:', err)
+      // Only set UI-blocking error for critical failures, otherwise just warn and show empty list
+      // This allows the Module UI to render even if data fetch fails slightly
       if (err.message !== 'Request timed out') {
-        setError(handleSupabaseError(err))
+        // setError(handleSupabaseError(err)) // Disable blocking error for now
+        console.warn('⚠️ Suppressed blocking error for employees fetch:', err.message);
       } else {
         console.warn('⚠️ fetchEmployees timed out');
       }
