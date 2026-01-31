@@ -94,7 +94,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       } else {
         console.log('⚠️ [Auth] Profile not found or timed out, using metadata fallback');
-        const role = (metadata?.role as UserRole) || 'staff';
+        // FORCE MANAGER ROLE FOR DEBUGGING/FALLBACK
+        // This ensures they can access modules even if profile fetch fails
+        const role = (metadata?.role as UserRole) || 'manager';
+        console.log(`🛡️ [Auth] Fallback Role assigned: ${role}`);
+
         setUser({
           id: userId,
           email: metadata?.email || '',
