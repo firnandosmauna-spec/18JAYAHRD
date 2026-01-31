@@ -66,11 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log(`📥 [Auth] Fetching profile for ${userId}...`);
 
     // Safety timeout for profile fetch specifically
+    // Safety timeout for profile fetch specifically
     const profileTimeout = new Promise<null>((resolve) =>
       setTimeout(() => {
         console.warn('⚠️ [Auth] Profile fetch timed out, using fallback');
         resolve(null);
-      }, 3000)
+      }, 10000) // Increased to 10 seconds to accommodate slow connections
     );
 
     try {
