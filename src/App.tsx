@@ -93,37 +93,27 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 function ConfigErrorScreen() {
+  const urlStatus = import.meta.env.VITE_SUPABASE_URL ? "DETECTED" : "MISSING";
+  const keyStatus = import.meta.env.VITE_SUPABASE_ANON_KEY ? "DETECTED" : "MISSING";
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
-      <div className="max-w-lg w-full bg-white p-8 rounded-xl shadow-lg border border-slate-200">
-        <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-6 mx-auto">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-red-600">
+      <div className="max-w-lg w-full bg-white p-8 rounded-xl shadow-2xl">
+        <h1 className="text-3xl font-bold text-center text-red-600 mb-4">DIAGNOSTIC MODE</h1>
+        <div className="bg-gray-100 p-4 rounded mb-4 font-mono text-sm">
+          <p><strong>VITE_SUPABASE_URL:</strong> {urlStatus}</p>
+          <p><strong>VITE_SUPABASE_ANON_KEY:</strong> {keyStatus}</p>
         </div>
-        <h1 className="text-2xl font-bold text-center text-slate-800 mb-3">Setup Required</h1>
-        <p className="text-gray-600 text-center mb-6">
-          Aplikasi berhasil dideploy, tetapi belum terhubung ke database Supabase.
+        <p className="text-gray-800 text-center mb-6">
+          Jika Anda melihat layar ini (Background Merah), berarti <strong>Aplikasi Berjalan</strong> (Tidak Blank),
+          tetapi Vercel tidak mengirimkan Environment Variables.
         </p>
-
-        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm mb-6">
-          <p className="font-semibold text-slate-700 mb-2">Instructions:</p>
-          <ol className="list-decimal list-inside space-y-2 text-slate-600">
-            <li>Buka dashboard hosting Anda (Vercel/Netlify).</li>
-            <li>Masuk ke <strong>Settings &gt; Environment Variables</strong>.</li>
-            <li>Tambahkan Environment Variables berikut:
-              <ul className="list-disc list-inside ml-4 mt-1 font-mono text-xs">
-                <li>VITE_SUPABASE_URL</li>
-                <li>VITE_SUPABASE_ANON_KEY</li>
-              </ul>
-            </li>
-            <li>Lakukan <strong>Redeploy</strong> aplikasi.</li>
-          </ol>
+        <div className="text-center text-xs text-white opacity-80 mb-4">
+          Time: {new Date().toLocaleTimeString()} (Bukti update baru)
         </div>
-
         <button
           onClick={() => window.location.reload()}
-          className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          className="w-full bg-black text-white py-3 rounded-lg font-bold hover:bg-gray-800"
         >
           Reload Page
         </button>
@@ -133,7 +123,8 @@ function ConfigErrorScreen() {
 }
 
 function App() {
-  if (!isSupabaseConfigured) {
+  // Check directly here to be sure
+  if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
     return <ConfigErrorScreen />;
   }
 
@@ -256,4 +247,3 @@ function App() {
 }
 
 export default App;
-
