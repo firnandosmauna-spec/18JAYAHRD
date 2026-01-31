@@ -93,29 +93,16 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 function ConfigErrorScreen() {
-  const urlStatus = import.meta.env.VITE_SUPABASE_URL ? "DETECTED" : "MISSING";
-  const keyStatus = import.meta.env.VITE_SUPABASE_ANON_KEY ? "DETECTED" : "MISSING";
-
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-red-600">
-      <div className="max-w-lg w-full bg-white p-8 rounded-xl shadow-2xl">
-        <h1 className="text-3xl font-bold text-center text-red-600 mb-4">DIAGNOSTIC MODE</h1>
-        <div className="bg-gray-100 p-4 rounded mb-4 font-mono text-sm">
-          <p><strong>VITE_SUPABASE_URL:</strong> {urlStatus}</p>
-          <p><strong>VITE_SUPABASE_ANON_KEY:</strong> {keyStatus}</p>
-        </div>
-        <p className="text-gray-800 text-center mb-6">
-          Jika Anda melihat layar ini (Background Merah), berarti <strong>Aplikasi Berjalan</strong> (Tidak Blank),
-          tetapi Vercel tidak mengirimkan Environment Variables.
-        </p>
-        <div className="text-center text-xs text-white opacity-80 mb-4">
-          Time: {new Date().toLocaleTimeString()} (Bukti update baru)
-        </div>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+      <div className="max-w-md w-full bg-white p-6 rounded-lg shadow-lg">
+        <h1 className="text-xl font-bold text-red-600 mb-2">Configuration Error</h1>
+        <p className="text-gray-600">Please check your environment variables.</p>
         <button
           onClick={() => window.location.reload()}
-          className="w-full bg-black text-white py-3 rounded-lg font-bold hover:bg-gray-800"
+          className="mt-4 w-full bg-blue-600 text-white py-2 rounded"
         >
-          Reload Page
+          Reload
         </button>
       </div>
     </div>
@@ -123,8 +110,7 @@ function ConfigErrorScreen() {
 }
 
 function App() {
-  // Check directly here to be sure
-  if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+  if (!isSupabaseConfigured) {
     return <ConfigErrorScreen />;
   }
 
