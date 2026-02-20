@@ -1,8 +1,9 @@
-import { useState, createContext, useContext, ReactNode } from 'react';
+import { useState, createContext, useContext, ReactNode, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ModuleLayout from '@/components/layout/ModuleLayout';
 import { useProjects } from '@/hooks/useProject';
+import { projectService } from '@/services/projectService';
 import { useToast } from '@/components/ui/use-toast';
 import {
   Building2,
@@ -237,6 +238,111 @@ const navItems = [
   { label: 'Laporan', href: '/projects/reports', icon: FileText },
 ];
 
+// Progress Log Modal
+function ProjectProgressLog({ project, open, onOpenChange, onUpdate }: { project: any, open: boolean, onOpenChange: (open: boolean) => void, onUpdate: () => void }) {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [newLog, setNewLog] = useState({ progress: project.progress, description: '', photos: [] as string[] });
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (open && project.id) {
+      loadLogs();
+      setNewLog({ ...newLog, progress: project.progress });
+    }
+  }, [open, project.id]);
+
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      const data = await projectService.getProjectLogs(project.id);
+      setLogs(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    try {
+      await projectService.addProjectLog({
+        project_id: project.id,
+        progress_percentage: newLog.progress,
+        description: newLog.description,
+        photos: newLog.photos
+      });
+      toast({ title: "Progress Diperbarui", description: "Laporan progress berhasil disimpan" });
+      onOpenChange(false);
+      onUpdate(); // refresh parent
+    } catch (error) {
+      toast({ title: "Gagal", description: "Gagal menyimpan laporan", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Laporan Progress: {project.name}</DialogTitle>
+          <DialogDescription>Catat perkembangan terbaru proyek ini.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 py-4">
+          {/* Input Form */}
+          <div className="space-y-4 border p-4 rounded-lg bg-slate-50">
+            <div className="space-y-2">
+              <Label>Progress Saat Ini (%)</Label>
+              <div className="flex items-center gap-4">
+                <Progress value={newLog.progress} className="h-4 flex-1" />
+                <span className="font-bold w-12 text-right">{newLog.progress}%</span>
+              </div>
+              <Input
+                type="range"
+                min="0"
+                max="100"
+                value={newLog.progress}
+                onChange={(e) => setNewLog({ ...newLog, progress: parseInt(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Keterangan Pekerjaan</Label>
+              <Input
+                placeholder="Contoh: Pemasangan atap selesai..."
+                value={newLog.description}
+                onChange={(e) => setNewLog({ ...newLog, description: e.target.value })}
+              />
+            </div>
+            <Button className="w-full bg-[#E76F51]" onClick={handleSubmit}>Simpan Laporan</Button>
+          </div>
+
+          {/* History */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-lg">Riwayat Laporan</h3>
+            {loading ? <p className="text-sm text-slate-500">Memuat riwayat...</p> : (
+              <div className="space-y-4">
+                {logs.length === 0 ? <p className="text-sm text-slate-500">Belum ada laporan.</p> : (
+                  logs.map((log) => (
+                    <div key={log.id} className="border rounded-lg p-3 flex gap-4 bg-white relative">
+                      <div className="flex flex-col items-center gap-1 min-w-[3rem]">
+                        <span className="text-xs text-slate-500">{new Date(log.created_at).toLocaleDateString()}</span>
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">{log.progress_percentage}%</Badge>
+                      </div>
+                      <div className="flex-1 border-l pl-4">
+                        <p className="text-sm text-slate-700">{log.description}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ProjectDashboard() {
   const { projects, loading, addProject, refetch } = useProjects();
   const { addNotification } = useProjectNotifications();
@@ -244,6 +350,8 @@ function ProjectDashboard() {
 
   const [showAddProjectDialog, setShowAddProjectDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Dashboard Logic
+  const [selectedProjectForLog, setSelectedProjectForLog] = useState<any>(null);
   const [newProject, setNewProject] = useState({
     name: '',
     client_name: '',
@@ -668,7 +776,9 @@ function ProjectDashboard() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem className="font-body">Lihat Detail</DropdownMenuItem>
                           <DropdownMenuItem className="font-body">Edit Proyek</DropdownMenuItem>
-                          <DropdownMenuItem className="font-body">Laporan Progress</DropdownMenuItem>
+                          <DropdownMenuItem className="font-body" onClick={() => setSelectedProjectForLog(project)}>
+                            Laporan Progress
+                          </DropdownMenuItem>
                           <DropdownMenuItem className="font-body text-red-600">Hapus</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -680,7 +790,20 @@ function ProjectDashboard() {
           </Table>
         </CardContent>
       </Card>
-    </div>
+
+
+      {/* Progress Log Dialog */}
+      {
+        selectedProjectForLog && (
+          <ProjectProgressLog
+            project={selectedProjectForLog}
+            open={!!selectedProjectForLog}
+            onOpenChange={(open) => !open && setSelectedProjectForLog(null)}
+            onUpdate={() => { refetch(); }}
+          />
+        )
+      }
+    </div >
   );
 }
 
@@ -721,10 +844,57 @@ function TeamPage() {
 }
 
 function ReportsPage() {
+  const { projects, loading } = useProjects();
+  const sortedProjects = [...projects].sort((a, b) => b.progress - a.progress);
+
+  if (loading) return <div className="p-8 text-center text-slate-500">Memuat data laporan...</div>;
+
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-display font-bold text-[#1C1C1E]">Laporan</h1>
-      <p className="text-muted-foreground font-body">Halaman laporan proyek</p>
+      <h1 className="text-3xl font-display font-bold text-[#1C1C1E]">Laporan Progress Proyek</h1>
+      <p className="text-muted-foreground font-body">Rekapitulasi progress seluruh proyek aktif.</p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {sortedProjects.map(project => (
+          <Card key={project.id} className="overflow-hidden hover:shadow-md transition-shadow">
+            <CardHeader className="bg-slate-50 pb-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="text-base font-bold text-slate-800">{project.name}</CardTitle>
+                  <p className="text-xs text-slate-500 mt-1">{project.client_name}</p>
+                </div>
+                <Badge className={project.status === 'in-progress' ? 'bg-blue-500' : 'bg-slate-500'}>
+                  {project.status === 'in-progress' ? 'Aktif' : project.status}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Progress</span>
+                  <span className="font-bold text-slate-700">{project.progress}%</span>
+                </div>
+                <Progress value={project.progress} className="h-2" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-slate-400">Target Selesai</p>
+                  <p className="font-medium text-slate-700">
+                    {project.end_date ? new Date(project.end_date).toLocaleDateString() : '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Sisa Budget</p>
+                  <p className="font-medium text-slate-700">
+                    {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(project.budget - (project.spent || 0))}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

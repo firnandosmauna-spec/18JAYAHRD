@@ -109,6 +109,8 @@ function ConfigErrorScreen() {
   );
 }
 
+import { RoutePersister } from "@/components/RoutePersister";
+
 function App() {
   if (!isSupabaseConfigured) {
     return <ConfigErrorScreen />;
@@ -116,6 +118,7 @@ function App() {
 
   return (
     <AuthProvider>
+      <RoutePersister />
       <ErrorBoundary>
         <Suspense fallback={<LoadingFallback />}>
           <Routes>

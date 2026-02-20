@@ -12,8 +12,9 @@ export function AuthPage() {
   const navigate = useNavigate();
   const sessionCheckRef = useRef(false);
 
-  // Get the intended destination from location state, default to dashboard
-  const from = location.state?.from?.pathname || '/dashboard';
+  // Get the intended destination from location state, OR localStorage, default to dashboard
+  const savedPath = localStorage.getItem('lastVisitedPath');
+  const from = location.state?.from?.pathname || savedPath || '/dashboard';
 
   // Logic: 
   // 1. If user arrives and is ALREADY authenticated (stale session), logout immediately (Security Request).

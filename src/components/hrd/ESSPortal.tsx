@@ -13,7 +13,9 @@ import {
     Camera,
     CheckCircle,
     AlertCircle,
-    Info
+    Info,
+    CreditCard,
+    Award,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,6 +29,8 @@ import { UserAttendance } from './UserAttendance';
 import { LeaveManagement } from './LeaveManagement';
 import { PayrollManagement } from './PayrollManagement';
 import { UserPipeline } from './UserPipeline';
+import { LoanManagement } from './LoanManagement';
+import { RewardManagement } from './RewardManagement';
 
 export function ESSPortal() {
     const { user, logout } = useAuth();
@@ -158,6 +162,8 @@ export function ESSPortal() {
                     <TabsTrigger value="leave" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Cuti</TabsTrigger>
                     <TabsTrigger value="payroll" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Gaji</TabsTrigger>
                     <TabsTrigger value="pipeline" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Pipeline</TabsTrigger>
+                    <TabsTrigger value="loan" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Kasbon</TabsTrigger>
+                    <TabsTrigger value="reward" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Reward</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview">
@@ -262,6 +268,14 @@ export function ESSPortal() {
 
                 <TabsContent value="pipeline">
                     <UserPipeline />
+                </TabsContent>
+
+                <TabsContent value="loan">
+                    <LoanManagement />
+                </TabsContent>
+
+                <TabsContent value="reward">
+                    <RewardManagement />
                 </TabsContent>
             </Tabs>
         </div>

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Award, 
-  Star, 
-  Gift, 
+import {
+  Award,
+  Star,
+  Gift,
   Trophy,
   Medal,
   Crown,
@@ -127,13 +127,13 @@ export function RewardManagement() {
   const { rewards, loading, error, addReward, claimReward } = useRewards();
   const { employees } = useEmployees();
   const { user } = useAuth();
-  
+
   const [activeTab, setActiveTab] = useState<'all' | RewardStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [selectedReward, setSelectedReward] = useState<RewardRecord | null>(null);
-  
+
   const [formData, setFormData] = useState<RewardFormData>({
     employee_id: '',
     type: 'employee_of_month',
@@ -149,10 +149,14 @@ export function RewardManagement() {
     const employee = employees.find(emp => emp.id === reward.employee_id);
     const employeeName = employee?.name || '';
     const matchesSearch = employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         reward.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         rewardTypeLabels[reward.type as RewardType].toLowerCase().includes(searchQuery.toLowerCase());
-    
-    return matchesTab && matchesSearch;
+      reward.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      rewardTypeLabels[reward.type as RewardType].toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesRole = user?.role === 'staff'
+      ? reward.employee_id === user.employee_id
+      : true;
+
+    return matchesTab && matchesSearch && matchesRole;
   });
 
   // Get counts for each tab
@@ -178,7 +182,7 @@ export function RewardManagement() {
       const totalPoints = empRewards.reduce((sum, r) => sum + r.points, 0);
       return { employee: emp, points: totalPoints, rewardCount: empRewards.length };
     }).sort((a, b) => b.points - a.points);
-    
+
     return employeePoints[0] || null;
   }
 
@@ -203,7 +207,7 @@ export function RewardManagement() {
       }
 
       const points = parseInt(formData.points) || 0;
-      
+
       const newReward = {
         employee_id: formData.employee_id,
         type: formData.type,
@@ -279,7 +283,7 @@ export function RewardManagement() {
           <p className="text-muted-foreground font-body">Kelola penghargaan dan apresiasi karyawan</p>
         </div>
         {user?.role !== 'staff' && (
-          <Button 
+          <Button
             className="bg-hrd hover:bg-hrd-dark font-body"
             onClick={() => {
               resetForm();
@@ -448,7 +452,7 @@ export function RewardManagement() {
                       const employee = employees.find(emp => emp.id === reward.employee_id);
                       const StatusIcon = statusIcons[reward.status as RewardStatus];
                       const TypeIcon = rewardTypeIcons[reward.type as RewardType];
-                      
+
                       return (
                         <motion.tr
                           key={reward.id}
@@ -510,7 +514,7 @@ export function RewardManagement() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem 
+                                  <DropdownMenuItem
                                     className="font-body"
                                     onClick={() => handleViewReward(reward)}
                                   >
@@ -518,7 +522,7 @@ export function RewardManagement() {
                                     Lihat Detail
                                   </DropdownMenuItem>
                                   {reward.status === 'active' && (
-                                    <DropdownMenuItem 
+                                    <DropdownMenuItem
                                       className="font-body text-blue-600"
                                       onClick={() => handleClaimReward(reward.id)}
                                     >
@@ -561,7 +565,7 @@ export function RewardManagement() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="font-body">Karyawan <span className="text-red-500">*</span></Label>
-              <Select value={formData.employee_id} onValueChange={(value) => setFormData({...formData, employee_id: value})}>
+              <Select value={formData.employee_id} onValueChange={(value) => setFormData({ ...formData, employee_id: value })}>
                 <SelectTrigger className="font-body">
                   <SelectValue placeholder="Pilih karyawan" />
                 </SelectTrigger>
@@ -574,10 +578,10 @@ export function RewardManagement() {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label className="font-body">Jenis Penghargaan <span className="text-red-500">*</span></Label>
-              <Select value={formData.type} onValueChange={(value) => setFormData({...formData, type: value as RewardType})}>
+              <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value as RewardType })}>
                 <SelectTrigger className="font-body">
                   <SelectValue placeholder="Pilih jenis penghargaan" />
                 </SelectTrigger>
@@ -599,43 +603,43 @@ export function RewardManagement() {
 
             <div className="space-y-2">
               <Label className="font-body">Judul Penghargaan <span className="text-red-500">*</span></Label>
-              <Input 
+              <Input
                 placeholder="Masukkan judul penghargaan"
                 className="font-body"
                 value={formData.title}
-                onChange={(e) => setFormData({...formData, title: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 disabled={formData.type !== 'custom'}
               />
             </div>
 
             <div className="space-y-2">
               <Label className="font-body">Deskripsi <span className="text-red-500">*</span></Label>
-              <Textarea 
+              <Textarea
                 placeholder="Jelaskan alasan pemberian penghargaan..."
                 className="font-body"
                 value={formData.description}
-                onChange={(e) => setFormData({...formData, description: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="font-body">Poin Reward</Label>
-                <Input 
-                  type="number" 
+                <Input
+                  type="number"
                   placeholder="100"
                   className="font-mono"
                   value={formData.points}
-                  onChange={(e) => setFormData({...formData, points: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, points: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label className="font-body">Tanggal Pemberian</Label>
-                <Input 
-                  type="date" 
+                <Input
+                  type="date"
                   className="font-mono"
                   value={formData.awarded_date}
-                  onChange={(e) => setFormData({...formData, awarded_date: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, awarded_date: e.target.value })}
                 />
               </div>
             </div>
@@ -751,7 +755,7 @@ export function RewardManagement() {
               Tutup
             </Button>
             {selectedReward?.status === 'active' && (
-              <Button 
+              <Button
                 className="bg-blue-600 hover:bg-blue-700 font-body"
                 onClick={() => {
                   handleClaimReward(selectedReward.id);

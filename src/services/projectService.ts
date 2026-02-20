@@ -208,5 +208,38 @@ export const projectService = {
 
         if (error) throw error
         return data
+    },
+
+    // Progress Logs
+    async getProjectLogs(projectId: string) {
+        const { data, error } = await supabase
+            .from('project_progress_logs')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            // Graceful handling if table missing
+            if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+                return [];
+            }
+            throw error;
+        }
+        return data || [];
+    },
+
+    async addProjectLog(log: { project_id: string, progress_percentage: number, description: string, photos?: string[] }) {
+        const { data, error } = await supabase
+            .from('project_progress_logs')
+            .insert(log)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Also update the main project progress
+        await this.update(log.project_id, { progress: log.progress_percentage });
+
+        return data;
     }
 }

@@ -41,7 +41,7 @@ const getDefaultModules = (role: UserRole): ModuleType[] => {
     case 'admin':
       return ['hrd', 'accounting', 'inventory', 'customer', 'project', 'sales', 'purchase', 'marketing'];
     case 'manager':
-      return ['hrd', 'accounting', 'sales', 'purchase'];
+      return ['hrd', 'accounting', 'sales', 'purchase', 'marketing'];
     case 'marketing':
       return ['marketing', 'sales', 'hrd'];
     case 'staff':
@@ -63,6 +63,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [onlineUsers] = useState<any[]>([]);
 
   const fetchProfile = async (userId: string, metadata: any) => {
+    // Optimization: Skip fetch if we already have this profile and it was fetched recently (e.g. < 5s ago)
+    // For now just check ID to prevent loop on token refresh
+    if (profile?.id === userId) {
+      console.log(`ℹ️ [Auth] Profile for ${userId} already loaded, skipping fetch to prevent reload loop.`);
+      return;
+    }
+
     console.log(`📥 [Auth] Fetching profile for ${userId}...`);
 
     // Safety timeout for profile fetch specifically
@@ -83,13 +90,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data) {
         console.log('✅ [Auth] Profile loaded successfully');
         setProfile(data);
+
+        // Fix: Ensure marketing module is present for relevant roles regardless of DB state
+        let userModules = (data.modules as ModuleType[]) || [];
+        const role = data.role as UserRole;
+
+        // Force add marketing for these roles if missing (Patch for legacy data)
+        if (['admin', 'manager', 'staff', 'marketing'].includes(role)) {
+          if (!userModules.includes('marketing')) {
+            console.log('🔧 [Auth] Patching missing marketing module for role:', role);
+            userModules = [...userModules, 'marketing'];
+          }
+        }
+
+        // Also ensure defaults are present if array is empty
+        if (userModules.length === 0) {
+          userModules = getDefaultModules(role);
+        }
+
         setUser({
           id: data.id,
           email: data.email,
           name: data.name,
-          role: data.role as UserRole,
+          role: role,
           avatar: data.avatar,
-          modules: (data.modules as ModuleType[]) || getDefaultModules(data.role as UserRole),
+          modules: userModules,
           employee_id: data.employee_id,
         });
       } else {
@@ -129,16 +154,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Set immediate user state from metadata so isAuthenticated is true right away
           const metadata = currentSession.user.user_metadata;
           const role = (metadata?.role as UserRole) || 'staff';
+          const defaultModules = getDefaultModules(role);
+
           setUser({
             id: currentSession.user.id,
             email: currentSession.user.email || '',
             name: metadata?.name || 'User',
             role: role,
-            modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
+            modules: (metadata?.modules as ModuleType[]) || defaultModules,
           });
 
-          // Then fetch full profile in background
-          fetchProfile(currentSession.user.id, metadata);
+          // Fetch full profile but KEEP LOADING until done
+          // This is critical for reload persistence
+          await fetchProfile(currentSession.user.id, metadata);
         } else {
           console.log('📋 [Auth] No session found');
         }
@@ -165,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 5000);
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       if (!mounted) return;
       console.log(`🔔 [Auth] Auth event: ${event}`);
 
@@ -177,26 +205,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (currentSession) {
-        setSession(currentSession);
-
-        // Ensure user is set immediately from metadata if not already set
-        if (!user || user.id !== currentSession.user.id) {
-          const metadata = currentSession.user.user_metadata;
-          const role = (metadata?.role as UserRole) || 'staff';
-          setUser({
-            id: currentSession.user.id,
-            email: currentSession.user.email || '',
-            name: metadata?.name || 'User',
-            role: role,
-            modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (currentSession) {
+          // Optimization: Only update session if token changed to prevent re-renders on focus/tab-switch
+          setSession(prev => {
+            if (prev?.access_token === currentSession.access_token) {
+              return prev;
+            }
+            console.log('🔄 [Auth] Session token updated');
+            return currentSession;
           });
 
-          fetchProfile(currentSession.user.id, metadata);
+          // Don't set isLoading(false) here immediately if we are in the middle of initSession
+          // But if this is a subsequent event (like token refresh), we might need to update user
+
+          // Ensure user is set immediately from metadata if not already set
+          // Also check if user data actually changed to avoid re-renders
+          if (!user || user.id !== currentSession.user.id) {
+            const metadata = currentSession.user.user_metadata;
+            const role = (metadata?.role as UserRole) || 'staff';
+
+            setUser(prev => {
+              if (prev?.id === currentSession.user.id && prev?.email === currentSession.user.email) {
+                return prev;
+              }
+              return {
+                id: currentSession.user.id,
+                email: currentSession.user.email || '',
+                name: metadata?.name || 'User',
+                role: role,
+                modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
+              };
+            });
+
+            // If we are signed in, we also want to fetch the profile
+            // But we don't await here to block UI updates for simple token refreshes
+            fetchProfile(currentSession.user.id, metadata);
+          }
         }
       }
-
-      setIsLoading(false);
     });
 
     return () => {
@@ -248,6 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setProfile(null);
       setSession(null);
+      localStorage.removeItem('lastVisitedPath'); // Clear persisted route
 
       await authService.signOut();
       console.log('✅ [Auth] Logout successful');

@@ -17,9 +17,12 @@ export default function ProtectedRoute({ children, requiredModule }: ProtectedRo
       path: location.pathname,
       isLoading,
       isAuthenticated,
-      requiredModule
+      userRole: user?.role,
+      userModules: user?.modules,
+      requiredModule,
+      hasAccess: requiredModule ? hasModuleAccess(requiredModule) : 'N/A'
     });
-  }, [isLoading, isAuthenticated, location.pathname, requiredModule]);
+  }, [isLoading, isAuthenticated, location.pathname, requiredModule, user]);
 
   if (isLoading) {
     return (
