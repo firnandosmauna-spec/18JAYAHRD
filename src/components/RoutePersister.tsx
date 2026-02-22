@@ -19,7 +19,7 @@ export function RoutePersister() {
 
         const fullPath = location.pathname + location.search;
         // console.log('📍 Saving route:', fullPath);
-        localStorage.setItem('lastVisitedPath', fullPath);
+        sessionStorage.setItem('lastVisitedPath', fullPath);
     }, [location]);
 
     return null;

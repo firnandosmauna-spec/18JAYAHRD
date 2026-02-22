@@ -13,6 +13,8 @@ export interface AttendanceSettings {
     work_end_time_weekday: string;
     work_start_time_saturday: string;
     work_end_time_saturday: string;
+    admin_attendance_required: boolean;
+    attendance_late_tolerance: number;
 }
 
 export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
@@ -22,6 +24,8 @@ export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
     work_end_time_weekday: '17:00',
     work_start_time_saturday: '08:00',
     work_end_time_saturday: '13:00',
+    admin_attendance_required: true,
+    attendance_late_tolerance: 5,
 };
 
 export interface LeaveSettings {
@@ -46,4 +50,34 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     company_email: 'hrd@jayatempo.com',
     company_address: '',
     company_whatsapp: '',
+};
+
+export interface PayrollSettings {
+    payroll_tax_rate: number;
+    payroll_bpjs_rate: number;
+    payroll_allowance_gasoline: number;
+    payroll_allowance_meal: number;
+    payroll_allowance_position: number;
+    payroll_allowance_thr: number;
+    payroll_deduction_absent: number;
+    attendance_late_penalty: number;
+    payroll_schedule_day: number;
+    is_automatic_payroll: boolean;
+    payroll_reward_perfect_attendance: number;
+    payroll_reward_target_achievement: number;
+}
+
+export const DEFAULT_PAYROLL_SETTINGS: PayrollSettings = {
+    payroll_tax_rate: 0,
+    payroll_bpjs_rate: 0,
+    payroll_allowance_gasoline: 0, // Per day or fixed
+    payroll_allowance_meal: 0, // Per day
+    payroll_allowance_position: 0,
+    payroll_allowance_thr: 0,
+    payroll_deduction_absent: 0, // Per day
+    attendance_late_penalty: 1000, // Per minute
+    payroll_schedule_day: 23,
+    is_automatic_payroll: false,
+    payroll_reward_perfect_attendance: 0,
+    payroll_reward_target_achievement: 0,
 };

@@ -3,7 +3,6 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/toaster";
-import { DiagnosticOverlay } from "@/components/DiagnosticOverlay";
 
 // Static imports to fix Suspense hang
 import { AuthPage } from "@/pages/AuthPage";
@@ -75,6 +74,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
             <button
               onClick={() => {
                 localStorage.clear();
+                sessionStorage.clear();
                 window.location.reload();
               }}
               className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700"

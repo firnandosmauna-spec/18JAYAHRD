@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { SystemSetting, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, LeaveSettings, DEFAULT_LEAVE_SETTINGS, GeneralSettings, DEFAULT_GENERAL_SETTINGS } from '@/types/settings';
+import { SystemSetting, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, LeaveSettings, DEFAULT_LEAVE_SETTINGS, GeneralSettings, DEFAULT_GENERAL_SETTINGS, PayrollSettings, DEFAULT_PAYROLL_SETTINGS } from '@/types/settings';
 
 export const settingsService = {
     // Get all settings or specific keys
@@ -50,7 +50,8 @@ export const settingsService = {
             'work_start_time_weekday',
             'work_end_time_weekday',
             'work_start_time_saturday',
-            'work_end_time_saturday'
+            'work_end_time_saturday',
+            'admin_attendance_required'
         ];
         const settings = await this.getSettings(keys);
 
@@ -69,6 +70,8 @@ export const settingsService = {
                 result.work_start_time_saturday = setting.value;
             } else if (setting.key === 'work_end_time_saturday') {
                 result.work_end_time_saturday = setting.value;
+            } else if (setting.key === 'admin_attendance_required') {
+                result.admin_attendance_required = setting.value === 'true' || setting.value === true;
             }
         });
 
@@ -88,6 +91,44 @@ export const settingsService = {
             } else if (setting.key === 'leave_reset_month') {
                 result.leave_reset_month = Number(setting.value);
             }
+        });
+
+        return result;
+    },
+
+    // Get Payroll Settings
+    async getPayrollSettings(): Promise<PayrollSettings> {
+        const keys = [
+            'payroll_tax_rate',
+            'payroll_bpjs_rate',
+            'payroll_allowance_gasoline',
+            'payroll_allowance_meal',
+            'payroll_allowance_position',
+            'payroll_allowance_thr',
+            'payroll_deduction_absent',
+            'attendance_late_penalty',
+            'payroll_schedule_day',
+            'is_automatic_payroll',
+            'payroll_reward_perfect_attendance',
+            'payroll_reward_target_achievement'
+        ];
+        const settings = await this.getSettings(keys);
+
+        const result = { ...DEFAULT_PAYROLL_SETTINGS };
+
+        settings?.forEach(setting => {
+            if (setting.key === 'payroll_tax_rate') result.payroll_tax_rate = Number(setting.value);
+            else if (setting.key === 'payroll_bpjs_rate') result.payroll_bpjs_rate = Number(setting.value);
+            else if (setting.key === 'payroll_allowance_gasoline') result.payroll_allowance_gasoline = Number(setting.value);
+            else if (setting.key === 'payroll_allowance_meal') result.payroll_allowance_meal = Number(setting.value);
+            else if (setting.key === 'payroll_allowance_position') result.payroll_allowance_position = Number(setting.value);
+            else if (setting.key === 'payroll_allowance_thr') result.payroll_allowance_thr = Number(setting.value);
+            else if (setting.key === 'payroll_deduction_absent') result.payroll_deduction_absent = Number(setting.value);
+            else if (setting.key === 'attendance_late_penalty') result.attendance_late_penalty = Number(setting.value);
+            else if (setting.key === 'payroll_schedule_day') result.payroll_schedule_day = Number(setting.value);
+            else if (setting.key === 'is_automatic_payroll') result.is_automatic_payroll = setting.value === 'true' || setting.value === true;
+            else if (setting.key === 'payroll_reward_perfect_attendance') result.payroll_reward_perfect_attendance = Number(setting.value);
+            else if (setting.key === 'payroll_reward_target_achievement') result.payroll_reward_target_achievement = Number(setting.value);
         });
 
         return result;

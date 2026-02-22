@@ -25,12 +25,15 @@ import { Badge } from '@/components/ui/badge';
 import { User, Settings, LogOut, Edit } from 'lucide-react';
 
 export function UserProfile() {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout, updateProfile, updatePassword } = useAuth();
   const navigate = useNavigate();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [editForm, setEditForm] = useState({
     name: user?.name || '',
     avatar: user?.avatar || '',
+    newPassword: '',
+    confirmPassword: '',
   });
 
   if (!user) return null;
@@ -48,13 +51,41 @@ export function UserProfile() {
   };
 
   const handleUpdateProfile = async () => {
-    const success = await updateProfile({
-      name: editForm.name,
-      avatar: editForm.avatar,
-    });
+    try {
+      // 1. Update basic info if changed
+      if (editForm.name !== user?.name || editForm.avatar !== user?.avatar) {
+        const success = await updateProfile({
+          name: editForm.name,
+          avatar: editForm.avatar,
+        });
+        if (!success) {
+          console.error('Failed to update basic profile');
+          return;
+        }
+      }
 
-    if (success) {
+      // 2. Update password if provided
+      if (showPasswordSection && editForm.newPassword) {
+        if (editForm.newPassword !== editForm.confirmPassword) {
+          alert('Password konfirmasi tidak cocok');
+          return;
+        }
+        if (editForm.newPassword.length < 6) {
+          alert('Password minimal 6 karakter');
+          return;
+        }
+        const pwSuccess = await updatePassword(editForm.newPassword);
+        if (!pwSuccess) {
+          console.error('Failed to update password');
+          return;
+        }
+      }
+
       setIsEditDialogOpen(false);
+      setShowPasswordSection(false);
+      setEditForm(prev => ({ ...prev, newPassword: '', confirmPassword: '' }));
+    } catch (error) {
+      console.error('Update profile error:', error);
     }
   };
 
@@ -122,7 +153,7 @@ export function UserProfile() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        
+
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
           <DialogTrigger asChild>
             <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
@@ -161,6 +192,49 @@ export function UserProfile() {
                   placeholder="https://example.com/avatar.jpg"
                 />
               </div>
+
+              <div className="border-t pt-4 mt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowPasswordSection(!showPasswordSection)}
+                  className="w-full justify-start text-muted-foreground"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  {showPasswordSection ? 'Batal Ganti Password' : 'Ganti Password?'}
+                </Button>
+
+                {showPasswordSection && (
+                  <div className="space-y-4 mt-4 animate-in slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="new-password" title="Password Baru" className="text-right text-xs">
+                        Baru
+                      </Label>
+                      <Input
+                        id="new-password"
+                        type="password"
+                        value={editForm.newPassword}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                        className="col-span-3"
+                        placeholder="Minimal 6 karakter"
+                      />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="confirm-password" title="Konfirmasi Password" className="text-right text-xs">
+                        Konfirmasi
+                      </Label>
+                      <Input
+                        id="confirm-password"
+                        type="password"
+                        value={editForm.confirmPassword}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                        className="col-span-3"
+                        placeholder="Ulangi password baru"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex justify-end space-x-2">
               <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
@@ -173,7 +247,7 @@ export function UserProfile() {
           </DialogContent>
         </Dialog>
 
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate('/hrd/settings')}>
           <Settings className="mr-2 h-4 w-4" />
           <span>Pengaturan</span>
         </DropdownMenuItem>

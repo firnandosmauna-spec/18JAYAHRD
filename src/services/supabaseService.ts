@@ -7,6 +7,7 @@ import type {
   AttendanceRecord,
   PayrollRecord,
   RewardRecord,
+  RewardTypeMaster,
   NotificationRecord,
   EmployeeLoan,
   Position,
@@ -191,6 +192,17 @@ export const leaveService = {
     return data
   },
 
+  async getByEmployee(employeeId: string) {
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
   async create(leaveRequest: Omit<LeaveRequest, 'id' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase
       .from('leave_requests')
@@ -290,7 +302,9 @@ export const attendanceService = {
 
     if (month && year) {
       const startDate = `${year}-${month.toString().padStart(2, '0')}-01`
-      const endDate = `${year}-${month.toString().padStart(2, '0')}-31`
+      // Calculate the last day of the month correctly
+      const lastDay = new Date(year, month, 0).getDate()
+      const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`
       query = query.gte('date', startDate).lte('date', endDate)
     }
 
@@ -321,6 +335,69 @@ export const attendanceService = {
 
     if (error) throw error
     return data
+  },
+
+  async resetLateStatus(id: string) {
+    const { data, error } = await supabase
+      .from('attendance')
+      .update({ status: 'present' })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async resetAllLateRecords(startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('attendance')
+      .update({ status: 'present' })
+      .eq('status', 'late')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .select()
+
+    if (error) throw error
+    return data
+  },
+
+  async resetEmployeeLateRecords(employeeId: string, startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('attendance')
+      .update({ status: 'present' })
+      .eq('employee_id', employeeId)
+      .eq('status', 'late')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .select()
+
+    if (error) throw error
+    return data
+  },
+
+  async delete(id: string) {
+    console.log('🗑️ Attempting to delete attendance record:', id);
+    const { data, error } = await supabase
+      .from('attendance')
+      .delete()
+      .eq('id', id)
+      .select()
+
+    if (error) {
+      console.error('❌ Supabase delete error:', error);
+      throw error;
+    }
+
+    console.log('📊 Delete result data:', data);
+
+    if (!data || data.length === 0) {
+      console.error('⚠️ Delete failed: No rows were affected (likely RLS or wrong ID)');
+      throw new Error('Data tidak ditemukan atau Anda tidak memiliki izin untuk menghapusnya')
+    }
+
+    console.log('✅ Delete successful');
+    return true
   },
 
   subscribeToChanges(callback: () => void) {
@@ -464,6 +541,80 @@ export const rewardService = {
 
     if (error) throw error
     return data
+  },
+
+  async update(id: string, reward: Partial<Omit<RewardRecord, 'id' | 'created_at' | 'updated_at'>>) {
+    const { data, error } = await supabase
+      .from('rewards')
+      .update({ ...reward, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('rewards')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+    return true
+  }
+}
+
+export const rewardTypeService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('reward_types')
+      .select('*')
+      .order('name', { ascending: true })
+
+    if (error) throw error
+    return data as RewardTypeMaster[]
+  },
+
+  async create(typeData: Omit<RewardTypeMaster, 'id' | 'created_at' | 'updated_at'>) {
+    console.log('🚀 Creating reward type:', typeData);
+    const { data, error } = await supabase
+      .from('reward_types')
+      .insert(typeData)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('❌ Error creating reward type:', error);
+      throw error;
+    }
+    return data as RewardTypeMaster
+  },
+
+  async update(id: string, updates: Partial<Omit<RewardTypeMaster, 'id' | 'created_at'>>) {
+    console.log(`🔄 Updating reward type ${id}:`, updates);
+    const { data, error } = await supabase
+      .from('reward_types')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('❌ Error updating reward type:', error);
+      throw error;
+    }
+    return data as RewardTypeMaster
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('reward_types')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
   }
 }
 

@@ -9,7 +9,6 @@ import {
     AlertCircle,
     CheckCircle,
     Calendar,
-    Camera,
     Loader2,
     ShieldCheck
 } from 'lucide-react';
@@ -67,8 +66,6 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
     const [gettingLocation, setGettingLocation] = useState(false);
     const [locationError, setLocationError] = useState<string | null>(null);
-    const [isVerifyingFace, setIsVerifyingFace] = useState(false);
-    const [verificationStep, setVerificationStep] = useState<'idle' | 'scanning' | 'complete'>('idle');
     const [penaltyRate, setPenaltyRate] = useState<number>(0);
 
     useEffect(() => {
@@ -130,13 +127,13 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                     setCoordinates({ lat: latitude, lng: longitude });
 
                     try {
-                        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                        const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=id`);
                         const data = await response.json();
-                        if (data && data.display_name) {
-                            const addr = data.display_name.split(',').slice(0, 3).join(', ');
-                            setLocation(addr);
+                        if (data) {
+                            const addr = [data.locality, data.city, data.principalSubdivision].filter(Boolean).join(', ');
+                            setLocation(addr || 'Lokasi Terdeteksi');
                             setGettingLocation(false);
-                            resolve(addr);
+                            resolve(addr || 'Lokasi Terdeteksi');
                         } else {
                             const latlng = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
                             setLocation(latlng);
@@ -192,13 +189,6 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             const newWeeklyLateMinutes = weeklyLateMinutes + lateMinutes;
             const isSP1 = newWeeklyLateMinutes > 30;
 
-            // Face Verification Step
-            setIsVerifyingFace(true);
-            setVerificationStep('scanning');
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            setVerificationStep('complete');
-            await new Promise(resolve => setTimeout(resolve, 800));
-
             const notes = [];
             if (isLate) notes.push(`Terlambat ${lateMinutes}m (Potongan Rp ${penalty.toLocaleString('id-ID')})`);
             if (isSP1) notes.push(`⚠️ SP1 TRIGGERED (Total ${newWeeklyLateMinutes}m/minggu)`);
@@ -212,9 +202,6 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 notes: notes.join('. ')
             });
 
-            setIsVerifyingFace(false);
-            setVerificationStep('idle');
-
             if (isSP1) {
                 toast({
                     title: 'PERINGATAN SP1',
@@ -223,13 +210,11 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                     duration: 10000
                 });
             } else {
-                toast({ title: 'Check In Berhasil', description: `Presensi & Wajah berhasil diverifikasi.` });
+                toast({ title: 'Check In Berhasil', description: `Presensi berhasil dicatat.` });
             }
 
             refetch();
         } catch (error: any) {
-            setIsVerifyingFace(false);
-            setVerificationStep('idle');
             toast({ title: 'Gagal Check In', description: error.message, variant: 'destructive' });
         }
     };
@@ -252,25 +237,14 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 workHours = `${Math.floor(diff / 60)}j ${diff % 60}m`;
             }
 
-            // Face Verification Step
-            setIsVerifyingFace(true);
-            setVerificationStep('scanning');
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            setVerificationStep('complete');
-            await new Promise(resolve => setTimeout(resolve, 800));
-
             await updateAttendance(todayRecord.id, {
                 check_out: checkOutTime,
                 work_hours: workHours,
             });
 
-            setIsVerifyingFace(false);
-            setVerificationStep('idle');
             toast({ title: 'Check Out Berhasil', description: 'Sampai jumpa besok!' });
             refetch();
         } catch (error: any) {
-            setIsVerifyingFace(false);
-            setVerificationStep('idle');
             toast({ title: 'Gagal Check Out', description: error.message, variant: 'destructive' });
         }
     };
@@ -278,45 +252,6 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     return (
         <div className="space-y-6">
             <AnimatePresence>
-                {isVerifyingFace && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md"
-                    >
-                        <div className="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 text-center space-y-6 shadow-2xl overflow-hidden relative">
-                            {/* Scanning Animation Header */}
-                            <div className="relative w-48 h-48 mx-auto bg-gray-100 rounded-full flex items-center justify-center border-4 border-gray-50 overflow-hidden">
-                                {verificationStep === 'scanning' ? (
-                                    <>
-                                        <div className="absolute inset-0 bg-gradient-to-b from-hrd/20 to-transparent animate-scan" />
-                                        <Camera className="w-16 h-16 text-hrd animate-pulse" />
-                                    </>
-                                ) : (
-                                    <ShieldCheck className="w-20 h-20 text-green-500 scale-125 transition-transform duration-500" />
-                                )}
-                            </div>
-
-                            <div className="space-y-2">
-                                <h3 className="text-2xl font-display font-bold text-gray-900">
-                                    {verificationStep === 'scanning' ? 'Memverifikasi Wajah...' : 'Wajah Terverifikasi'}
-                                </h3>
-                                <p className="text-muted-foreground font-body">
-                                    {verificationStep === 'scanning' ? 'Pastikan wajah terlihat jelas di kamera.' : 'Identitas Anda telah dikonfirmasi.'}
-                                </p>
-                            </div>
-
-                            {verificationStep === 'scanning' && (
-                                <div className="flex justify-center gap-1">
-                                    <div className="w-2 h-2 bg-hrd rounded-full animate-bounce [animation-delay:-0.3s]" />
-                                    <div className="w-2 h-2 bg-hrd rounded-full animate-bounce [animation-delay:-0.15s]" />
-                                    <div className="w-2 h-2 bg-hrd rounded-full animate-bounce" />
-                                </div>
-                            )}
-                        </div>
-                    </motion.div>
-                )}
             </AnimatePresence>
 
             {/* Weekly Stats Banner */}
@@ -482,7 +417,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                             >
                                                 <div className="w-12 h-12 bg-hrd/20 rounded-full animate-ping absolute -inset-0" />
                                                 <div className="w-12 h-12 bg-hrd rounded-full flex items-center justify-center relative shadow-lg shadow-hrd/50 border-4 border-white">
-                                                    <Camera className="w-6 h-6 text-white" />
+                                                    <MapPin className="w-6 h-6 text-white" />
                                                 </div>
                                             </motion.div>
                                         ) : (

@@ -20,7 +20,8 @@ import {
   Edit,
   Trash2,
   TrendingUp,
-  Users
+  Users,
+  RefreshCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,6 +69,7 @@ import { usePresence } from '@/hooks/usePresence';
 import type { AttendanceRecord, LeaveRequest } from '@/lib/supabase';
 import { attendanceService, leaveService } from '@/services/supabaseService';
 import { settingsService } from '@/services/settingsService';
+import { AttendanceSettings } from '@/types/settings';
 
 // Types
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'leave' | 'holiday';
@@ -135,32 +137,33 @@ function calculateWorkHours(checkIn?: string, checkOut?: string): string {
   return `${hours}j ${minutes}m`;
 }
 
-// Konstanta aturan absensi
-const DEFAULT_WORK_START = '08:00';
-const DEFAULT_WORK_END = '16:00';
-const SATURDAY_WORK_END = '15:00';
-const LATE_TOLERANCE_MINUTES = 5;
+// Konstanta ini sekarang akan didapat dari database settings
+let WORK_START_WEEKDAY = '08:00';
+let WORK_END_WEEKDAY = '17:00';
+let WORK_START_SATURDAY = '08:00';
+let WORK_END_SATURDAY = '13:00';
+let LATE_TOLERANCE_MINUTES = 5;
 const MAX_LATE_PER_MONTH = 5;
 
 // Fungsi untuk mendapatkan jam kerja berdasarkan tanggal
 function getWorkSchedule(dateString?: string): { start: string; end: string } {
-  if (!dateString) return { start: DEFAULT_WORK_START, end: DEFAULT_WORK_END };
+  if (!dateString) return { start: WORK_START_WEEKDAY, end: WORK_END_WEEKDAY };
 
   const date = new Date(dateString);
   const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
   // Sabtu
   if (day === 6) {
-    return { start: DEFAULT_WORK_START, end: SATURDAY_WORK_END };
+    return { start: WORK_START_SATURDAY, end: WORK_END_SATURDAY };
   }
 
   // Minggu
   if (day === 0) {
-    return { start: DEFAULT_WORK_START, end: DEFAULT_WORK_END }; // Atau libur? Asumsi default
+    return { start: WORK_START_WEEKDAY, end: WORK_END_WEEKDAY }; // Atau libur? Asumsi default
   }
 
   // Senin - Jumat
-  return { start: DEFAULT_WORK_START, end: DEFAULT_WORK_END };
+  return { start: WORK_START_WEEKDAY, end: WORK_END_WEEKDAY };
 }
 
 // Fungsi untuk menentukan status berdasarkan jam check in
@@ -247,7 +250,7 @@ export function AttendanceManagement() {
   const [startDate, setStartDate] = useState(firstDay.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(today);
 
-  const { attendance, loading, error, addAttendance, refetch } = useAttendance(startDate, endDate);
+  const { attendance, loading, error, addAttendance, refetch, deleteAttendance } = useAttendance(startDate, endDate);
   const { employees } = useEmployees();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -267,17 +270,29 @@ export function AttendanceManagement() {
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [selectedAttendance, setSelectedAttendance] = useState<AttendanceRecord | null>(null);
   const [penaltyRate, setPenaltyRate] = useState<number>(0);
+  const [isEditing, setIsEditing] = useState(false);
+  const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
+  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState<string>('all');
 
   useEffect(() => {
-    const fetchPenaltyRate = async () => {
+    const fetchSettings = async () => {
       try {
         const settings = await settingsService.getAttendanceSettings();
         setPenaltyRate(settings.attendance_late_penalty);
+
+        // Update local variables for logic functions
+        WORK_START_WEEKDAY = settings.work_start_time_weekday;
+        WORK_END_WEEKDAY = settings.work_end_time_weekday;
+        WORK_START_SATURDAY = settings.work_start_time_saturday;
+        WORK_END_SATURDAY = settings.work_end_time_saturday;
+        LATE_TOLERANCE_MINUTES = settings.attendance_late_tolerance;
+
+        setAttendanceSettings(settings); // Store full settings object
       } catch (err) {
-        console.error('Error fetching penalty rate:', err);
+        console.error('Error fetching settings:', err);
       }
     };
-    fetchPenaltyRate();
+    fetchSettings();
   }, []);
 
   const [formData, setFormData] = useState<AttendanceFormData>({
@@ -295,17 +310,30 @@ export function AttendanceManagement() {
     const employee = employees.find(emp => emp.id === att.employee_id);
     const employeeName = employee?.name || '';
     const matchesSearch = employeeName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesEmployee = selectedEmployeeFilter === 'all' || att.employee_id === selectedEmployeeFilter;
 
     // If staff, only show their own attendance
     if (user?.role === 'staff') {
       return matchesSearch && att.employee_id === user.employee_id;
     }
 
-    return matchesSearch;
+    return matchesSearch && matchesEmployee;
   });
 
   // Get today's attendance
   const todayAttendance = attendance.filter(att => att.date === today);
+
+  const filteredTodayAttendance = todayAttendance.filter(att => {
+    const employee = employees.find(emp => emp.id === att.employee_id);
+    const employeeName = employee?.name || '';
+    const matchesSearch = employeeName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesEmployee = selectedEmployeeFilter === 'all' || att.employee_id === selectedEmployeeFilter;
+
+    if (user?.role === 'staff') {
+      return matchesSearch && att.employee_id === user.employee_id;
+    }
+    return matchesSearch && matchesEmployee;
+  });
 
   // Calculate statistics
   const stats = {
@@ -436,7 +464,45 @@ export function AttendanceManagement() {
   // Handle view attendance details
   const handleViewAttendance = (attendance: AttendanceRecord) => {
     setSelectedAttendance(attendance);
+    setIsEditing(false); // Reset editing state
     setShowViewDialog(true);
+  };
+
+  // Handle Update Attendance
+  const handleUpdateAttendance = async () => {
+    try {
+      if (!selectedAttendance) return;
+
+      const workHours = calculateWorkHours(formData.check_in, formData.check_out);
+
+      const updates = {
+        check_in: formData.check_in || null,
+        check_out: formData.check_out || null,
+        status: formData.status,
+        work_hours: workHours !== '-' ? workHours : null,
+        location: formData.location || null,
+        notes: formData.notes || null,
+        date: formData.date
+      };
+
+      await attendanceService.update(selectedAttendance.id, updates);
+
+      refetch();
+      setIsEditing(false);
+      setShowViewDialog(false);
+
+      toast({
+        title: 'Berhasil',
+        description: 'Data absensi berhasil diperbarui',
+      });
+    } catch (error) {
+      console.error('Failed to update attendance:', error);
+      toast({
+        title: 'Error',
+        description: 'Gagal memperbarui data absensi',
+        variant: 'destructive'
+      });
+    }
   };
 
   const scrollToHistory = () => {
@@ -444,6 +510,90 @@ export function AttendanceManagement() {
     setTimeout(() => {
       historyRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
+  };
+
+  // Handle Reset Single Late Status
+  const handleResetStatus = async (id: string) => {
+    try {
+      if (!confirm('Apakah Anda yakin ingin mereset status keterlambatan ini menjadi Hadir?')) {
+        return;
+      }
+
+      await attendanceService.resetLateStatus(id);
+
+      // Refresh data
+      refetch();
+      setShowViewDialog(false);
+
+      toast({
+        title: 'Berhasil',
+        description: 'Status absensi telah direset menjadi Hadir',
+      });
+    } catch (error: any) {
+      console.error('Failed to reset status:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal mereset status absensi',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Handle Bulk Reset Late Status
+  const handleResetAllLate = async () => {
+    try {
+      const isPerEmployee = selectedEmployeeFilter !== 'all';
+      const employeeName = isPerEmployee
+        ? employees.find(e => e.id === selectedEmployeeFilter)?.name || 'Karyawan'
+        : 'SEMUA karyawan';
+
+      if (!confirm(`Apakah Anda yakin ingin mereset keterlambatan untuk ${employeeName} dari periode ${startDate} sampai ${endDate}?`)) {
+        return;
+      }
+
+      const results = isPerEmployee
+        ? await attendanceService.resetEmployeeLateRecords(selectedEmployeeFilter, startDate, endDate)
+        : await attendanceService.resetAllLateRecords(startDate, endDate);
+
+      // Refresh data
+      refetch();
+
+      toast({
+        title: 'Berhasil',
+        description: `${results?.length || 0} data absensi telah direset menjadi Hadir`,
+      });
+    } catch (error) {
+      console.error('Failed to reset records:', error);
+      toast({
+        title: 'Error',
+        description: 'Gagal mereset data absensi',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Handle Delete Attendance
+  const handleDeleteAttendance = async (id: string) => {
+    try {
+      if (!confirm('Apakah Anda yakin ingin menghapus data absensi ini?')) {
+        return;
+      }
+
+      await deleteAttendance(id);
+      // refetch(); // deleteAttendance in hook already updates state and refetch is called via real-time subscription anyway
+
+      toast({
+        title: 'Berhasil',
+        description: 'Data absensi berhasil dihapus',
+      });
+    } catch (error: any) {
+      console.error('Failed to delete attendance:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal menghapus data absensi',
+        variant: 'destructive'
+      });
+    }
   };
 
   // Handle Export Excel
@@ -524,13 +674,39 @@ export function AttendanceManagement() {
         )}
       </div>
 
-      {/* Export Button & Filters */}
+      {/* Filters & Export */}
       {user?.role !== 'staff' && (
-        <div className="flex justify-end mb-4">
-          <Button variant="outline" className="font-body" onClick={handleExportExcel}>
-            <Download className="w-4 h-4 mr-2" />
-            Export Laporan Bulanan (Excel)
-          </Button>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari karyawan..."
+              className="pl-10 font-body"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div>
+            <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
+              <SelectTrigger className="font-body">
+                <SelectValue placeholder="Semua Karyawan" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Karyawan</SelectItem>
+                {employees.map(emp => (
+                  <SelectItem key={emp.id} value={emp.id} className="font-body">
+                    {emp.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-2 col-span-1 md:col-span-2 justify-end">
+            <Button variant="outline" className="font-body" onClick={handleExportExcel}>
+              <Download className="w-4 h-4 mr-2" />
+              Export Excel
+            </Button>
+          </div>
         </div>
       )}
 
@@ -641,7 +817,129 @@ export function AttendanceManagement() {
           )}
         </TabsList>
 
-        {/* Today Tab Content... (unchanged) */}
+        <TabsContent value="today" className="mt-6">
+          <Card className="border-gray-200">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <div>
+                <CardTitle className="font-display">Absensi Hari Ini</CardTitle>
+                <CardDescription className="font-body">
+                  Daftar kehadiran karyawan tanggal {formatDate(today)}
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="font-body">Karyawan</TableHead>
+                    <TableHead className="font-body">Check In</TableHead>
+                    <TableHead className="font-body">Check Out</TableHead>
+                    <TableHead className="font-body">Status</TableHead>
+                    <TableHead className="font-body text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTodayAttendance.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        Belum ada data absensi hari ini.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredTodayAttendance.map((attendance) => {
+                      const employee = employees.find(emp => emp.id === attendance.employee_id);
+                      const StatusIcon = statusIcons[attendance.status as AttendanceStatus];
+
+                      return (
+                        <TableRow key={attendance.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <Avatar className="w-8 h-8">
+                                <AvatarFallback className="bg-hrd/20 text-hrd font-body text-xs">
+                                  {employee?.name.split(' ').map(n => n[0]).join('') || 'N/A'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="font-medium font-body">{employee?.name || 'Unknown'}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {formatTime(attendance.check_in)}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {formatTime(attendance.check_out)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={`${statusColors[attendance.status as AttendanceStatus]} font-body`}>
+                              <StatusIcon className="w-3 h-3 mr-1" />
+                              {statusLabels[attendance.status as AttendanceStatus]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {user?.role !== 'staff' && attendance.status === 'late' && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                  onClick={() => handleResetStatus(attendance.id)}
+                                  title="Reset Status"
+                                >
+                                  <RefreshCcw className="w-4 h-4" />
+                                </Button>
+                              )}
+                              {user?.role !== 'staff' && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={() => {
+                                      handleViewAttendance(attendance);
+                                      setIsEditing(true);
+                                      setFormData({
+                                        employee_id: attendance.employee_id,
+                                        date: attendance.date,
+                                        check_in: attendance.check_in || '',
+                                        check_out: attendance.check_out || '',
+                                        status: attendance.status as AttendanceStatus,
+                                        location: attendance.location || '',
+                                        notes: attendance.notes || ''
+                                      });
+                                    }}
+                                    title="Edit Data"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => handleDeleteAttendance(attendance.id)}
+                                    title="Hapus Data"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleViewAttendance(attendance)}
+                                title="Detail Data"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* History Tab - Visible for everyone now */}
         <TabsContent value="history" className="mt-6" ref={historyRef}>
@@ -667,12 +965,6 @@ export function AttendanceManagement() {
                     onChange={(e) => setEndDate(e.target.value)}
                     className="font-mono"
                   />
-                  {user?.role !== 'staff' && (
-                    <Button variant="outline" className="font-body">
-                      <Download className="w-4 h-4 mr-2" />
-                      Export
-                    </Button>
-                  )}
                 </div>
               </div>
             </CardHeader>
@@ -739,13 +1031,57 @@ export function AttendanceManagement() {
                           </TableCell>
                           {user?.role !== 'staff' && (
                             <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleViewAttendance(attendance)}
-                              >
-                                <Eye className="w-4 h-4" />
-                              </Button>
+                              <div className="flex items-center justify-end gap-1">
+                                {attendance.status === 'late' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                    onClick={() => handleResetStatus(attendance.id)}
+                                    title="Reset Status"
+                                  >
+                                    <RefreshCcw className="w-4 h-4" />
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                  onClick={() => {
+                                    handleViewAttendance(attendance);
+                                    setIsEditing(true);
+                                    setFormData({
+                                      employee_id: attendance.employee_id,
+                                      date: attendance.date,
+                                      check_in: attendance.check_in || '',
+                                      check_out: attendance.check_out || '',
+                                      status: attendance.status as AttendanceStatus,
+                                      location: attendance.location || '',
+                                      notes: attendance.notes || ''
+                                    });
+                                  }}
+                                  title="Edit Data"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => handleDeleteAttendance(attendance.id)}
+                                  title="Hapus Data"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleViewAttendance(attendance)}
+                                  title="Detail Data"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                              </div>
                             </TableCell>
                           )}
                         </TableRow>
@@ -1006,68 +1342,170 @@ export function AttendanceManagement() {
 
               {/* Attendance Details */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="font-body text-muted-foreground">Tanggal</Label>
-                  <p className="font-mono font-medium">{formatDate(selectedAttendance.date)}</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="font-body text-muted-foreground">Status</Label>
-                  <Badge className={`${statusColors[selectedAttendance.status as AttendanceStatus]} font-body w-fit`}>
-                    {React.createElement(statusIcons[selectedAttendance.status as AttendanceStatus], { className: "w-3 h-3 mr-1" })}
-                    {statusLabels[selectedAttendance.status as AttendanceStatus]}
-                  </Badge>
-                </div>
-                {selectedAttendance.check_in && (
-                  <div className="space-y-2">
-                    <Label className="font-body text-muted-foreground">Check In</Label>
-                    <p className="font-mono font-medium">{formatTime(selectedAttendance.check_in)}</p>
-                  </div>
-                )}
-                {selectedAttendance.check_out && (
-                  <div className="space-y-2">
-                    <Label className="font-body text-muted-foreground">Check Out</Label>
-                    <p className="font-mono font-medium">{formatTime(selectedAttendance.check_out)}</p>
-                  </div>
-                )}
-                {selectedAttendance.work_hours && (
-                  <div className="space-y-2">
-                    <Label className="font-body text-muted-foreground">Jam Kerja</Label>
-                    <p className="font-mono font-medium">{selectedAttendance.work_hours}</p>
-                  </div>
-                )}
-                {selectedAttendance.location && (
-                  <div className="space-y-2">
-                    <Label className="font-body text-muted-foreground">Lokasi</Label>
-                    <p className="font-body font-medium">{selectedAttendance.location}</p>
-                  </div>
-                )}
-                {selectedAttendance.status === 'late' && (
-                  <div className="space-y-2 col-span-2 p-3 bg-red-50 rounded-lg border border-red-100">
-                    <Label className="font-body text-red-600 font-bold">Potongan Keterlambatan</Label>
-                    <p className="font-mono text-lg font-bold text-red-600">
-                      Rp {calculatePenalty(selectedAttendance.check_in || '', selectedAttendance.date).toLocaleString('id-ID')}
-                    </p>
-                  </div>
+                {isEditing ? (
+                  <>
+                    <div className="space-y-2 col-span-2">
+                      <Label className="font-body">Tanggal</Label>
+                      <Input
+                        type="date"
+                        className="font-mono"
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-body">Status</Label>
+                      <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value as AttendanceStatus })}>
+                        <SelectTrigger className="font-body">
+                          <SelectValue placeholder="Pilih status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(statusLabels).map(([key, label]) => (
+                            <SelectItem key={key} value={key} className="font-body">
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-body">Check In</Label>
+                      <Input
+                        type="time"
+                        className="font-mono"
+                        value={formData.check_in}
+                        onChange={(e) => setFormData({ ...formData, check_in: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-body">Check Out</Label>
+                      <Input
+                        type="time"
+                        className="font-mono"
+                        value={formData.check_out}
+                        onChange={(e) => setFormData({ ...formData, check_out: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-body">Lokasi</Label>
+                      <Input
+                        className="font-body"
+                        value={formData.location}
+                        onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2 col-span-2">
+                      <Label className="font-body">Catatan</Label>
+                      <Textarea
+                        className="font-body"
+                        value={formData.notes}
+                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label className="font-body text-muted-foreground">Tanggal</Label>
+                      <p className="font-mono font-medium">{formatDate(selectedAttendance.date)}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-body text-muted-foreground">Status</Label>
+                      <Badge className={`${statusColors[selectedAttendance.status as AttendanceStatus]} font-body w-fit`}>
+                        {React.createElement(statusIcons[selectedAttendance.status as AttendanceStatus], { className: "w-3 h-3 mr-1" })}
+                        {statusLabels[selectedAttendance.status as AttendanceStatus]}
+                      </Badge>
+                    </div>
+                    {selectedAttendance.check_in && (
+                      <div className="space-y-2">
+                        <Label className="font-body text-muted-foreground">Check In</Label>
+                        <p className="font-mono font-medium">{formatTime(selectedAttendance.check_in)}</p>
+                      </div>
+                    )}
+                    {selectedAttendance.check_out && (
+                      <div className="space-y-2">
+                        <Label className="font-body text-muted-foreground">Check Out</Label>
+                        <p className="font-mono font-medium">{formatTime(selectedAttendance.check_out)}</p>
+                      </div>
+                    )}
+                    {selectedAttendance.work_hours && (
+                      <div className="space-y-2">
+                        <Label className="font-body text-muted-foreground">Jam Kerja</Label>
+                        <p className="font-mono font-medium">{selectedAttendance.work_hours}</p>
+                      </div>
+                    )}
+                    {selectedAttendance.location && (
+                      <div className="space-y-2">
+                        <Label className="font-body text-muted-foreground">Lokasi</Label>
+                        <p className="font-body font-medium">{selectedAttendance.location}</p>
+                      </div>
+                    )}
+                    {selectedAttendance.status === 'late' && (
+                      <div className="space-y-2 col-span-2 p-3 bg-red-50 rounded-lg border border-red-100">
+                        <Label className="font-body text-red-600 font-bold">Potongan Keterlambatan</Label>
+                        <p className="font-mono text-lg font-bold text-red-600">
+                          Rp {calculatePenalty(selectedAttendance.check_in || '', selectedAttendance.date).toLocaleString('id-ID')}
+                        </p>
+                      </div>
+                    )}
+                    {selectedAttendance.notes && (
+                      <div className="space-y-2 col-span-2">
+                        <Label className="font-body text-muted-foreground">Catatan</Label>
+                        <p className="font-body p-3 bg-gray-50 rounded-lg">{selectedAttendance.notes}</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
-
-              {/* Notes */}
-              {selectedAttendance.notes && (
-                <div className="space-y-2">
-                  <Label className="font-body text-muted-foreground">Catatan</Label>
-                  <p className="font-body p-3 bg-gray-50 rounded-lg">{selectedAttendance.notes}</p>
-                </div>
-              )}
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowViewDialog(false)} className="font-body">
-              Tutup
-            </Button>
-            <Button className="bg-hrd hover:bg-hrd-dark font-body">
-              <Edit className="w-4 h-4 mr-2" />
-              Edit Data
-            </Button>
+          <DialogFooter className="gap-2 sm:gap-0">
+            {selectedAttendance && (
+              <div className="flex-1 flex gap-2">
+                {user?.role === 'admin' && selectedAttendance.status === 'late' && (
+                  <Button
+                    variant="outline"
+                    className="bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100 font-body"
+                    onClick={() => handleResetStatus(selectedAttendance.id)}
+                  >
+                    <RefreshCcw className="w-4 h-4 mr-2" />
+                    Reset Status
+                  </Button>
+                )}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowViewDialog(false)} className="font-body">
+                Tutup
+              </Button>
+              {selectedAttendance && (
+                isEditing ? (
+                  <Button onClick={handleUpdateAttendance} className="bg-hrd hover:bg-hrd-dark font-body">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Simpan Perubahan
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      setIsEditing(true);
+                      setFormData({
+                        employee_id: selectedAttendance.employee_id,
+                        date: selectedAttendance.date,
+                        check_in: selectedAttendance.check_in || '',
+                        check_out: selectedAttendance.check_out || '',
+                        status: selectedAttendance.status as AttendanceStatus,
+                        location: selectedAttendance.location || '',
+                        notes: selectedAttendance.notes || ''
+                      });
+                    }}
+                    className="bg-hrd hover:bg-hrd-dark font-body"
+                  >
+                    <Edit className="w-4 h-4 mr-2" />
+                    Edit Data
+                  </Button>
+                )
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

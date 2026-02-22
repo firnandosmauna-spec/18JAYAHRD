@@ -35,7 +35,10 @@ import {
   LogOut,
   MapPin,
   Loader2,
-  Briefcase
+  Briefcase,
+  ShieldCheck,
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from '@/components/ui/button';
@@ -336,7 +339,9 @@ function EmployeeListSupabase() {
     bank: '',
     phone: '',
     email: '',
-    address: ''
+    address: '',
+    allowances: [] as { title: string; amount: number }[],
+    deductions: [] as { title: string; amount: number }[]
   });
 
   // Fetch users for linking status
@@ -385,7 +390,9 @@ function EmployeeListSupabase() {
       bank: '',
       phone: '',
       email: '',
-      address: ''
+      address: '',
+      allowances: [],
+      deductions: []
     });
   };
 
@@ -468,6 +475,52 @@ function EmployeeListSupabase() {
     }
   };
 
+  // Manual Allowance Helpers
+  const handleAddManualAllowance = () => {
+    setFormData(prev => ({
+      ...prev,
+      allowances: [...prev.allowances, { title: '', amount: 0 }]
+    }));
+  };
+
+  const handleUpdateManualAllowance = (index: number, field: 'title' | 'amount', value: string | number) => {
+    setFormData(prev => {
+      const newAllowances = [...prev.allowances];
+      newAllowances[index] = { ...newAllowances[index], [field]: value };
+      return { ...prev, allowances: newAllowances };
+    });
+  };
+
+  const handleRemoveManualAllowance = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      allowances: prev.allowances.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Manual Deduction Helpers
+  const handleAddManualDeduction = () => {
+    setFormData(prev => ({
+      ...prev,
+      deductions: [...prev.deductions, { title: '', amount: 0 }]
+    }));
+  };
+
+  const handleUpdateManualDeduction = (index: number, field: 'title' | 'amount', value: string | number) => {
+    setFormData(prev => {
+      const newDeductions = [...prev.deductions];
+      newDeductions[index] = { ...newDeductions[index], [field]: value };
+      return { ...prev, deductions: newDeductions };
+    });
+  };
+
+  const handleRemoveManualDeduction = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      deductions: prev.deductions.filter((_, i) => i !== index)
+    }));
+  };
+
   const handleAddEmployee = async () => {
     try {
       // Check for missing fields individually to give better feedback
@@ -545,6 +598,8 @@ function EmployeeListSupabase() {
         innovation_projects: 0,
         team_leadership: false,
         customer_rating: null,
+        allowances: formData.allowances,
+        deductions: formData.deductions,
       };
 
       console.log("DEBUG: Sending to addEmployee:", newEmployee);
@@ -628,7 +683,9 @@ function EmployeeListSupabase() {
         phone: formData.phone || null,
         email: formData.email || null,
         address: formData.address || null,
-        department_id: finalDeptId
+        department_id: finalDeptId,
+        allowances: formData.allowances,
+        deductions: formData.deductions,
       };
 
       await updateEmployee(selectedEmployee.id, updates);
@@ -698,7 +755,9 @@ function EmployeeListSupabase() {
       bank: employee.bank || '',
       phone: employee.phone || '',
       email: employee.email || '',
-      address: employee.address || ''
+      address: employee.address || '',
+      allowances: employee.allowances || [],
+      deductions: employee.deductions || []
     });
     setShowEditDialog(true);
   };
@@ -1006,6 +1065,148 @@ function EmployeeListSupabase() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                <div className="space-y-2">
+                  <Label className="font-body">Bank</Label>
+                  <Select
+                    value={formData.bank}
+                    onValueChange={(val) => setFormData({ ...formData, bank: val })}
+                  >
+                    <SelectTrigger className="font-body">
+                      <SelectValue placeholder="Pilih Bank" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[999999]">
+                      <SelectItem value="BCA" className="font-body">BCA</SelectItem>
+                      <SelectItem value="Mandiri" className="font-body">Mandiri</SelectItem>
+                      <SelectItem value="BNI" className="font-body">BNI</SelectItem>
+                      <SelectItem value="BRI" className="font-body">BRI</SelectItem>
+                      <SelectItem value="CIMB" className="font-body">CIMB Niaga</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-body">Nomor Rekening</Label>
+                  <Input
+                    placeholder="Contoh: 1234567890"
+                    className="font-mono"
+                    value={formData.bank_account}
+                    onChange={(e) => setFormData({ ...formData, bank_account: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <Label className="font-body font-bold text-gray-700">Tunjangan Manual (Bulanan)</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs font-body text-blue-600 border-blue-200 hover:bg-blue-50"
+                    onClick={handleAddManualAllowance}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Tambah Baris
+                  </Button>
+                </div>
+
+                {formData.allowances.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic font-body text-center py-2 bg-gray-50 rounded border border-dashed">
+                    Belum ada tunjangan manual ditambahkan
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {formData.allowances.map((allowance, index) => (
+                      <div key={index} className="flex gap-2 items-end bg-gray-50 p-2 rounded-md border border-gray-100 relative group">
+                        <div className="flex-1 space-y-1">
+                          <Label className="text-[10px] uppercase text-gray-400 font-bold">Label Tunjangan</Label>
+                          <Input
+                            placeholder="Contoh: Transport"
+                            className="h-9 text-sm font-body bg-white"
+                            value={allowance.title}
+                            onChange={(e) => handleUpdateManualAllowance(index, 'title', e.target.value)}
+                          />
+                        </div>
+                        <div className="w-[140px] space-y-1">
+                          <Label className="text-[10px] uppercase text-gray-400 font-bold">Nominal (Rp)</Label>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            className="h-9 text-sm font-mono bg-white"
+                            value={allowance.amount || ''}
+                            onChange={(e) => handleUpdateManualAllowance(index, 'amount', parseInt(e.target.value) || 0)}
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                          onClick={() => handleRemoveManualAllowance(index)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <Label className="font-body font-bold text-gray-700">Potongan Manual (Bulanan)</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs font-body text-red-600 border-red-200 hover:bg-red-50"
+                    onClick={handleAddManualDeduction}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Tambah Potongan
+                  </Button>
+                </div>
+
+                {formData.deductions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic font-body text-center py-2 bg-gray-50 rounded border border-dashed">
+                    Belum ada potongan manual ditambahkan
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {formData.deductions.map((deduction, index) => (
+                      <div key={index} className="flex gap-2 items-end bg-gray-50 p-2 rounded-md border border-gray-100 relative group">
+                        <div className="flex-1 space-y-1">
+                          <Label className="text-[10px] uppercase text-gray-400 font-bold">Label Potongan</Label>
+                          <Input
+                            placeholder="Contoh: Potongan Kas"
+                            className="h-9 text-sm font-body bg-white"
+                            value={deduction.title}
+                            onChange={(e) => handleUpdateManualDeduction(index, 'title', e.target.value)}
+                          />
+                        </div>
+                        <div className="w-[140px] space-y-1">
+                          <Label className="text-[10px] uppercase text-gray-400 font-bold">Nominal (Rp)</Label>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            className="h-9 text-sm font-mono bg-white"
+                            value={deduction.amount || ''}
+                            onChange={(e) => handleUpdateManualDeduction(index, 'amount', parseInt(e.target.value) || 0)}
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                          onClick={() => handleRemoveManualDeduction(index)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-3 justify-end mt-8 pt-4 border-t">
                 <Button
                   variant="outline"
@@ -1145,6 +1346,117 @@ function EmployeeListSupabase() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-4 border-t pt-4">
+              <div className="flex items-center justify-between">
+                <Label className="font-body font-bold text-gray-700">Tunjangan Manual (Bulanan)</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-body text-blue-600 border-blue-200 hover:bg-blue-50"
+                  onClick={handleAddManualAllowance}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Tambah Baris
+                </Button>
+              </div>
+
+              {formData.allowances && formData.allowances.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic font-body text-center py-2 bg-gray-50 rounded border border-dashed">
+                  Belum ada tunjangan manual ditambahkan
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {formData.allowances?.map((allowance, index) => (
+                    <div key={index} className="flex gap-2 items-end bg-gray-50 p-2 rounded-md border border-gray-100 relative group">
+                      <div className="flex-1 space-y-1">
+                        <Label className="text-[10px] uppercase text-gray-400 font-bold">Label Tunjangan</Label>
+                        <Input
+                          placeholder="Contoh: Transport"
+                          className="h-9 text-sm font-body bg-white"
+                          value={allowance.title}
+                          onChange={(e) => handleUpdateManualAllowance(index, 'title', e.target.value)}
+                        />
+                      </div>
+                      <div className="w-[140px] space-y-1">
+                        <Label className="text-[10px] uppercase text-gray-400 font-bold">Nominal (Rp)</Label>
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          className="h-9 text-sm font-mono bg-white"
+                          value={allowance.amount || ''}
+                          onChange={(e) => handleUpdateManualAllowance(index, 'amount', parseInt(e.target.value) || 0)}
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                        onClick={() => handleRemoveManualAllowance(index)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
+              <div className="flex items-center justify-between">
+                <Label className="font-body font-bold text-gray-700">Potongan Manual (Bulanan)</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-body text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={handleAddManualDeduction}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Tambah Potongan
+                </Button>
+              </div>
+
+              {formData.deductions && formData.deductions.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic font-body text-center py-2 bg-gray-50 rounded border border-dashed">
+                  Belum ada potongan manual ditambahkan
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {formData.deductions?.map((deduction, index) => (
+                    <div key={index} className="flex gap-2 items-end bg-gray-50 p-2 rounded-md border border-gray-100 relative group">
+                      <div className="flex-1 space-y-1">
+                        <Label className="text-[10px] uppercase text-gray-400 font-bold">Label Potongan</Label>
+                        <Input
+                          placeholder="Contoh: Potongan Kas"
+                          className="h-9 text-sm font-body bg-white"
+                          value={deduction.title}
+                          onChange={(e) => handleUpdateManualDeduction(index, 'title', e.target.value)}
+                        />
+                      </div>
+                      <div className="w-[140px] space-y-1">
+                        <Label className="text-[10px] uppercase text-gray-400 font-bold">Nominal (Rp)</Label>
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          className="h-9 text-sm font-mono bg-white"
+                          value={deduction.amount || ''}
+                          onChange={(e) => handleUpdateManualDeduction(index, 'amount', parseInt(e.target.value) || 0)}
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                        onClick={() => handleRemoveManualDeduction(index)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowEditDialog(false); resetForm(); }} className="font-body">
@@ -1228,6 +1540,12 @@ function EmployeeListSupabase() {
                       <p className="font-mono font-medium">{selectedEmployee.phone}</p>
                     </div>
                   )}
+                  {user?.role !== 'staff' && selectedEmployee.bank && (
+                    <div className="space-y-2">
+                      <Label className="font-body text-muted-foreground">Bank</Label>
+                      <p className="font-body font-medium">{selectedEmployee.bank}</p>
+                    </div>
+                  )}
                   {user?.role !== 'staff' && selectedEmployee.bank_account && (
                     <div className="space-y-2">
                       <Label className="font-body text-muted-foreground">Rekening Bank</Label>
@@ -1235,6 +1553,46 @@ function EmployeeListSupabase() {
                     </div>
                   )}
                 </div>
+
+                {selectedEmployee.allowances && selectedEmployee.allowances.length > 0 && (
+                  <div className="space-y-3 bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+                    <Label className="font-body font-bold text-blue-800 text-sm">Tunjangan Manual (Bulanan)</Label>
+                    <div className="space-y-2">
+                      {selectedEmployee.allowances.map((allowance, index) => (
+                        <div key={index} className="flex justify-between items-center bg-white p-2 rounded border border-blue-100">
+                          <span className="font-body text-sm text-gray-700">{allowance.title}</span>
+                          <span className="font-mono text-sm font-bold text-blue-700">{formatCurrency(allowance.amount)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center pt-2 border-t border-blue-200 mt-2">
+                        <span className="font-body text-xs font-bold text-blue-800">Total Tunjangan Manual</span>
+                        <span className="font-mono text-sm font-bold text-blue-900">
+                          {formatCurrency(selectedEmployee.allowances.reduce((sum, a) => sum + (a.amount || 0), 0))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {selectedEmployee.deductions && selectedEmployee.deductions.length > 0 && (
+                  <div className="space-y-3 bg-red-50/50 p-4 rounded-lg border border-red-100">
+                    <Label className="font-body font-bold text-red-800 text-sm">Potongan Manual (Bulanan)</Label>
+                    <div className="space-y-2">
+                      {selectedEmployee.deductions.map((deduction, index) => (
+                        <div key={index} className="flex justify-between items-center bg-white p-2 rounded border border-red-100">
+                          <span className="font-body text-sm text-gray-700">{deduction.title}</span>
+                          <span className="font-mono text-sm font-bold text-red-700">{formatCurrency(deduction.amount)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center pt-2 border-t border-red-200 mt-2">
+                        <span className="font-body text-xs font-bold text-red-800">Total Potongan Manual</span>
+                        <span className="font-mono text-sm font-bold text-red-900">
+                          {formatCurrency(selectedEmployee.deductions.reduce((sum, d) => sum + (d.amount || 0), 0))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="contract" className="space-y-4">
@@ -1313,6 +1671,7 @@ function EmployeeListSupabase() {
 
 // Dashboard Component
 function HRDDashboard() {
+  const { user } = useAuth();
   const { employees } = useEmployees();
   const { leaveRequests } = useLeaveRequests();
   const today = new Date().toISOString().split('T')[0];
@@ -1542,7 +1901,20 @@ function HRDDashboard() {
           <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Dashboard HRD</h1>
           <p className="text-muted-foreground font-body">Kelola sumber daya manusia perusahaan</p>
         </div>
-        <NotificationBell />
+        <div className="flex items-center gap-3">
+          {user?.role === 'admin' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs font-body border-hrd/30 text-hrd hover:bg-hrd/5"
+              onClick={() => navigate('/login?switch=true')}
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-2" />
+              Ganti Akun (Test)
+            </Button>
+          )}
+          <NotificationBell />
+        </div>
       </div>
 
       {/* Stats Grid - All Submodules Status */}
@@ -1550,7 +1922,6 @@ function HRDDashboard() {
         {/* Group by Module */}
         {['Karyawan', 'Cuti & Izin', 'Absensi', 'Penggajian', 'Reward']
           .filter(moduleName => {
-            const { user } = useAuth();
             if (user?.role === 'staff' && moduleName === 'Reward') return false;
             return true;
           })
@@ -1663,7 +2034,7 @@ function PlaceholderPage({ title }: { title: string }) {
 }
 
 export default function HRDModuleSupabase() {
-  const { user } = useAuth();
+  const { user, stashedSession, restoreAdminSession, isLoading: authLoading } = useAuth();
   const { checkAccess, loading: loadingPermissions } = usePermissions();
   const [showMigrationDialog, setShowMigrationDialog] = useState(false);
   const [supabaseError, setSupabaseError] = useState<string | null>(null);
@@ -1771,6 +2142,41 @@ export default function HRDModuleSupabase() {
 
   return (
     <NotificationProvider>
+      {/* Administrative Session Switcher Overlay - Only show when testing non-admin accounts */}
+      {stashedSession && user?.role !== 'admin' && (
+        <div className="fixed bottom-6 right-6 z-[60]">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-white/90 backdrop-blur-md border border-amber-200 shadow-2xl p-4 rounded-2xl flex flex-col gap-3 min-w-[240px]"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Mode Pengetesan</p>
+                <p className="text-[10px] text-amber-600">Sesi Admin sedang di-stash</p>
+              </div>
+            </div>
+
+            <Button
+              size="sm"
+              className="w-full bg-amber-600 hover:bg-amber-700 text-white font-body text-xs h-9 rounded-xl shadow-lg shadow-amber-200/50"
+              onClick={restoreAdminSession}
+              disabled={authLoading}
+            >
+              {authLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5 mr-2" />
+              )}
+              Kembali ke Admin
+            </Button>
+          </motion.div>
+        </div>
+      )}
+
       <ModuleLayout moduleId="hrd" title="HRD" navItems={filteredNavItems}>
         <Routes>
           <Route index element={

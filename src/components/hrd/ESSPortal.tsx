@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { userService } from '@/services/userService';
+import { settingsService as hrdSettingsService } from '@/services/settingsService';
+import { AttendanceSettings } from '@/types/settings';
+import { useToast } from '@/components/ui/use-toast';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
     User,
     Clock,
@@ -10,12 +14,12 @@ import {
     Bell,
     LogOut,
     MapPin,
-    Camera,
     CheckCircle,
     AlertCircle,
     Info,
     CreditCard,
     Award,
+    Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,14 +35,63 @@ import { PayrollManagement } from './PayrollManagement';
 import { UserPipeline } from './UserPipeline';
 import { LoanManagement } from './LoanManagement';
 import { RewardManagement } from './RewardManagement';
+import { EditProfileDialog } from '../auth/EditProfileDialog';
 
 export function ESSPortal() {
-    const { user, logout } = useAuth();
+    const { user, profile, updateProfile, restoreAdminSession } = useAuth();
     const { employees } = useEmployees();
     const { departments } = useDepartments(); // Fetch departments to map IDs to names
-    const { addNotification, markAllAsRead, unreadCount, notifications } = useNotificationsContext(); // Use notification context
+    const { markAllAsRead, unreadCount, notifications } = useNotificationsContext(); // Use notification context
+    const { toast } = useToast();
 
     const employee = employees.find(e => e.id === user?.employee_id);
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState('overview');
+    const [isLinking, setIsLinking] = useState(false);
+    const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
+
+    // Load attendance settings
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const settings = await hrdSettingsService.getAttendanceSettings();
+                setAttendanceSettings(settings);
+            } catch (error) {
+                console.error("Failed to load attendance settings:", error);
+            }
+        };
+        loadSettings();
+    }, []);
+
+    // Auto-link if employee_id is missing but employee exists with same email
+    useEffect(() => {
+        const attemptAutoLink = async () => {
+            if (user && !user.employee_id && user.email && !isLinking) {
+                // If admin and attendance not required, don't force auto-link
+                if (user.role === 'admin' && attendanceSettings && !attendanceSettings.admin_attendance_required) {
+                    return;
+                }
+
+                try {
+                    setIsLinking(true);
+                    const updatedUser = await userService.findAndLinkEmployee(user.id, user.email);
+                    if (updatedUser && updatedUser.employee_id) {
+                        // Sync profile in AuthContext
+                        await updateProfile({ employee_id: updatedUser.employee_id });
+                        toast({
+                            title: "Akun Terhubung Otomatis",
+                            description: "Profil Anda telah berhasil dihubungkan dengan data HRD.",
+                        });
+                    }
+                } catch (error) {
+                    console.error("Auto-link failed:", error);
+                } finally {
+                    setIsLinking(false);
+                }
+            }
+        };
+        attemptAutoLink();
+    }, [user, updateProfile, toast, attendanceSettings]);
 
     // Calculate employee duration from join_date to now
     function calculateEmployeeDuration(joinDate: string): string {
@@ -73,8 +126,6 @@ export function ESSPortal() {
         return parts.length > 0 ? parts.join(' ') : 'Baru Bergabung';
     }
 
-    const [activeTab, setActiveTab] = useState('overview');
-
     const containerVariants = {
         hidden: { opacity: 0, y: 20 },
         visible: {
@@ -92,7 +143,21 @@ export function ESSPortal() {
         visible: { opacity: 1, y: 0 }
     };
 
-    if (!user?.employee_id) {
+    if (isLinking) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="text-center">
+                    <Loader2 className="w-12 h-12 text-hrd animate-spin mx-auto mb-4" />
+                    <p className="text-gray-600 font-medium">Menghubungkan akun ke sistem HRD...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Check if we should block the portal
+    const isAttendanceRequired = user?.role !== 'admin' || (attendanceSettings?.admin_attendance_required ?? true);
+
+    if (!user?.employee_id && isAttendanceRequired) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
                 <Card className="max-w-md border-orange-200 bg-orange-50">
@@ -109,19 +174,21 @@ export function ESSPortal() {
         );
     }
 
-    // Find department name: either direct string or matching ID
+    // Find department name
     const departmentName = employee?.department
-        // Fallback: lookup in departments list by ID if employee.department is an ID or empty
         || departments.find(d => d.id === employee?.department_id)?.name
         || '-';
 
     return (
-        <div className="space-y-6">
+        <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-6"
+        >
             {/* Header Profile */}
             <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
+                variants={itemVariants}
                 className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-hrd to-hrd-dark p-6 text-white shadow-lg"
             >
                 <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
@@ -135,7 +202,7 @@ export function ESSPortal() {
                         <p className="text-white/80 font-body text-lg">{employee?.position || 'Karyawan'}</p>
                         <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-3">
                             <Badge variant="secondary" className="bg-white/20 text-white border-none hover:bg-white/30">
-                                NIK: {user.id.slice(0, 8).toUpperCase()}
+                                NIK: {user?.id.slice(0, 8).toUpperCase()}
                             </Badge>
                             <Badge variant="secondary" className="bg-white/20 text-white border-none hover:bg-white/30">
                                 {employee?.status === 'active' ? 'Aktif' : 'On Leave'}
@@ -143,7 +210,11 @@ export function ESSPortal() {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+                        <Button
+                            variant="outline"
+                            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                            onClick={() => setIsEditDialogOpen(true)}
+                        >
                             <Settings className="w-4 h-4 mr-2" />
                             Edit Profil
                         </Button>
@@ -154,6 +225,11 @@ export function ESSPortal() {
                 <div className="absolute top-0 right-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
                 <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-64 w-64 rounded-full bg-black/10 blur-3xl" />
             </motion.div>
+
+            <EditProfileDialog
+                open={isEditDialogOpen}
+                onOpenChange={setIsEditDialogOpen}
+            />
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 <TabsList className="flex w-full overflow-x-auto lg:w-auto lg:inline-flex bg-gray-100/50 p-1 no-scrollbar">
@@ -238,7 +314,10 @@ export function ESSPortal() {
                             </CardContent>
                         </Card>
 
-                        <Card className="shadow-sm border-gray-200 overflow-hidden group cursor-pointer hover:border-hrd transition-all">
+                        <Card
+                            className="shadow-sm border-gray-200 overflow-hidden group cursor-pointer hover:border-hrd transition-all"
+                            onClick={() => setActiveTab('attendance')}
+                        >
                             <CardContent className="p-0">
                                 <div className="bg-hrd/5 p-6 flex items-center justify-between">
                                     <div>
@@ -246,7 +325,7 @@ export function ESSPortal() {
                                         <h3 className="text-xl font-bold mt-1">Belum Absen</h3>
                                     </div>
                                     <div className="h-12 w-12 rounded-full bg-hrd text-white flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <Camera className="w-6 h-6" />
+                                        <Clock className="w-6 h-6" />
                                     </div>
                                 </div>
                             </CardContent>
@@ -278,6 +357,6 @@ export function ESSPortal() {
                     <RewardManagement />
                 </TabsContent>
             </Tabs>
-        </div>
+        </motion.div>
     );
 }

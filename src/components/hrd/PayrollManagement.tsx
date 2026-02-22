@@ -21,11 +21,14 @@ import {
   Wallet,
   FileText,
   Send,
-  Printer
+  Printer,
+  Info,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -45,6 +48,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
   Dialog,
@@ -63,10 +67,13 @@ import { generateSalarySlip } from '@/utils/pdfGenerator';
 import { exportPayrollToExcel } from '@/utils/excelGenerator';
 import { PayrollPrintSettingsDialog } from './PayrollPrintSettingsDialog';
 
+
 // Hooks
 import { usePayroll, useEmployees, useLoans } from '@/hooks/useSupabase';
-import { attendanceService } from '@/services/supabaseService';
+import { attendanceService, rewardService, leaveService } from '@/services/supabaseService';
 import { userService } from '@/services/userService';
+import { settingsService } from '@/services/settingsService';
+import { DEFAULT_PAYROLL_SETTINGS, PayrollSettings } from '@/types/settings';
 import { useAuth } from '@/contexts/AuthContext';
 import type { PayrollRecord } from '@/lib/supabase';
 
@@ -78,10 +85,23 @@ interface PayrollFormData {
   period_month: number;
   period_year: number;
   base_salary: string;
-  allowances: string;
-  deductions: string;
+  allowances: string; // Tunjangan Lain-lain
+  deductions: string; // Potongan Lain-lain
   overtime_hours?: string;
   overtime_rate?: string;
+  // New Fields
+  gasoline_allowance: string;
+  meal_allowance: string;
+  position_allowance: string;
+  discretionary_allowance: string;
+  thr_allowance: string;
+
+  bpjs_deduction: string;
+  absent_deduction: string;
+  manual_allowance_details: { title: string, amount: number }[];
+  manual_deduction_details: { title: string, amount: number }[];
+  bank_account_details: string;
+  is_perfect_attendance: boolean;
 }
 
 const statusLabels: Record<PayrollStatus, string> = {
@@ -130,38 +150,33 @@ export function PayrollManagement() {
   const currentMonth = currentDate.getMonth() + 1;
   const currentYear = currentDate.getFullYear();
 
+  // State Declarations
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [selectedYear, setSelectedYear] = useState(currentYear);
-
-  const { payroll, loading, error, addPayroll, markAsPaid, deletePayroll } = usePayroll(selectedMonth, selectedYear);
-  const { employees } = useEmployees();
-  const { loans } = useLoans(); // Fetch loans
-  const { user } = useAuth();
-  const { toast } = useToast();
-
-  console.log("DEBUG: Current User Role:", user?.role);
-  console.log("DEBUG: Current User ID:", user?.id);
-  console.log("DEBUG: Current Employee ID:", user?.employee_id);
-
-  // Print Settings State
-  const [printSettings, setPrintSettings] = useState<unknown>(undefined);
-
-  // Load initial settings
-  useEffect(() => {
-    const saved = localStorage.getItem('hris_payroll_print_settings');
-    if (saved) {
-      try {
-        setPrintSettings(JSON.parse(saved));
-      } catch (e) { console.error(e); }
-    }
-  }, []);
-
   const [activeTab, setActiveTab] = useState<'current' | 'history' | 'summary'>('current');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [selectedPayroll, setSelectedPayroll] = useState<PayrollRecord | null>(null);
-
+  const [payrollSettings, setPayrollSettings] = useState<PayrollSettings>(DEFAULT_PAYROLL_SETTINGS);
+  const [printSettings, setPrintSettings] = useState<any>(undefined);
+  const [deductionDetails, setDeductionDetails] = useState<string[]>([]);
+  const [allowanceDetails, setAllowanceDetails] = useState<string[]>([]);
+  const [linkedEmployeeIds, setLinkedEmployeeIds] = useState<string[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<{
+    attendanceCount: number;
+    absentCount: number;
+    presentCount: number;
+    lateMinutes: number;
+    deductionRate: number;
+    foundSettings: boolean;
+    error?: string;
+    rawStatuses?: string[];
+  }>({ attendanceCount: 0, absentCount: 0, presentCount: 0, lateMinutes: 0, deductionRate: 1000, foundSettings: false });
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
   const [formData, setFormData] = useState<PayrollFormData>({
     employee_id: '',
     period_month: currentMonth,
@@ -170,11 +185,56 @@ export function PayrollManagement() {
     allowances: '0',
     deductions: '0',
     overtime_hours: '0',
-    overtime_rate: '0'
+    overtime_rate: '0',
+    gasoline_allowance: '0',
+    meal_allowance: '0',
+    position_allowance: '0',
+    discretionary_allowance: '0',
+    thr_allowance: '0',
+    bpjs_deduction: '0',
+    absent_deduction: '0',
+    manual_allowance_details: [],
+    manual_deduction_details: [],
+    bank_account_details: '',
+    is_perfect_attendance: false,
   });
 
-  const [deductionDetails, setDeductionDetails] = useState<string[]>([]);
-  const [linkedEmployeeIds, setLinkedEmployeeIds] = useState<string[]>([]);
+  // Custom Hooks
+  const { payroll, loading, error, addPayroll, markAsPaid, updatePayroll, deletePayroll } = usePayroll(selectedMonth, selectedYear);
+  const { employees } = useEmployees();
+  const { loans } = useLoans();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  // Load initial settings
+  useEffect(() => {
+    const saved = localStorage.getItem('hris_payroll_print_settings');
+    if (saved) {
+      try {
+        setPrintSettings(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  const fetchPayrollSettings = async () => {
+    try {
+      const settings = await settingsService.getPayrollSettings();
+      setPayrollSettings(settings);
+    } catch (error: any) {
+      console.error("Failed to fetch payroll settings", error);
+      setDebugInfo(prev => ({
+        ...prev,
+        foundSettings: false,
+        error: error.message || JSON.stringify(error)
+      }));
+    }
+  };
+
+  useEffect(() => {
+    fetchPayrollSettings();
+  }, [showAddDialog]);
 
   // Fetch linked users (employees with system accounts)
   useEffect(() => {
@@ -191,6 +251,25 @@ export function PayrollManagement() {
     fetchLinkedUsers();
   }, []);
 
+  // Automatic payroll suggestion
+  useEffect(() => {
+    if (payrollSettings?.is_automatic_payroll && isPayrollDay() && user?.role !== 'staff') {
+      const pendingEmployees = employees.filter(emp => !payroll.some(p => p.employee_id === emp.id));
+      if (pendingEmployees.length > 0 && !isBatchProcessing) {
+        toast({
+          title: "Pengingat Penggajian Otomatis",
+          description: `Hari ini adalah jadwal penggajian. Ada ${pendingEmployees.length} karyawan yang belum diproses. Klik "Proses Payroll Masal" untuk memulai.`,
+          duration: 10000,
+        });
+      }
+    }
+  }, [payrollSettings, payroll, employees]);
+
+  function isPayrollDay() {
+    if (!payrollSettings || !payrollSettings.payroll_schedule_day) return false;
+    return currentDate.getDate() >= payrollSettings.payroll_schedule_day;
+  }
+
   // Auto-fill salary and calculate deductions when employee changes
   useEffect(() => {
     if (formData.employee_id) {
@@ -198,11 +277,53 @@ export function PayrollManagement() {
         const employee = employees.find(e => e.id === formData.employee_id);
         if (!employee) return;
 
-        let newDetails: string[] = [];
+        let newDeductionDetails: string[] = [];
+        let newAllowanceDetails: string[] = [];
         let totalDeductions = 0;
 
         // 1. Base Salary
-        const salary = employee.salary.toString();
+        let baseSalaryValue = employee.salary;
+        let maternityInfo = '';
+
+        // --- 1.1 Maternity Leave Check ---
+        try {
+          const employeeLeaves = await leaveService.getByEmployee(formData.employee_id);
+          const maternityLeaves = employeeLeaves.filter(l =>
+            l.leave_type === 'maternity' &&
+            l.status === 'approved'
+          );
+
+          if (maternityLeaves.length > 0) {
+            const periodStart = new Date(formData.period_year, formData.period_month - 1, 1);
+            const periodEnd = new Date(formData.period_year, formData.period_month, 0);
+
+            const activeMaternity = maternityLeaves.find(l => {
+              const start = new Date(l.start_date);
+              const end = new Date(l.end_date);
+              return (start <= periodEnd && end >= periodStart);
+            });
+
+            if (activeMaternity) {
+              const leaveStart = new Date(activeMaternity.start_date);
+              const monthDiff = (formData.period_year * 12 + formData.period_month) - (leaveStart.getFullYear() * 12 + (leaveStart.getMonth() + 1));
+              const monthIndex = monthDiff + 1;
+
+              if (monthIndex >= 1 && monthIndex <= 3) {
+                let multiplier = 1.0;
+                if (monthIndex === 2) multiplier = 0.75;
+                else if (monthIndex === 3) multiplier = 0.5;
+
+                baseSalaryValue = Math.round(baseSalaryValue * multiplier);
+                maternityInfo = `Cuti Hamil Bulan ke-${monthIndex} (${multiplier * 100}% Gaji)`;
+                newAllowanceDetails.push(maternityInfo);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Maternity check error:", err);
+        }
+
+        const salary = baseSalaryValue.toString();
 
         // 2. Loan Deductions
         const activeLoans = loans.filter(l =>
@@ -216,22 +337,45 @@ export function PayrollManagement() {
         totalDeductions += totalLoanDeduction;
 
         if (totalLoanDeduction > 0) {
-          newDetails.push(`Potongan Kasbon: ${formatCurrency(totalLoanDeduction)}`);
+          newDeductionDetails.push(`Potongan Kasbon: ${formatCurrency(totalLoanDeduction)}`);
         }
 
         // 3. Attendance Info
-        try {
-          const attendance = await attendanceService.getByEmployee(formData.employee_id, formData.period_month, formData.period_year);
+        let mealAllowance = 0;
+        let gasolineAllowance = 0;
+        let absentDeductionAmount = 0;
+        let totalRewardAllowance = 0;
+        let rewardDetailsItems: { title: string, amount: number }[] = [];
+        let bpjsDeduction = 0;
+        let positionAllowance = 0;
+        let thrAllowance = 0;
+        let attendance: any[] = [];
+        let absentCount = 0;
+        let totalLateMinutes = 0;
+        let manualAllowanceItems: { title: string, amount: number }[] = [];
+        let manualDeductionItems: { title: string, amount: number }[] = [];
+        let totalManualAllowances = 0;
+        let totalManualDeductions = 0;
 
-          // Absensi (Alpha)
-          const absentCount = attendance?.filter((a: any) => a.status === 'absent').length || 0;
+        try {
+          attendance = await attendanceService.getByEmployee(formData.employee_id, formData.period_month, formData.period_year);
+
+          // Absensi (Alpha) - status 'absent'
+          absentCount = attendance?.filter((a: any) => {
+            const status = (a.status || '').toLowerCase().trim();
+            return status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa';
+          }).length || 0;
+
           if (absentCount > 0) {
-            newDetails.push(`Absensi: ${absentCount} hari tidak hadir`);
+            if (payrollSettings && payrollSettings.payroll_deduction_absent > 0) {
+              absentDeductionAmount = absentCount * payrollSettings.payroll_deduction_absent;
+              newDeductionDetails.push(`Absensi: ${absentCount} hari tidak hadir (Rp ${absentDeductionAmount.toLocaleString('id-ID')})`);
+            }
           }
 
           // Keterlambatan (Late)
-          // Aturan: Potong Rp 1.000 per menit keterlambatan
-          let totalLateMinutes = 0;
+          totalLateMinutes = 0;
+          let latePenalty = 0;
           attendance?.forEach((record: any) => {
             if (record.status === 'late' && record.check_in) {
               const [h, m] = record.check_in.split(':').map(Number);
@@ -239,47 +383,104 @@ export function PayrollManagement() {
               const workStartMinutes = 8 * 60; // 08:00 standard masuk
 
               if (checkInMinutes > workStartMinutes) {
-                totalLateMinutes += (checkInMinutes - workStartMinutes);
+                const diff = (checkInMinutes - workStartMinutes);
+                totalLateMinutes += diff;
               }
             }
           });
 
           if (totalLateMinutes > 0) {
-            const latePenalty = totalLateMinutes * 1000;
-            totalDeductions += latePenalty;
-            newDetails.push(`Keterlambatan: ${totalLateMinutes} menit (Rp ${latePenalty.toLocaleString('id-ID')})`);
+            const multiplier = payrollSettings?.attendance_late_penalty || 1000;
+            latePenalty = totalLateMinutes * multiplier;
+            // The User wants Late Penalty (min * 1000) to be part of "Potongan Absen"
+            absentDeductionAmount += latePenalty;
+            newDeductionDetails.push(`Keterlambatan: ${totalLateMinutes} menit (Rp ${latePenalty.toLocaleString('id-ID')})`);
           }
 
-          // 4. Sanctions Info (SP1)
-          const sp1Count = attendance?.filter((record: any) =>
-            record.notes && record.notes.includes('SP1 TRIGGERED')
-          ).length || 0;
+          const presentCount = attendance?.filter((a: any) => ['present', 'late', 'business_trip', 'wfh'].includes(a.status)).length || 0;
 
-          if (sp1Count > 0) {
-            newDetails.push(`Sanksi: ${sp1Count}x Peringatan SP1 Mingguan (Akumulasi > 30 menit)`);
+          setDebugInfo({
+            attendanceCount: attendance?.length || 0,
+            absentCount: absentCount,
+            presentCount: presentCount,
+            lateMinutes: totalLateMinutes,
+            deductionRate: payrollSettings?.attendance_late_penalty || 1000,
+            foundSettings: !!payrollSettings,
+            rawStatuses: attendance?.slice(0, 5).map((a: any) => a.status || 'null')
+          });
+
+          // --- Auto-Calculate Allowances based on Settings ---
+          if (payrollSettings) {
+            const daysInMonth = new Date(formData.period_year, formData.period_month, 0).getDate();
+
+            mealAllowance = Math.round(((payrollSettings.payroll_allowance_meal || 0) / daysInMonth) * presentCount);
+            gasolineAllowance = Math.round(((payrollSettings.payroll_allowance_gasoline || 0) / daysInMonth) * presentCount);
+
+            // Try to find BPJS in employee's profile first
+            const employeeBpjs = employee.deductions?.find((d: any) =>
+              d.title.toUpperCase().includes('BPJS')
+            );
+
+            if (employeeBpjs) {
+              bpjsDeduction = employeeBpjs.amount;
+            } else {
+              bpjsDeduction = payrollSettings.payroll_bpjs_rate || 0;
+            }
+
+            positionAllowance = payrollSettings.payroll_allowance_position || 0;
+            thrAllowance = payrollSettings.payroll_allowance_thr || 0;
+
+            if (payrollSettings.payroll_allowance_meal > 0 && mealAllowance > 0) {
+              newAllowanceDetails.push(`Uang Makan: ${presentCount}/${daysInMonth} hari x ${formatCurrency(payrollSettings.payroll_allowance_meal)} = ${formatCurrency(mealAllowance)}`);
+            }
+            if (payrollSettings.payroll_allowance_gasoline > 0 && gasolineAllowance > 0) {
+              newAllowanceDetails.push(`Uang Bensin: ${presentCount}/${daysInMonth} hari x ${formatCurrency(payrollSettings.payroll_allowance_gasoline)} = ${formatCurrency(gasolineAllowance)}`);
+            }
           }
 
-          console.log("DEBUG: Attendance Sanctions Check");
-          console.log("Attendance Records:", attendance?.length);
-          console.log("SP1 Count:", sp1Count);
-          console.log("Notes found:", attendance?.map((a: any) => a.notes));
+          // --- Manual Items from Employee Profile ---
+          manualAllowanceItems = employee.allowances || [];
+          manualDeductionItems = employee.deductions || [];
 
-        } catch (err) {
-          console.error("Failed to fetch attendance", err);
+          if (manualAllowanceItems.length > 0) {
+            totalManualAllowances = manualAllowanceItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+          }
+
+          if (manualDeductionItems.length > 0) {
+            totalManualDeductions = manualDeductionItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+          }
+
+        } catch (error: any) {
+          console.error("Error in payroll calculation:", error);
+          setDebugInfo(prev => ({
+            ...prev,
+            error: `Attendance Error: ${error.message || JSON.stringify(error)}`
+          }));
         }
 
-        setDeductionDetails(newDetails);
+        setDeductionDetails(newDeductionDetails);
+        setAllowanceDetails(newAllowanceDetails);
 
         setFormData(prev => ({
           ...prev,
           base_salary: salary,
-          deductions: totalDeductions.toString()
+          deductions: (totalDeductions + totalManualDeductions).toString(),
+          bank_account_details: employee.bank_account || '',
+          meal_allowance: mealAllowance.toString(),
+          gasoline_allowance: gasolineAllowance.toString(),
+          bpjs_deduction: bpjsDeduction.toString(),
+          absent_deduction: absentDeductionAmount.toString(),
+          manual_allowance_details: manualAllowanceItems,
+          manual_deduction_details: manualDeductionItems,
+          position_allowance: positionAllowance.toString(),
+          thr_allowance: thrAllowance.toString(),
+          is_perfect_attendance: absentCount === 0 && totalLateMinutes === 0 && (attendance?.length || 0) > 0,
         }));
       };
 
       fetchData();
     }
-  }, [formData.employee_id, employees, loans, formData.period_month, formData.period_year]);
+  }, [formData.employee_id, employees, loans, formData.period_month, formData.period_year, payrollSettings]);
 
   // Filter payroll based on search and role
   const filteredPayroll = payroll.filter(pay => {
@@ -288,7 +489,6 @@ export function PayrollManagement() {
       if (user.employee_id) {
         return pay.employee_id === user.employee_id;
       }
-      // If staff but no employee_id found, show nothing for safety
       return false;
     }
 
@@ -316,9 +516,23 @@ export function PayrollManagement() {
       allowances: '0',
       deductions: '0',
       overtime_hours: '0',
-      overtime_rate: '0'
+      overtime_rate: '0',
+      gasoline_allowance: '0',
+      meal_allowance: '0',
+      position_allowance: '0',
+      discretionary_allowance: '0',
+      thr_allowance: '0',
+      bpjs_deduction: '0',
+      absent_deduction: '0',
+      manual_allowance_details: [],
+      manual_deduction_details: [],
+      bank_account_details: '',
+      is_perfect_attendance: false,
     });
     setDeductionDetails([]);
+    setAllowanceDetails([]);
+    setIsEditing(false);
+    setEditId(null);
   };
 
   // Calculate net salary
@@ -329,13 +543,54 @@ export function PayrollManagement() {
     const overtimeHours = parseFloat(formData.overtime_hours) || 0;
     const overtimeRate = parseFloat(formData.overtime_rate) || 0;
 
+    const gasoline = parseFloat(formData.gasoline_allowance) || 0;
+    const meal = parseFloat(formData.meal_allowance) || 0;
+    const position = parseFloat(formData.position_allowance) || 0;
+    const discretionary = parseFloat(formData.discretionary_allowance) || 0;
+    const thr = parseFloat(formData.thr_allowance) || 0;
+    const bpjs = parseFloat(formData.bpjs_deduction) || 0;
+    const absent = parseFloat(formData.absent_deduction) || 0;
+
+    const manualAllowancesTotal = formData.manual_allowance_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+    const manualDeductionsTotal = formData.manual_deduction_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+
+    const totalAllowances = allowances + gasoline + meal + position + discretionary + thr + manualAllowancesTotal;
+    const totalDeductions = deductions + bpjs + absent; // 'deductions' already includes loans + manual deductions now
     const overtimePay = overtimeHours * overtimeRate;
-    return baseSalary + allowances + overtimePay - deductions;
+
+    return baseSalary + totalAllowances + overtimePay - totalDeductions;
+  };
+
+  // Handle edit payroll
+  const handleEditPayroll = (p: PayrollRecord) => {
+    setIsEditing(true);
+    setEditId(p.id);
+    setFormData({
+      employee_id: p.employee_id,
+      period_month: p.period_month,
+      period_year: p.period_year,
+      base_salary: p.base_salary.toString(),
+      allowances: (p.allowances - (p.gasoline_allowance || 0) - (p.meal_allowance || 0) - (p.position_allowance || 0) - (p.discretionary_allowance || 0) - (p.thr_allowance || 0)).toString(),
+      deductions: (p.deductions - (p.bpjs_deduction || 0) - (p.absent_deduction || 0)).toString(),
+      overtime_hours: '0',
+      overtime_rate: '0',
+      gasoline_allowance: (p.gasoline_allowance || 0).toString(),
+      meal_allowance: (p.meal_allowance || 0).toString(),
+      position_allowance: (p.position_allowance || 0).toString(),
+      discretionary_allowance: (p.discretionary_allowance || 0).toString(),
+      thr_allowance: (p.thr_allowance || 0).toString(),
+      bpjs_deduction: (p.bpjs_deduction || 0).toString(),
+      absent_deduction: (p.absent_deduction || 0).toString(),
+      manual_allowance_details: [],
+      manual_deduction_details: [],
+      bank_account_details: p.bank_account_details || '',
+      is_perfect_attendance: false,
+    });
+    setShowAddDialog(true);
   };
 
   // Handle add payroll
   const handleAddPayroll = async () => {
-    console.log("Attempting to add payroll:", formData);
     try {
       if (!formData.employee_id || !formData.base_salary) {
         toast({
@@ -346,49 +601,11 @@ export function PayrollManagement() {
         return;
       }
 
-      // Check if employee is registered (has system account)
       if (!linkedEmployeeIds.includes(formData.employee_id)) {
         toast({
           title: 'Karyawan Belum Registrasi',
-          description: 'Karyawan ini belum melakukan registrasi akun (User Account). Silakan buat akun pengguna untuk karyawan ini terlebih dahulu di menu Manajemen Pengguna.',
+          description: 'Karyawan ini belum memiliki akun sistem (User Account).',
           variant: 'destructive',
-        });
-        return;
-      }
-
-      // Check for duplicate pending payroll (Prevent Double/Spam)
-      // Only effective if we are viewing the same period (which is standard usage)
-      const isDuplicate = payroll.some(p =>
-        p.employee_id === formData.employee_id &&
-        p.period_month === formData.period_month &&
-        p.period_year === formData.period_year &&
-        p.status === 'pending'
-      );
-
-      if (isDuplicate) {
-        toast({
-          title: 'Permintaan Gagal',
-          description: 'Gaji anda sudah diajukan, silahkan cek status.',
-          variant: 'default',
-          className: 'bg-yellow-600 text-white border-yellow-700'
-        });
-        return;
-      }
-
-      // Check for already PAID/APPROVED payroll
-      const isPaid = payroll.some(p =>
-        p.employee_id === formData.employee_id &&
-        p.period_month === formData.period_month &&
-        p.period_year === formData.period_year &&
-        p.status === 'paid'
-      );
-
-      if (isPaid) {
-        toast({
-          title: 'Permintaan Gagal',
-          description: 'Gaji anda sudah disetujui, cek status.',
-          variant: 'default',
-          className: 'bg-green-600 text-white border-green-700'
         });
         return;
       }
@@ -396,644 +613,539 @@ export function PayrollManagement() {
       const baseSalary = parseFloat(formData.base_salary);
       const allowances = parseFloat(formData.allowances) || 0;
       const deductions = parseFloat(formData.deductions) || 0;
+      const gasoline = parseFloat(formData.gasoline_allowance) || 0;
+      const meal = parseFloat(formData.meal_allowance) || 0;
+      const position = parseFloat(formData.position_allowance) || 0;
+      const discretionary = parseFloat(formData.discretionary_allowance) || 0;
+      const thr = parseFloat(formData.thr_allowance) || 0;
+      const bpjs = parseFloat(formData.bpjs_deduction) || 0;
+      const absent = parseFloat(formData.absent_deduction) || 0;
+      const manualAllowancesTotal = formData.manual_allowance_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+
+      const totalAllowances = allowances + gasoline + meal + position + discretionary + thr + manualAllowancesTotal;
+      const totalDeductions = deductions + bpjs + absent;
       const netSalary = calculateNetSalary();
 
-      const newPayroll = {
+      const payrollPayload: any = {
         employee_id: formData.employee_id,
         period_month: formData.period_month,
         period_year: formData.period_year,
         base_salary: baseSalary,
-        allowances,
-        deductions,
+        allowances: totalAllowances,
+        deductions: totalDeductions,
         net_salary: netSalary,
-        status: 'pending' as const,
-        pay_date: null
+        gasoline_allowance: gasoline,
+        meal_allowance: meal,
+        position_allowance: position,
+        discretionary_allowance: discretionary,
+        thr_allowance: thr,
+        bpjs_deduction: bpjs,
+        absent_deduction: absent,
+        reward_allowance: 0,
+        reward_details: [],
+        bank_account_details: formData.bank_account_details,
       };
 
-      console.log("Payload:", newPayroll);
-      await addPayroll(newPayroll);
-      console.log("Payroll added successfully");
+      // --- DUPLICATE CHECK ---
+      if (!isEditing) {
+        const isDuplicate = payroll.some(p =>
+          p.employee_id === formData.employee_id &&
+          p.period_month === formData.period_month &&
+          p.period_year === formData.period_year
+        );
+
+        if (isDuplicate) {
+          toast({
+            title: 'Duplikat',
+            description: 'Data payroll untuk periode ini sudah ada. Silakan gunakan menu Edit.',
+            variant: 'destructive'
+          });
+          return;
+        }
+      }
+
+      if (isEditing && editId) {
+        await updatePayroll(editId, payrollPayload);
+        toast({ title: 'Sukses', description: 'Berhasil memperbarui data payroll!' });
+      } else {
+        payrollPayload.status = 'pending';
+        await addPayroll(payrollPayload);
+        toast({ title: 'Sukses', description: 'Berhasil membuat data payroll!' });
+      }
+
       setShowAddDialog(false);
       resetForm();
-      toast({
-        title: 'Sukses',
-        description: 'Berhasil membuat data payroll!',
-        variant: 'default', // or 'success' if available, usually default is fine
-        className: 'bg-green-600 text-white'
-      });
     } catch (error: any) {
-      console.error('Failed to add payroll:', error);
+      console.error('Failed to save payroll:', error);
       toast({
         title: 'Error',
-        description: `Gagal menambah data penggajian: ${error.message || 'Error tidak diketahui'}`,
+        description: `Gagal menyimpan data penggajian: ${error.message}`,
         variant: 'destructive',
       });
     }
   };
 
-  // Handle mark as paid
-  const handleMarkAsPaid = async (payrollId: string) => {
+  const handleProcessBatchPayroll = async () => {
     try {
-      const payDate = new Date().toISOString().split('T')[0];
-      await markAsPaid(payrollId, payDate);
-    } catch (error) {
-      console.error('Failed to mark as paid:', error);
+      setIsBatchProcessing(true);
+      setBatchProgress(0);
+
+      const eligibleEmployees = employees.filter(emp => !payroll.some(p => p.employee_id === emp.id));
+
+      if (eligibleEmployees.length === 0) {
+        toast({
+          title: "Sudah Diproses",
+          description: "Semua karyawan sudah memiliki data payroll untuk periode ini.",
+        });
+        setIsBatchProcessing(false);
+        return;
+      }
+
       toast({
-        title: 'Error',
-        description: 'Gagal menandai sebagai dibayar',
-        variant: 'destructive',
+        title: "Memulai Proses",
+        description: `Memproses payroll untuk ${eligibleEmployees.length} karyawan...`,
       });
+
+      let count = 0;
+      for (const employee of eligibleEmployees) {
+        // Basic calculations
+        let baseSalary = employee.salary;
+        let totalDeductions = 0;
+        let mealAllowance = 0;
+        let gasolineAllowance = 0;
+        let totalRewardAllowance = 0;
+        let absentDeductionAmount = 0;
+        let newAllowanceDetails: string[] = [];
+
+        // --- Special Case: Maternity Leave ---
+        try {
+          const leaveRequests = await leaveService.getByEmployee(employee.id);
+          const maternityLeave = leaveRequests?.find(l =>
+            l.leave_type === 'maternity' &&
+            l.status === 'approved' &&
+            new Date(l.start_date) <= new Date(selectedYear, selectedMonth - 1, 1) &&
+            new Date(l.end_date) >= new Date(selectedYear, selectedMonth - 1, 1)
+          );
+
+          if (maternityLeave) {
+            const start = new Date(maternityLeave.start_date);
+            const current = new Date(selectedYear, selectedMonth - 1, 1);
+            const diffMonths = (current.getFullYear() - start.getFullYear()) * 12 + (current.getMonth() - start.getMonth());
+
+            let tierPercentage = 100;
+            if (diffMonths === 1) tierPercentage = 75;
+            else if (diffMonths >= 2) tierPercentage = 50;
+
+            const originalSalary = baseSalary;
+            baseSalary = (originalSalary * tierPercentage) / 100;
+            newAllowanceDetails.push(`Maternity Leave (${tierPercentage}% Gaji): ${formatCurrency(originalSalary)} -> ${formatCurrency(baseSalary)}`);
+          }
+        } catch (err) {
+          console.error("Error checking maternity leave in batch:", err);
+        }
+
+        // Loans
+        const activeLoans = loans.filter(l =>
+          l.employee_id === employee.id &&
+          l.status === 'approved' &&
+          l.remaining_amount > 0 &&
+          new Date(l.start_date) <= new Date(selectedYear, selectedMonth - 1, 1)
+        );
+        totalDeductions += activeLoans.reduce((sum, loan) => sum + loan.installment_amount, 0);
+
+        // Attendance & Rewards
+        const attendance = await attendanceService.getByEmployee(employee.id, selectedMonth, selectedYear);
+        const rewards = await rewardService.getByEmployee(employee.id);
+
+        const periodRewards = rewards?.filter((r: any) => {
+          if (r.status !== 'claimed' || !r.claimed_date) return false;
+          const rewardDate = new Date(r.claimed_date);
+          return rewardDate.getMonth() + 1 === selectedMonth && rewardDate.getFullYear() === selectedYear;
+        }) || [];
+
+        totalRewardAllowance = periodRewards.reduce((sum: number, r: any) => sum + (r.points || 0), 0);
+        const rewardDetailsItems = periodRewards.map((r: any) => ({
+          title: r.title || 'Penghargaan',
+          amount: r.points || 0
+        }));
+
+        const absentCount = attendance?.filter((a: any) => {
+          const status = (a.status || '').toLowerCase().trim();
+          return status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa';
+        }).length || 0;
+
+        if (absentCount > 0 && payrollSettings?.payroll_deduction_absent) {
+          absentDeductionAmount = absentCount * payrollSettings.payroll_deduction_absent;
+        }
+
+        let totalLateMinutes = 0;
+        const manualAllowanceItems = employee.allowances || [];
+        const manualDeductionItems = employee.deductions || [];
+        const totalManualAllowances = manualAllowanceItems.reduce((sum, i) => sum + (i.amount || 0), 0);
+        const totalManualDeductions = manualDeductionItems.reduce((sum, i) => sum + (i.amount || 0), 0);
+
+        attendance?.forEach((record: any) => {
+          if (record.status === 'late' && record.check_in) {
+            const [h, m] = record.check_in.split(':').map(Number);
+            const checkInMinutes = h * 60 + m;
+            const workStartMinutes = 8 * 60;
+            if (checkInMinutes > workStartMinutes) {
+              totalLateMinutes += (checkInMinutes - workStartMinutes);
+            }
+          }
+        });
+
+        if (totalLateMinutes > 0) {
+          absentDeductionAmount += totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
+        }
+
+        const presentCount = attendance?.filter((a: any) => ['present', 'late', 'business_trip', 'wfh'].includes(a.status)).length || 0;
+        const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+
+        mealAllowance = Math.round(((payrollSettings?.payroll_allowance_meal || 0) / daysInMonth) * presentCount);
+        gasolineAllowance = Math.round(((payrollSettings?.payroll_allowance_gasoline || 0) / daysInMonth) * presentCount);
+
+        // --- Perfect Attendance Reward (Automatic) ---
+        const isPerfect = absentCount === 0 && totalLateMinutes === 0 && (attendance?.length || 0) > 0;
+        if (isPerfect && payrollSettings?.payroll_reward_perfect_attendance && payrollSettings.payroll_reward_perfect_attendance > 0) {
+          const amount = payrollSettings.payroll_reward_perfect_attendance;
+          totalRewardAllowance += amount;
+          rewardDetailsItems.push({
+            title: 'Kehadiran Sempurna',
+            amount: amount
+          });
+        }
+
+        const bpjs = payrollSettings?.payroll_bpjs_rate || 0;
+        const position = payrollSettings?.payroll_allowance_position || 0;
+        const discretionary = 0;
+        const thr = payrollSettings?.payroll_allowance_thr || 0;
+
+        const totalOtherAllowances = mealAllowance + gasolineAllowance + position + discretionary + thr + totalManualAllowances;
+        const combinedDeductions = totalDeductions + bpjs + absentDeductionAmount + totalManualDeductions;
+        const netSalary = baseSalary + totalOtherAllowances + totalRewardAllowance - combinedDeductions;
+
+        await addPayroll({
+          employee_id: employee.id,
+          period_month: selectedMonth,
+          period_year: selectedYear,
+          base_salary: baseSalary,
+          allowances: totalOtherAllowances,
+          deductions: combinedDeductions,
+          net_salary: netSalary,
+          status: 'pending',
+          gasoline_allowance: gasolineAllowance,
+          meal_allowance: mealAllowance,
+          position_allowance: position,
+          discretionary_allowance: discretionary,
+          thr_allowance: thr,
+          bpjs_deduction: bpjs,
+          absent_deduction: absentDeductionAmount,
+          reward_allowance: totalRewardAllowance,
+          reward_details: rewardDetailsItems,
+          manual_allowance_details: manualAllowanceItems,
+          manual_deduction_details: manualDeductionItems,
+          bank_account_details: employee.bank_account || '',
+          is_perfect_attendance: isPerfect
+        });
+
+        count++;
+        setBatchProgress(Math.round((count / eligibleEmployees.length) * 100));
+      }
+
+      toast({
+        title: "Sukses",
+        description: `Berhasil memproses ${count} data payroll.`,
+        className: "bg-green-600 text-white"
+      });
+    } catch (err: any) {
+      console.error("Batch process failed:", err);
+      toast({
+        title: "Proses Gagal",
+        description: err.message || "Terjadi kesalahan saat memproses masal.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsBatchProcessing(false);
     }
   };
 
-  // Handle Delete Payroll
-  const handleDeletePayroll = async (payrollId: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus data penggajian ini?')) return;
-
+  const handleMarkAsPaid = async (id: string) => {
     try {
-      await deletePayroll(payrollId);
-      // alert('Data penggajian berhasil dihapus'); 
-    } catch (error) {
-      console.error('Failed to delete payroll:', error);
-      toast({
-        title: 'Error',
-        description: 'Gagal menghapus data penggajian',
-        variant: 'destructive',
-      });
+      await markAsPaid(id, new Date().toISOString());
+      toast({ title: 'Sukses', description: 'Payroll ditandai sebagai dibayar.' });
+    } catch (err: any) {
+      toast({ title: 'Gagal', description: err.message, variant: 'destructive' });
     }
   };
 
-  // Handle download slip
-  const handleDownloadSlip = (payroll: PayrollRecord) => {
-    const employee = employees.find(emp => emp.id === payroll.employee_id);
-    if (!employee) {
-      toast({
-        title: 'Error',
-        description: 'Data karyawan tidak ditemukan',
-        variant: 'destructive',
-      });
-      return;
+  const handleDeletePayroll = async (id: string) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus data payroll ini?')) return;
+    try {
+      await deletePayroll(id);
+      toast({ title: 'Sukses', description: 'Data payroll berhasil dihapus.' });
+    } catch (err: any) {
+      toast({ title: 'Gagal', description: err.message, variant: 'destructive' });
     }
-    generateSalarySlip(payroll, employee, printSettings as any);
   };
 
-  // Handle Export Excel
+  const handlePrintSlip = (pay: PayrollRecord) => {
+    const employee = employees.find(e => e.id === pay.employee_id);
+    if (!employee) return;
+    generateSalarySlip(pay, employee, printSettings);
+  };
+
   const handleExportExcel = () => {
-    if (filteredPayroll.length === 0) {
-      toast({
-        title: 'Info',
-        description: 'Tidak ada data payroll untuk diexport',
-      });
-      return;
-    }
-
-    exportPayrollToExcel(filteredPayroll, employees, {
-      month: selectedMonth,
-      year: selectedYear
-    });
-
-    // alert('Laporan payroll berhasil didownload');
+    exportPayrollToExcel(filteredPayroll, employees, { month: selectedMonth, year: selectedYear });
   };
-
-  // Handle view payroll details
-  const handleViewPayroll = (payroll: PayrollRecord) => {
-    setSelectedPayroll(payroll);
-    setShowViewDialog(true);
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-hrd/30 border-t-hrd rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground font-body">Memuat data penggajian...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>Error memuat data: {error}</AlertDescription>
-      </Alert>
-    );
-  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Manajemen Penggajian</h1>
-          <p className="text-muted-foreground font-body">Kelola penggajian dan tunjangan karyawan</p>
+          <h1 className="text-2xl font-display font-bold text-gray-900">Manajemen Penggajian</h1>
+          <p className="text-gray-500 font-body">Kelola gaji, tunjangan, dan potongan karyawan</p>
         </div>
-        {user?.role !== 'staff' && (
-          <Button
-            className="bg-hrd hover:bg-hrd-dark font-body"
-            onClick={() => {
-              resetForm();
-              setShowAddDialog(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Buat Payroll
-          </Button>
-        )}
-      </div>
-
-      {/* Period Selector */}
-      <Card className="border-gray-200">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-4">
-            <Label className="font-body">Periode:</Label>
-            <Select
-              value={selectedMonth.toString()}
-              onValueChange={(value) => setSelectedMonth(parseInt(value))}
-              disabled={user?.role === 'staff'}
-            >
-              <SelectTrigger className="w-40 font-body">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map((month, index) => (
-                  <SelectItem key={index + 1} value={(index + 1).toString()} className="font-body">
-                    {month}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedYear.toString()}
-              onValueChange={(value) => setSelectedYear(parseInt(value))}
-              disabled={user?.role === 'staff'}
-            >
-              <SelectTrigger className="w-32 font-mono">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 5 }, (_, i) => currentYear - 2 + i).map(year => (
-                  <SelectItem key={year} value={year.toString()} className="font-mono">
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {user?.role === 'staff' && (
-              <p className="text-xs text-muted-foreground ml-2">
-                *Staf hanya dapat melihat periode saat ini
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Statistics Cards */}
-      {user?.role !== 'staff' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0 }}
-          >
-            <Card className="border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
-                    <DollarSign className="w-6 h-6 text-green-600" />
-                  </div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    Total
-                  </Badge>
-                </div>
-                <div className="mt-4">
-                  <p className="font-mono text-lg font-bold text-[#1C1C1E]">{formatCurrency(stats.totalPayroll)}</p>
-                  <p className="text-sm text-muted-foreground font-body">Total Penggajian</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
-            <Card className="border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center">
-                    <AlertCircle className="w-6 h-6 text-yellow-600" />
-                  </div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    Pending
-                  </Badge>
-                </div>
-                <div className="mt-4">
-                  <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.pendingPayroll}</p>
-                  <p className="text-sm text-muted-foreground font-body">Menunggu Pembayaran</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <Card className="border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
-                    <CheckCircle className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    Paid
-                  </Badge>
-                </div>
-                <div className="mt-4">
-                  <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.paidPayroll}</p>
-                  <p className="text-sm text-muted-foreground font-body">Sudah Dibayar</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <Card className="border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-xl bg-hrd/10 flex items-center justify-center">
-                    <TrendingUp className="w-6 h-6 text-hrd" />
-                  </div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    Avg
-                  </Badge>
-                </div>
-                <div className="mt-4">
-                  <p className="font-mono text-lg font-bold text-[#1C1C1E]">{formatCurrency(stats.averageSalary)}</p>
-                  <p className="text-sm text-muted-foreground font-body">Rata-rata Gaji</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
-        <TabsList className={`grid w-full ${user?.role === 'staff' ? 'grid-cols-1' : 'grid-cols-3'}`}>
-          <TabsTrigger value="current" className="font-body">
-            Periode Saat Ini
-          </TabsTrigger>
+        <div className="flex items-center gap-2">
+          <PayrollPrintSettingsDialog
+            onSettingsChange={setPrintSettings}
+            payroll={filteredPayroll[0]}
+            employee={employees.find(e => e.id === filteredPayroll[0]?.employee_id)}
+          />
           {user?.role !== 'staff' && (
             <>
-              <TabsTrigger value="history" className="font-body">
-                Riwayat
-              </TabsTrigger>
-              <TabsTrigger value="summary" className="font-body">
-                Ringkasan
-              </TabsTrigger>
+              <Button
+                onClick={handleProcessBatchPayroll}
+                disabled={isBatchProcessing}
+                variant="outline"
+                className="border-hrd text-hrd hover:bg-hrd/5 font-body"
+              >
+                {isBatchProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Memproses ({batchProgress}%)
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Proses Masal
+                  </>
+                )}
+              </Button>
+              <Button onClick={() => { setIsEditing(false); resetForm(); setShowAddDialog(true); }} className="bg-hrd hover:bg-hrd-dark font-body">
+                <Plus className="w-4 h-4 mr-2" />
+                Buat Payroll
+              </Button>
             </>
           )}
-        </TabsList>
+          <Button variant="outline" onClick={handleExportExcel} className="font-body">
+            <Download className="w-4 h-4 mr-2" />
+            Ekspor
+          </Button>
+        </div>
+      </div>
 
-        {/* Current Period Tab */}
-        <TabsContent value="current" className="mt-6">
-          <Card className="border-gray-200">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="font-display">Penggajian {months[selectedMonth - 1]} {selectedYear}</CardTitle>
-                  <CardDescription className="font-body">
-                    Daftar penggajian periode saat ini
-                  </CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Cari karyawan..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 font-body w-64"
-                    />
-                  </div>
-                  {user?.role !== 'staff' && (
-                    <div className="flex gap-2">
-                      <PayrollPrintSettingsDialog onSettingsChange={setPrintSettings} />
-                      <Button variant="outline" className="font-body" onClick={handleExportExcel}>
-                        <Download className="w-4 h-4 mr-2" />
-                        Export
-                      </Button>
-                    </div>
-                  )}
-                </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-none shadow-sm bg-blue-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-body text-blue-600">Total Pengeluaran</p>
+                <p className="text-xl font-mono font-bold text-blue-900">{formatCurrency(stats.totalPayroll)}</p>
               </div>
-            </CardHeader>
-            <CardContent className="p-0">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <DollarSign className="w-5 h-5 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-none shadow-sm bg-yellow-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-body text-yellow-600">Menunggu</p>
+                <p className="text-xl font-mono font-bold text-yellow-900">{stats.pendingPayroll} Karyawan</p>
+              </div>
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-yellow-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-none shadow-sm bg-green-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-body text-green-600">Terbayar</p>
+                <p className="text-xl font-mono font-bold text-green-900">{stats.paidPayroll} Karyawan</p>
+              </div>
+              <div className="p-2 bg-green-100 rounded-lg">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-none shadow-sm bg-purple-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-body text-purple-600">Rata-rata Gaji</p>
+                <p className="text-xl font-mono font-bold text-purple-900">{formatCurrency(stats.averageSalary)}</p>
+              </div>
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Select value={selectedMonth.toString()} onValueChange={(v) => setSelectedMonth(parseInt(v))}>
+                <SelectTrigger className="w-[150px] font-body">
+                  <SelectValue placeholder="Pilih Bulan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map((m, i) => (
+                    <SelectItem key={i + 1} value={(i + 1).toString()}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+                <SelectTrigger className="w-[120px] font-mono">
+                  <SelectValue placeholder="Tahun" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 5 }, (_, i) => currentYear - 2 + i).map(y => (
+                    <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+              <Input
+                placeholder="Cari karyawan..."
+                className="pl-8 font-body"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="py-20 text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-hrd mb-4" />
+              <p className="text-gray-500 font-body">Memuat data payroll...</p>
+            </div>
+          ) : filteredPayroll.length === 0 ? (
+            <div className="py-20 text-center border-2 border-dashed rounded-lg">
+              <div className="bg-gray-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FileText className="w-6 h-6 text-gray-400" />
+              </div>
+              <p className="text-gray-500 font-body">Tidak ada data payroll ditemukan</p>
+            </div>
+          ) : (
+            <ScrollArea className="h-[500px]">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="font-body">Karyawan</TableHead>
-                    <TableHead className="font-body">Gaji Pokok</TableHead>
-                    <TableHead className="font-body">Tunjangan</TableHead>
-                    <TableHead className="font-body">Potongan</TableHead>
-                    <TableHead className="font-body">Gaji Bersih</TableHead>
                     <TableHead className="font-body">Status</TableHead>
+                    <TableHead className="font-body">Total Gaji</TableHead>
                     <TableHead className="font-body text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <AnimatePresence>
-                    {filteredPayroll
-                      .filter(p => p.status === 'pending')
-                      .map((payroll) => {
-                        const employee = employees.find(emp => emp.id === payroll.employee_id);
-                        const StatusIcon = statusIcons[payroll.status as PayrollStatus];
-
-                        return (
-                          <motion.tr
-                            key={payroll.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            className="group"
-                          >
-                            <TableCell>
-                              <div className="flex items-center gap-3">
-                                <Avatar className="w-8 h-8">
-                                  <AvatarFallback className="bg-hrd/20 text-hrd font-body text-xs">
-                                    {employee?.name.split(' ').map(n => n[0]).join('') || 'N/A'}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <span className="font-medium font-body">{employee?.name || 'Unknown'}</span>
-                                  <p className="text-xs text-muted-foreground font-body">{employee?.position}</p>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">
-                              {formatCurrency(payroll.base_salary)}
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">
-                              {formatCurrency(payroll.allowances)}
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">
-                              {formatCurrency(payroll.deductions)}
-                            </TableCell>
-                            <TableCell className="font-mono text-sm font-bold">
-                              {formatCurrency(payroll.net_salary)}
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={`${statusColors[payroll.status as PayrollStatus]} font-body`}>
-                                <StatusIcon className="w-3 h-3 mr-1" />
-                                {statusLabels[payroll.status as PayrollStatus]}
-                              </Badge>
-                            </TableCell>
-
-                            <TableCell className="text-right">
+                  {filteredPayroll.map((pay) => {
+                    const employee = employees.find(e => e.id === pay.employee_id);
+                    const StatusIcon = statusIcons[pay.status as PayrollStatus];
+                    return (
+                      <TableRow key={pay.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar>
+                              <AvatarFallback className="bg-hrd/10 text-hrd">
+                                {employee?.name.substring(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-body font-medium">{employee?.name}</p>
+                              <p className="text-xs text-gray-500 font-body">{employee?.position}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`${statusColors[pay.status as PayrollStatus]} font-body flex items-center w-fit gap-1`}>
+                            <StatusIcon className="w-3 h-3" />
+                            {statusLabels[pay.status as PayrollStatus]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono font-semibold">
+                          {formatCurrency(pay.net_salary)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => { setSelectedPayroll(pay); setShowViewDialog(true); }}>
+                              <Eye className="w-4 h-4 text-gray-500" />
+                            </Button>
+                            {user?.role !== 'staff' && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="icon">
-                                    <MoreVertical className="w-4 h-4" />
+                                    <MoreVertical className="w-4 h-4 text-gray-500" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    className="font-body"
-                                    onClick={() => handleViewPayroll(payroll)}
-                                  >
-                                    <Eye className="w-4 h-4 mr-2" />
-                                    Lihat Detail
-                                  </DropdownMenuItem>
-
-                                  {user?.role !== 'staff' && payroll.status === 'pending' && (
-                                    <DropdownMenuItem
-                                      className="font-body text-green-600"
-                                      onClick={() => handleMarkAsPaid(payroll.id)}
-                                    >
-                                      <CheckCircle className="w-4 h-4 mr-2" />
-                                      Tandai Dibayar
-                                    </DropdownMenuItem>
+                                  {pay.status === 'pending' && (
+                                    <>
+                                      <DropdownMenuItem onClick={() => handleMarkAsPaid(pay.id)} className="text-green-600 font-body">
+                                        <CheckCircle className="w-4 h-4 mr-2" />
+                                        Tandai Dibayar
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleEditPayroll(pay)} className="font-body">
+                                        <Edit className="w-4 h-4 mr-2" />
+                                        Edit
+                                      </DropdownMenuItem>
+                                    </>
                                   )}
-
-                                  <DropdownMenuItem
-                                    className="font-body"
-                                    onClick={() => handleDownloadSlip(payroll)}
-                                  >
+                                  <DropdownMenuItem onClick={() => handlePrintSlip(pay)} className="font-body">
                                     <Printer className="w-4 h-4 mr-2" />
                                     Cetak Slip
                                   </DropdownMenuItem>
-
-                                  {user?.role !== 'staff' && (
-                                    <DropdownMenuItem className="font-body">
-                                      <Send className="w-4 h-4 mr-2" />
-                                      Kirim Email
-                                    </DropdownMenuItem>
-                                  )}
-                                  {user?.role !== 'staff' && (
-                                    <DropdownMenuItem
-                                      className="font-body text-red-600 focus:text-red-700"
-                                      onClick={() => handleDeletePayroll(payroll.id)}
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Hapus
-                                    </DropdownMenuItem>
-                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => handleDeletePayroll(pay.id)} className="text-red-600 font-body">
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Hapus
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                            </TableCell>
-                          </motion.tr>
-                        );
-                      })}
-                  </AnimatePresence>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
 
-        {/* History Tab */}
-        <TabsContent value="history" className="mt-6">
-          <Card className="border-gray-200">
-            <CardHeader>
-              <CardTitle className="font-display">Riwayat Penggajian</CardTitle>
-              <CardDescription className="font-body">
-                Riwayat pembayaran gaji karyawan
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {filteredPayroll.filter(p => p.status === 'paid').length === 0 ? (
-                <div className="text-center py-8">
-                  <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-muted-foreground font-body">Belum ada riwayat pembayaran gaji untuk periode ini</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="font-body">Karyawan</TableHead>
-                      <TableHead className="font-body">Tanggal Bayar</TableHead>
-                      <TableHead className="font-body">Gaji Bersih</TableHead>
-                      <TableHead className="font-body text-right">Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredPayroll
-                      .filter(p => p.status === 'paid')
-                      .map((payroll) => {
-                        const employee = employees.find(e => e.id === payroll.employee_id);
-                        return (
-                          <TableRow key={payroll.id}>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium font-body text-[#1C1C1E]">{employee?.name || 'Unknown'}</p>
-                                <p className="text-sm text-muted-foreground font-body">{employee?.position}</p>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-mono">
-                              {formatDate(payroll.pay_date)}
-                            </TableCell>
-                            <TableCell className="font-mono font-medium text-[#1C1C1E]">
-                              {formatCurrency(payroll.net_salary)}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon">
-                                    <MoreVertical className="w-4 h-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handleViewPayroll(payroll)} className="font-body">
-                                    <Eye className="w-4 h-4 mr-2" />
-                                    Lihat Detail
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleDownloadSlip(payroll)} className="font-body">
-                                    <Download className="w-4 h-4 mr-2" />
-                                    Slip Gaji
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Summary Tab */}
-        <TabsContent value="summary" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="border-gray-200">
-              <CardHeader>
-                <CardTitle className="font-display">Ringkasan Penggajian</CardTitle>
-                <CardDescription className="font-body">
-                  Statistik penggajian periode ini
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-body">Total Penggajian</span>
-                    <span className="font-mono font-bold">{formatCurrency(stats.totalPayroll)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-body">Rata-rata Gaji</span>
-                    <span className="font-mono font-bold">{formatCurrency(stats.averageSalary)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-body">Jumlah Karyawan</span>
-                    <span className="font-mono font-bold">{stats.totalEmployees}</span>
-                  </div>
-
-                  <div className="pt-4 border-t">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                        <AlertCircle className="w-8 h-8 text-yellow-600 mx-auto mb-2" />
-                        <p className="font-mono text-2xl font-bold text-yellow-600">{stats.pendingPayroll}</p>
-                        <p className="text-sm text-yellow-700 font-body">Menunggu</p>
-                      </div>
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                        <p className="font-mono text-2xl font-bold text-green-600">{stats.paidPayroll}</p>
-                        <p className="text-sm text-green-700 font-body">Dibayar</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-gray-200">
-              <CardHeader>
-                <CardTitle className="font-display">Pembayaran Tertunda</CardTitle>
-                <CardDescription className="font-body">
-                  Daftar gaji yang belum dibayar
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {payroll
-                    .filter(pay => pay.status === 'pending')
-                    .slice(0, 5)
-                    .map((payroll) => {
-                      const employee = employees.find(emp => emp.id === payroll.employee_id);
-                      return (
-                        <div key={payroll.id} className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg">
-                          <Avatar className="w-8 h-8">
-                            <AvatarFallback className="bg-yellow-200 text-yellow-800 font-body text-xs">
-                              {employee?.name.split(' ').map(n => n[0]).join('') || 'N/A'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <p className="font-medium font-body">{employee?.name || 'Unknown'}</p>
-                            <p className="text-xs text-muted-foreground font-mono">
-                              {formatCurrency(payroll.net_salary)}
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700 font-body"
-                            onClick={() => handleMarkAsPaid(payroll.id)}
-                          >
-                            Bayar
-                          </Button>
-                        </div>
-                      );
-                    })}
-
-                  {payroll.filter(pay => pay.status === 'pending').length === 0 && (
-                    <div className="text-center py-8">
-                      <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
-                      <p className="text-muted-foreground font-body">Semua gaji sudah dibayar</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Add Payroll Dialog */}
+      {/* Add/Edit Payroll Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display">Buat Payroll Baru</DialogTitle>
+            <DialogTitle className="font-display">
+              {isEditing ? 'Edit Data Payroll' : 'Buat Payroll Baru'}
+            </DialogTitle>
             <DialogDescription className="font-body">
-              Tambah data penggajian karyawan
+              {isEditing ? 'Perbarui data penggajian karyawan.' : 'Tambah data penggajian karyawan'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1097,37 +1209,140 @@ export function PayrollManagement() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label className="font-body">Tunjangan</Label>
-              <Input
-                type="number"
-                placeholder="0"
-                className="font-mono"
-                value={formData.allowances}
-                onChange={(e) => setFormData({ ...formData, allowances: e.target.value })}
-              />
+            {formData.employee_id && (
+              <div className="space-y-4 border p-4 rounded-lg bg-blue-50/50 border-blue-100">
+                <Label className="font-body font-bold text-blue-800 flex items-center gap-2">
+                  <CreditCard className="w-4 h-4" />
+                  Informasi Bank Karyawan
+                </Label>
+                <div className="grid grid-cols-2 gap-4 text-sm font-body">
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">Bank</span>
+                    <p className="font-medium text-blue-900 border-b border-blue-200 pb-1">
+                      {employees.find(e => e.id === formData.employee_id)?.bank || '-'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">No. Rekening</span>
+                    <p className="font-medium text-blue-900 border-b border-blue-200 pb-1">
+                      {employees.find(e => e.id === formData.employee_id)?.bank_account || '-'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 border p-3 rounded-lg bg-green-50/30">
+              <div className="space-y-2">
+                <Label className="font-body text-xs text-green-700">Uang Makan (Pro-rata)</Label>
+                <div className="space-y-1">
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    className="font-mono text-sm border-green-200"
+                    value={formData.meal_allowance}
+                    onChange={(e) => setFormData({ ...formData, meal_allowance: e.target.value })}
+                  />
+                  {allowanceDetails.find(d => d.includes('Uang Makan')) && (
+                    <p className="text-[10px] text-green-600 italic">
+                      {allowanceDetails.find(d => d.includes('Uang Makan'))?.split('=')[0]?.trim()}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="font-body text-xs text-green-700">Uang Bensin (Pro-rata)</Label>
+                <div className="space-y-1">
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    className="font-mono text-sm border-green-200"
+                    value={formData.gasoline_allowance}
+                    onChange={(e) => setFormData({ ...formData, gasoline_allowance: e.target.value })}
+                  />
+                  {allowanceDetails.find(d => d.includes('Uang Bensin')) && (
+                    <p className="text-[10px] text-green-600 italic">
+                      {allowanceDetails.find(d => d.includes('Uang Bensin'))?.split('=')[0]?.trim()}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="col-span-2 mt-1 space-y-4">
+                {formData.manual_allowance_details?.length > 0 && (
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Tunjangan Manual:</p>
+                    {formData.manual_allowance_details?.map((ma, i) => (
+                      <div key={i} className="flex justify-between text-[10px] text-blue-800/80 italic pl-1">
+                        <span>• {ma.title}</span>
+                        <span className="font-mono">{formatCurrency(ma.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {formData.discretionary_allowance && Number(formData.discretionary_allowance) > 0 && (
+                  <div className="flex justify-between text-[10px] text-blue-800/80 italic pt-1 border-t border-blue-100">
+                    <span className="font-bold">Uang Bijak:</span>
+                    <span className="font-mono">{formatCurrency(Number(formData.discretionary_allowance))}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className="font-body">Potongan</Label>
-              <Input
-                type="number"
-                placeholder="0"
-                className="font-mono"
-                value={formData.deductions}
-                onChange={(e) => setFormData({ ...formData, deductions: e.target.value })}
-              />
-              {deductionDetails.length > 0 && (
-                <div className="text-xs text-muted-foreground bg-gray-50 p-2 rounded border border-gray-100">
-                  <p className="font-semibold mb-1">Rincian Potongan Otomatis:</p>
-                  <ul className="list-disc list-inside space-y-0.5">
-                    {deductionDetails.map((detail, idx) => (
-                      <li key={idx}>{detail}</li>
-                    ))}
-                  </ul>
+            <div className="space-y-4 border p-4 rounded-lg bg-red-50/30">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="font-body text-xs">Potongan Absen</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    className="font-mono text-sm"
+                    value={formData.absent_deduction}
+                    onChange={(e) => setFormData({ ...formData, absent_deduction: e.target.value })}
+                  />
                 </div>
-              )}
+                {formData.manual_deduction_details?.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Potongan Manual:</p>
+                    {formData.manual_deduction_details?.map((md, i) => (
+                      <div key={i} className="flex justify-between text-[10px] text-red-800/80 italic pl-1">
+                        <span>• {md.title}</span>
+                        <span className="font-mono">{formatCurrency(md.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Summary Preview Areas */}
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <span className="text-[10px] text-blue-600 font-bold uppercase block mb-1">Total Penerimaan</span>
+                <p className="font-mono font-bold text-blue-800">
+                  {formatCurrency(
+                    Number(formData.base_salary || 0) +
+                    Number(formData.meal_allowance || 0) +
+                    Number(formData.gasoline_allowance || 0) +
+                    Number(formData.position_allowance || 0) +
+                    Number(formData.discretionary_allowance || 0) +
+                    Number(formData.thr_allowance || 0) +
+                    Number(formData.allowances || 0)
+                  )}
+                </p>
+              </div>
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <span className="text-[10px] text-red-600 font-bold uppercase block mb-1">Total Potongan</span>
+                <p className="font-mono font-bold text-red-800">
+                  {formatCurrency(
+                    Number(formData.bpjs_deduction || 0) +
+                    Number(formData.absent_deduction || 0) +
+                    Number(formData.deductions || 0)
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Removed the redundant Rincian boxes as they are now inline or in summary */}
 
             {/* Net Salary Preview */}
             {formData.base_salary && (
@@ -1141,13 +1356,17 @@ export function PayrollManagement() {
               </div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 bg-white pt-4 border-t">
             <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); }} className="font-body">
               Batal
             </Button>
             <Button onClick={handleAddPayroll} className="bg-hrd hover:bg-hrd-dark font-body">
-              <Calculator className="w-4 h-4 mr-2" />
-              Buat Payroll
+              {isEditing ? 'Simpan Perubahan' : (
+                <>
+                  <Calculator className="w-4 h-4 mr-2" />
+                  Buat Payroll
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1162,104 +1381,22 @@ export function PayrollManagement() {
               Informasi lengkap penggajian karyawan
             </DialogDescription>
           </DialogHeader>
-          {selectedPayroll && (
-            <div className="space-y-4">
-              {/* Status Badge */}
-              <div className="flex justify-center">
-                <Badge className={`${statusColors[selectedPayroll.status as PayrollStatus]} font-body px-4 py-2`}>
-                  {React.createElement(statusIcons[selectedPayroll.status as PayrollStatus], { className: "w-4 h-4 mr-2" })}
-                  {statusLabels[selectedPayroll.status as PayrollStatus]}
-                </Badge>
-              </div>
-
-              {/* Employee Info */}
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <Avatar className="w-12 h-12">
-                  <AvatarFallback className="bg-hrd/20 text-hrd font-body">
-                    {employees.find(emp => emp.id === selectedPayroll.employee_id)?.name.split(' ').map(n => n[0]).join('') || 'N/A'}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="font-display font-bold text-[#1C1C1E]">
-                    {employees.find(emp => emp.id === selectedPayroll.employee_id)?.name || 'Unknown'}
-                  </h3>
-                  <p className="text-muted-foreground font-body">
-                    {employees.find(emp => emp.id === selectedPayroll.employee_id)?.position || 'Unknown Position'}
-                  </p>
+          <div className="space-y-4">
+            {selectedPayroll && (
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="space-y-1">
+                  <span className="text-gray-500">Bulan</span>
+                  <p className="font-body font-medium">{months[selectedPayroll.period_month - 1]}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-gray-500">Tahun</span>
+                  <p className="font-mono font-medium">{selectedPayroll.period_year}</p>
                 </div>
               </div>
-
-              {/* Payroll Details */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <span className="font-body text-muted-foreground">Periode</span>
-                  <span className="font-mono font-medium">
-                    {months[selectedPayroll.period_month - 1]} {selectedPayroll.period_year}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                  <span className="font-body text-blue-800">Gaji Pokok</span>
-                  <span className="font-mono font-bold text-blue-800">
-                    {formatCurrency(selectedPayroll.base_salary)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                  <span className="font-body text-green-800">Tunjangan</span>
-                  <span className="font-mono font-bold text-green-800">
-                    {formatCurrency(selectedPayroll.allowances)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                  <span className="font-body text-red-800">Potongan</span>
-                  <span className="font-mono font-bold text-red-800">
-                    {formatCurrency(selectedPayroll.deductions)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-hrd/10 rounded-lg border-2 border-hrd/20">
-                  <span className="font-body font-bold text-hrd">Gaji Bersih</span>
-                  <span className="font-mono font-bold text-xl text-hrd">
-                    {formatCurrency(selectedPayroll.net_salary)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Payment Info */}
-              {selectedPayroll.pay_date && (
-                <div className="p-4 bg-green-50 rounded-lg">
-                  <div className="space-y-2">
-                    <Label className="font-body text-green-800">Tanggal Pembayaran</Label>
-                    <p className="font-mono font-medium text-green-800">
-                      {formatDate(selectedPayroll.pay_date)}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowViewDialog(false)} className="font-body">
-              Tutup
-            </Button>
-            {selectedPayroll?.status === 'pending' && (
-              <Button
-                className="bg-green-600 hover:bg-green-700 font-body"
-                onClick={() => {
-                  handleMarkAsPaid(selectedPayroll.id);
-                  setShowViewDialog(false);
-                }}
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Tandai Dibayar
-              </Button>
             )}
-            <Button className="bg-hrd hover:bg-hrd-dark font-body">
-              <Printer className="w-4 h-4 mr-2" />
-              Cetak Slip
-            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowViewDialog(false)}>Tutup</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { authService } from '@/services/authService';
 import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
@@ -30,12 +30,14 @@ interface AuthContextType {
   logout: () => Promise<void>;
   hasModuleAccess: (module: ModuleType) => boolean;
   updateProfile: (updates: Partial<Profile>) => Promise<boolean>;
+  updatePassword: (newPassword: string) => Promise<boolean>;
   onlineUsers: any[];
+  stashedSession: Session | null;
+  restoreAdminSession: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Helper function to get default modules based on role
 const getDefaultModules = (role: UserRole): ModuleType[] => {
   switch (role) {
     case 'admin':
@@ -51,34 +53,48 @@ const getDefaultModules = (role: UserRole): ModuleType[] => {
   }
 };
 
-// Moved import to top
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [stashedSession, setStashedSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionKey, setSessionKey] = useState<string>(Math.random().toString(36).substring(7));
 
-  // Stable empty array for onlineUsers
+  const fetchingFor = useRef<string | null>(null);
+  const initializing = useRef<boolean>(false);
+  const isMounted = useRef(true);
+
   const [onlineUsers] = useState<any[]>([]);
 
-  const fetchProfile = async (userId: string, metadata: any) => {
-    // Optimization: Skip fetch if we already have this profile and it was fetched recently (e.g. < 5s ago)
-    // For now just check ID to prevent loop on token refresh
-    if (profile?.id === userId) {
-      console.log(`ℹ️ [Auth] Profile for ${userId} already loaded, skipping fetch to prevent reload loop.`);
-      return;
+  const updateAuthState = (newSession: Session | null, newUser: User | null, newProfile: Profile | null) => {
+    let finalizedUser = newUser;
+    if (user && newUser && user.id === newUser.id) {
+      if (newUser.role === 'staff' && user.role !== 'staff') {
+        finalizedUser = {
+          ...newUser,
+          role: user.role,
+          modules: user.modules
+        };
+      }
     }
 
-    console.log(`📥 [Auth] Fetching profile for ${userId}...`);
+    if (!newUser || (user && user.id !== newUser.id)) {
+      setSessionKey(Math.random().toString(36).substring(7));
+    }
 
-    // Safety timeout for profile fetch specifically
-    // Safety timeout for profile fetch specifically
+    setSession(newSession);
+    setUser(finalizedUser);
+    setProfile(newProfile);
+  };
+
+  const fetchProfile = async (userId: string, metadata: any, currentSession: Session | null) => {
+    fetchingFor.current = userId;
+
     const profileTimeout = new Promise<null>((resolve) =>
       setTimeout(() => {
-        console.warn('⚠️ [Auth] Profile fetch timed out, using fallback');
         resolve(null);
-      }, 10000) // Increased to 10 seconds to accommodate slow connections
+      }, 15000)
     );
 
     try {
@@ -87,28 +103,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profileTimeout
       ]);
 
-      if (data) {
-        console.log('✅ [Auth] Profile loaded successfully');
-        setProfile(data);
+      if (fetchingFor.current !== userId) {
+        return;
+      }
 
-        // Fix: Ensure marketing module is present for relevant roles regardless of DB state
+      if (data) {
         let userModules = (data.modules as ModuleType[]) || [];
         const role = data.role as UserRole;
 
-        // Force add marketing for these roles if missing (Patch for legacy data)
         if (['admin', 'manager', 'staff', 'marketing'].includes(role)) {
           if (!userModules.includes('marketing')) {
-            console.log('🔧 [Auth] Patching missing marketing module for role:', role);
             userModules = [...userModules, 'marketing'];
           }
         }
 
-        // Also ensure defaults are present if array is empty
         if (userModules.length === 0) {
           userModules = getDefaultModules(role);
         }
 
-        setUser({
+        const newUser: User = {
           id: data.id,
           email: data.email,
           name: data.name,
@@ -116,21 +129,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           avatar: data.avatar,
           modules: userModules,
           employee_id: data.employee_id,
-        });
-      } else {
-        console.log('⚠️ [Auth] Profile not found or timed out, using metadata fallback');
-        // FORCE MANAGER ROLE FOR DEBUGGING/FALLBACK
-        // This ensures they can access modules even if profile fetch fails
-        const role = (metadata?.role as UserRole) || 'manager';
-        console.log(`🛡️ [Auth] Fallback Role assigned: ${role}`);
+        };
 
-        setUser({
+        updateAuthState(currentSession, newUser, data);
+      } else {
+        const role = (metadata?.role as UserRole) || 'staff';
+        const fallbackUser: User = {
           id: userId,
           email: metadata?.email || '',
           name: metadata?.name || 'User',
           role: role,
           modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
-        });
+        };
+        updateAuthState(currentSession, fallbackUser, null);
       }
     } catch (error) {
       console.error('❌ [Auth] Error in fetchProfile:', error);
@@ -138,43 +149,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    let mounted = true;
+    isMounted.current = true;
 
-    // Initialize session
     const initSession = async () => {
-      console.log('🔄 [Auth] Initializing session...');
+      if (initializing.current) return;
+      initializing.current = true;
+
       try {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
-        if (!mounted) return;
+        if (!isMounted.current) return;
 
         if (currentSession) {
-          console.log('👤 [Auth] Session found');
-          setSession(currentSession);
-
-          // Set immediate user state from metadata so isAuthenticated is true right away
           const metadata = currentSession.user.user_metadata;
           const role = (metadata?.role as UserRole) || 'staff';
           const defaultModules = getDefaultModules(role);
 
-          setUser({
+          updateAuthState(currentSession, {
             id: currentSession.user.id,
             email: currentSession.user.email || '',
             name: metadata?.name || 'User',
             role: role,
             modules: (metadata?.modules as ModuleType[]) || defaultModules,
-          });
+          }, null);
 
-          // Fetch full profile but KEEP LOADING until done
-          // This is critical for reload persistence
-          await fetchProfile(currentSession.user.id, metadata);
-        } else {
-          console.log('📋 [Auth] No session found');
+          await fetchProfile(currentSession.user.id, metadata, currentSession);
         }
       } catch (error) {
-        console.error('❌ [Auth] Session init error:', error);
+        console.error('Session init error:', error);
       } finally {
-        if (mounted) {
-          console.log('🏁 [Auth] Setting isLoading to false');
+        if (isMounted.current) {
           setIsLoading(false);
         }
       }
@@ -182,72 +185,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initSession();
 
-    // Safety timeout: force loading to false after 5 seconds NO MATTER WHAT
+    const savedStashStr = sessionStorage.getItem('admin_session_stash');
+    if (savedStashStr) {
+      try {
+        const savedStash = JSON.parse(savedStashStr);
+        const stashTime = savedStash.stashedAt ? new Date(savedStash.stashedAt).getTime() : 0;
+        const now = Date.now();
+        if (now - stashTime < 2 * 60 * 60 * 1000) {
+          setStashedSession(savedStash.session);
+        } else {
+          sessionStorage.removeItem('admin_session_stash');
+        }
+      } catch (e) {
+        console.error('Failed to parse stashed session', e);
+      }
+    }
+
     const safetyTimer = setTimeout(() => {
-      if (mounted) {
+      if (isMounted.current) {
         setIsLoading(prev => {
-          if (prev) console.warn('🚨 [Auth] GLOBAL SAFETY TIMEOUT: Forcing isLoading to false');
+          if (prev) {
+            console.warn('🚨 [Auth] GLOBAL SAFETY TIMEOUT: Forcing isLoading to false');
+          }
           return false;
         });
       }
     }, 5000);
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      if (!mounted) return;
-      console.log(`🔔 [Auth] Auth event: ${event}`);
+      if (!isMounted.current) return;
 
       if (event === 'SIGNED_OUT') {
-        setSession(null);
-        setUser(null);
-        setProfile(null);
+        updateAuthState(null, null, null);
         setIsLoading(false);
         return;
       }
 
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         if (currentSession) {
-          // Optimization: Only update session if token changed to prevent re-renders on focus/tab-switch
-          setSession(prev => {
-            if (prev?.access_token === currentSession.access_token) {
-              return prev;
-            }
-            console.log('🔄 [Auth] Session token updated');
-            return currentSession;
-          });
-
-          // Don't set isLoading(false) here immediately if we are in the middle of initSession
-          // But if this is a subsequent event (like token refresh), we might need to update user
-
-          // Ensure user is set immediately from metadata if not already set
-          // Also check if user data actually changed to avoid re-renders
-          if (!user || user.id !== currentSession.user.id) {
-            const metadata = currentSession.user.user_metadata;
-            const role = (metadata?.role as UserRole) || 'staff';
-
-            setUser(prev => {
-              if (prev?.id === currentSession.user.id && prev?.email === currentSession.user.email) {
-                return prev;
-              }
-              return {
-                id: currentSession.user.id,
-                email: currentSession.user.email || '',
-                name: metadata?.name || 'User',
-                role: role,
-                modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
-              };
-            });
-
-            // If we are signed in, we also want to fetch the profile
-            // But we don't await here to block UI updates for simple token refreshes
-            fetchProfile(currentSession.user.id, metadata);
+          const userId = currentSession.user.id;
+          if (fetchingFor.current && fetchingFor.current !== userId) {
+            updateAuthState(null, null, null);
           }
+
+          const metadata = currentSession.user.user_metadata;
+          const role = (metadata?.role as UserRole) || 'staff';
+
+          updateAuthState(currentSession, {
+            id: userId,
+            email: currentSession.user.email || '',
+            name: metadata?.name || 'User',
+            role: role,
+            modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
+          }, null);
+
+          fetchProfile(userId, metadata, currentSession);
         }
       }
     });
 
     return () => {
-      mounted = false;
+      isMounted.current = false;
       clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
@@ -256,11 +254,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true);
+      await supabase.auth.signOut();
+      updateAuthState(null, null, null);
+      sessionStorage.removeItem('lastVisitedPath');
       await authService.signIn({ email, password });
       return true;
     } catch (error) {
       console.error('Login error:', error);
       return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const restoreAdminSession = async (): Promise<void> => {
+    if (!stashedSession) return;
+    try {
+      setIsLoading(true);
+      setUser(null);
+      setProfile(null);
+      const { error } = await supabase.auth.setSession(stashedSession);
+      if (error) throw error;
+      sessionStorage.removeItem('admin_session_stash');
+      setStashedSession(null);
+    } catch (error) {
+      console.error('❌ [Auth) Error restoring admin session:', error);
     } finally {
       setIsLoading(false);
     }
@@ -288,17 +306,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async (): Promise<void> => {
-    console.log('🚪 [Auth] Initiating logout...');
     try {
       setIsLoading(true);
-      // Clear state IMMEDIATELY to trigger UI changes even before network request completes
       setUser(null);
       setProfile(null);
       setSession(null);
-      localStorage.removeItem('lastVisitedPath'); // Clear persisted route
-
+      setStashedSession(null);
+      sessionStorage.removeItem('lastVisitedPath');
+      sessionStorage.removeItem('admin_session_stash');
       await authService.signOut();
-      console.log('✅ [Auth] Logout successful');
     } catch (error) {
       console.error('❌ [Auth] Logout error:', error);
     } finally {
@@ -328,6 +344,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updatePassword = async (newPassword: string): Promise<boolean> => {
+    try {
+      await authService.updatePassword(newPassword);
+      return true;
+    } catch (error) {
+      console.error('Update password error:', error);
+      return false;
+    }
+  };
+
   const hasModuleAccess = (module: ModuleType): boolean => {
     if (user?.role === 'admin') return true;
     return user?.modules.includes(module) ?? false;
@@ -337,28 +363,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     profile,
     session,
-    isAuthenticated: !!session, // Base authentication on session existence for speed
+    isAuthenticated: !!session,
     isLoading,
     login,
     register,
     logout,
     hasModuleAccess,
     updateProfile,
-    onlineUsers
-  }), [user, profile, session, isLoading, onlineUsers]);
+    updatePassword,
+    onlineUsers,
+    stashedSession,
+    restoreAdminSession
+  }), [user, profile, session, isLoading, onlineUsers, stashedSession]);
 
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      <div key={sessionKey} className="contents">
+        {children}
+      </div>
     </AuthContext.Provider>
   );
 }
 
-
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    // Return default values instead of throwing to prevent app crash
     console.warn('useAuth called outside AuthProvider, returning default values');
     return {
       user: null,
@@ -371,7 +400,10 @@ export function useAuth() {
       logout: async () => { },
       hasModuleAccess: () => false,
       updateProfile: async () => false,
+      updatePassword: async () => false,
       onlineUsers: [],
+      stashedSession: null,
+      restoreAdminSession: async () => { },
     };
   }
   return context;

@@ -100,6 +100,9 @@ export interface ConsumerProfile {
     family_relationship?: string;
     family_phone?: string;
     family_address?: string;
+
+    // Data Sumber
+    source?: string; // Sumber Konsumen
 }
 
 export interface ConsumerFollowUp {

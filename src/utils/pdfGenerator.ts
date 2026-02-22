@@ -28,9 +28,17 @@ export interface PrintSettings {
     companyContact: string; // Phone/Email
     showSignature: boolean;
     footerNote: string;
+    additionalNote?: string; // NEW: second line in footer
     headerColor: string; // Hex code for table headers
     tableLayout: 'side_by_side' | 'stacked';
     headerAlignment: 'center' | 'left';
+    slipTitle?: string; // NEW: Custom Title
+    logoUrl?: string; // NEW: Logo URL
+    customFields?: { label: string, value: string, section: 'top' | 'employee' | 'summary' | 'footer' }[]; // NEW: Custom Fields
+    paperSize?: 'a4' | 'a5' | 'letter'; // NEW: Paper size
+    orientation?: 'p' | 'l'; // NEW: Orientation 'p' = portrait, 'l' = landscape
+    signatureLeftHeader?: string; // NEW: Label above left signature
+    signatureRightHeader?: string; // NEW: Label above right signature
 }
 
 const defaultSettings: PrintSettings = {
@@ -40,15 +48,27 @@ const defaultSettings: PrintSettings = {
     companyContact: 'Telp: (021) 12345678 | Email: hrd@jayatempo.com',
     showSignature: true,
     footerNote: 'Dokumen ini sah dan dicetak secara otomatis oleh sistem.',
+    additionalNote: '',
     headerColor: '#16a34a', // Green default
     tableLayout: 'side_by_side',
-    headerAlignment: 'center'
+    headerAlignment: 'center',
+    slipTitle: 'SLIP GAJI KARYAWAN',
+    customFields: [],
+    paperSize: 'a4',
+    orientation: 'p',
+    signatureLeftHeader: 'Diterima Oleh,',
+    signatureRightHeader: 'Bagian Keuangan,'
 };
 
 export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, customSettings?: PrintSettings) => {
     const settings = { ...defaultSettings, ...customSettings };
-    const doc = new jsPDF();
+    const doc = new jsPDF({
+        orientation: settings.orientation || 'p',
+        format: settings.paperSize || 'a4',
+        unit: 'mm'
+    });
     const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
 
     // --- HEADER ---
     doc.setFontSize(18);
@@ -68,9 +88,28 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
     doc.setLineWidth(0.5);
     doc.line(15, 35, pageWidth - 15, 35);
 
+    let currentHeaderY = 35; // Start after the line
+
+    // --- CUSTOM TOP FIELDS ---
+    if (settings.customFields && settings.customFields.length > 0) {
+        settings.customFields.filter(f => f.section === 'top').forEach(f => {
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'italic');
+            doc.text(`${f.label}: ${f.value}`, headerX, currentHeaderY + 5, { align: headerAlign });
+            currentHeaderY += 5;
+        });
+        if (settings.customFields.some(f => f.section === 'top')) {
+            currentHeaderY += 2;
+            doc.line(15, currentHeaderY, pageWidth - 15, currentHeaderY);
+        }
+    }
+
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.text('SLIP GAJI KARYAWAN', pageWidth / 2, 45, { align: 'center' }); // Always center title
+    doc.text(settings.slipTitle || 'SLIP GAJI KARYAWAN', pageWidth / 2, currentHeaderY + 10, { align: 'center' }); // Use custom title
+
+    // Update reference for next sections
+    const titleY = currentHeaderY + 10;
 
     // --- EMPLOYEE DETAILS ---
     doc.setFontSize(10);
@@ -78,7 +117,7 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
 
     const leftColX = 15;
     const rightColX = pageWidth / 2 + 10;
-    let currentY = 55;
+    let currentY = titleY + 10;
 
     const months = [
         'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -96,6 +135,12 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
     doc.text(`Jabatan`, leftColX, currentY + 6);
     doc.text(`: ${employee.position}`, leftColX + 30, currentY + 6);
 
+    doc.text(`Bank`, leftColX, currentY + 12);
+    doc.text(`: ${employee.bank || '-'}`, leftColX + 30, currentY + 12);
+
+    doc.text(`Rekening`, leftColX, currentY + 18);
+    doc.text(`: ${employee.bank_account || '-'}`, leftColX + 30, currentY + 18);
+
     // Right Column
     doc.text(`ID Karyawan`, rightColX, currentY);
     doc.text(`: ${employee.id.slice(0, 8)}...`, rightColX + 30, currentY);
@@ -103,19 +148,98 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
     doc.text(`Status`, rightColX, currentY + 6);
     doc.text(`: ${employee.status}`, rightColX + 30, currentY + 6);
 
-    currentY += 15;
+    // --- CUSTOM EMPLOYEE FIELDS ---
+    if (settings.customFields && settings.customFields.length > 0) {
+        const empFields = settings.customFields.filter(f => f.section === 'employee');
+        empFields.forEach((f, idx) => {
+            const yOffset = 12 + (idx * 6);
+            doc.text(f.label, leftColX, currentY + yOffset);
+            doc.text(`: ${f.value}`, leftColX + 30, currentY + yOffset);
+        });
+        currentY += (empFields.length * 6);
+    }
 
-    // Derive Overtime
-    const derivedOvertime = Math.max(0, payroll.net_salary - payroll.base_salary - payroll.allowances + payroll.deductions);
+    currentY += 25;
 
-    // --- TABLES ---
-    const earningsData = [
+    // Derive Overtime (Subtract reward_allowance if it exists)
+    const derivedOvertime = Math.max(0, payroll.net_salary - payroll.base_salary - payroll.allowances - (payroll.reward_allowance || 0) + payroll.deductions);
+
+    // --- EARNINGS ---
+    const earningsData: [string, string][] = [
         ['Gaji Pokok', formatCurrency(payroll.base_salary)],
-        ['Tunjangan', formatCurrency(payroll.allowances)],
-        ['Lembur (Est.)', formatCurrency(derivedOvertime)],
     ];
 
-    let detailedDeductions = [['Total Potongan', formatCurrency(payroll.deductions)]];
+    // Add specific allowances if they exist
+    if (payroll.meal_allowance && payroll.meal_allowance > 0) {
+        earningsData.push(['Uang Makan', formatCurrency(payroll.meal_allowance)]);
+    }
+    if (payroll.gasoline_allowance && payroll.gasoline_allowance > 0) {
+        earningsData.push(['Uang Bensin', formatCurrency(payroll.gasoline_allowance)]);
+    }
+    if (payroll.position_allowance && payroll.position_allowance > 0) {
+        earningsData.push(['Tunjangan Jabatan', formatCurrency(payroll.position_allowance)]);
+    }
+    if (payroll.thr_allowance && payroll.thr_allowance > 0) {
+        earningsData.push(['THR', formatCurrency(payroll.thr_allowance)]);
+    }
+    if (payroll.discretionary_allowance && payroll.discretionary_allowance > 0) {
+        earningsData.push(['Uang Bijak', formatCurrency(payroll.discretionary_allowance)]);
+    }
+
+    // Add manual allowances - REMOVED because fields don't exist in DB schema yet
+
+    // Calculate "Lain-lain" for allowances
+    const documentedAllowances = (payroll.meal_allowance || 0) +
+        (payroll.gasoline_allowance || 0) +
+        (payroll.position_allowance || 0) +
+        (payroll.thr_allowance || 0) +
+        (payroll.discretionary_allowance || 0);
+    const otherAllowancesValue = (payroll.allowances || 0) - documentedAllowances;
+
+    if (otherAllowancesValue > 0) {
+        earningsData.push(['Lain-lain', formatCurrency(otherAllowancesValue)]);
+    } else if (!payroll.meal_allowance) {
+        // Fallback for old records without breakdown
+        earningsData.push(['Tunjangan', formatCurrency(payroll.allowances)]);
+    }
+
+    if (payroll.reward_details && payroll.reward_details.length > 0) {
+        payroll.reward_details.forEach(rd => {
+            earningsData.push([rd.title, formatCurrency(rd.amount)]);
+        });
+    } else if (payroll.reward_allowance && payroll.reward_allowance > 0) {
+        earningsData.push(['Reward', formatCurrency(payroll.reward_allowance)]);
+    }
+
+    earningsData.push(['Lembur (Est.)', formatCurrency(derivedOvertime)]);
+
+    // --- DEDUCTIONS ---
+    const detailedDeductions: [string, string][] = [];
+
+    // BPJS
+    if (payroll.bpjs_deduction && payroll.bpjs_deduction > 0) {
+        detailedDeductions.push(['BPJS', formatCurrency(payroll.bpjs_deduction)]);
+    }
+
+    // Potongan Absen
+    if (payroll.absent_deduction && payroll.absent_deduction > 0) {
+        detailedDeductions.push(['Potongan Absen', formatCurrency(payroll.absent_deduction)]);
+    }
+
+    // Manual Deductions - REMOVED because fields don't exist in DB schema yet
+
+    // Calculate "Lain-lain" for deductions
+    const documentedDeductions = (payroll.bpjs_deduction || 0) +
+        (payroll.absent_deduction || 0);
+    const otherDeductionsValue = (payroll.deductions || 0) - documentedDeductions;
+
+    if (otherDeductionsValue > 0) {
+        detailedDeductions.push(['Lain-lain', formatCurrency(otherDeductionsValue)]);
+    }
+
+    if (detailedDeductions.length === 0 && (payroll.deductions || 0) > 0) {
+        detailedDeductions.push(['Potongan', formatCurrency(payroll.deductions)]);
+    }
 
     if (settings.tableLayout === 'stacked') {
         // STACKED LAYOUT
@@ -205,28 +329,116 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
     });
 
     // @ts-ignore
-    const signatureY = doc.lastAutoTable.finalY + 30;
+    let summaryFinalY = doc.lastAutoTable.finalY + 5;
+
+    // --- CUSTOM SUMMARY FIELDS ---
+    if (settings.customFields && settings.customFields.length > 0) {
+        settings.customFields.filter(f => f.section === 'summary').forEach(f => {
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`${f.label}: ${f.value}`, 15, summaryFinalY);
+            summaryFinalY += 5;
+        });
+    }
+
+    let signatureY = summaryFinalY + 20;
+
+    // --- PAGE BREAK CHECK FOR SIGNATURE ---
+    if (signatureY > pageHeight - 50) {
+        doc.addPage();
+        signatureY = 30; // Start at top of new page
+    }
 
     // --- SIGNATURE ---
     if (settings.showSignature) {
         doc.setFontSize(10);
         doc.text('Jakarta, ' + formatDate(new Date().toISOString()), pageWidth - 50, signatureY - 15, { align: 'center' });
 
-        doc.text('Diterima Oleh,', 50, signatureY, { align: 'center' });
-        doc.text('Bagian Keuangan,', pageWidth - 50, signatureY, { align: 'center' });
+        doc.text(settings.signatureLeftHeader || 'Diterima Oleh,', 50, signatureY, { align: 'center' });
+        doc.text(settings.signatureRightHeader || 'Bagian Keuangan,', pageWidth - 50, signatureY, { align: 'center' });
 
         doc.text(`(${employee.name})`, 50, signatureY + 25, { align: 'center' });
         doc.text('(_________________)', pageWidth - 50, signatureY + 25, { align: 'center' });
     }
 
     // --- FOOTER NOTE ---
-    if (settings.footerNote) {
+    if (settings.footerNote || settings.additionalNote || (settings.customFields && settings.customFields.some(f => f.section === 'footer'))) {
         doc.setFontSize(8);
         doc.setFont('helvetica', 'italic');
         doc.setTextColor(100);
-        doc.text(settings.footerNote, pageWidth / 2, 280, { align: 'center' });
+
+        // Calculate dynamic footer Y (at least 15mm from bottom)
+        let footerY = pageHeight - 15;
+
+        // Count required footer lines to avoid cutting off
+        const footerFields = settings.customFields?.filter(f => f.section === 'footer') || [];
+        const totalLines = (settings.footerNote ? 1 : 0) + (settings.additionalNote ? 1 : 0) + footerFields.length;
+
+        // Move Y up based on content lines
+        footerY -= (totalLines - 1) * 4;
+
+        if (settings.footerNote) {
+            doc.text(settings.footerNote, pageWidth / 2, footerY, { align: 'center' });
+            footerY += 4;
+        }
+        if (settings.additionalNote) {
+            doc.text(settings.additionalNote, pageWidth / 2, footerY, { align: 'center' });
+            footerY += 4;
+        }
+
+        // --- CUSTOM FOOTER FIELDS ---
+        if (footerFields.length > 0) {
+            footerFields.forEach(f => {
+                doc.text(`${f.label}: ${f.value}`, pageWidth / 2, footerY, { align: 'center' });
+                footerY += 4;
+            });
+        }
     }
 
     // Save the PDF
     doc.save(`Slip_Gaji_${employee.name}_${periodString}.pdf`);
+};
+
+export const generateSampleSalarySlip = (customSettings: PrintSettings) => {
+    const dummyEmployee: Employee = {
+        id: '12345678-ABCD-EFGH-IJKL-999999999999',
+        name: 'Budi Setiawan (CONTOH)',
+        position: 'Staff Administrasi',
+        department: 'Operasional',
+        status: 'active',
+        bank: 'BCA',
+        bank_account: '88800099911',
+        salary: 5000000,
+        email: 'budi.contoh@perusahaan.com',
+        phone: '0812-3456-7890',
+        address: 'Jl. Merpati No. 45, Jakarta',
+        join_date: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        attendance_score: 100
+    };
+
+    const dummyPayroll: PayrollRecord = {
+        id: 'PREVIEW_ID',
+        employee_id: dummyEmployee.id,
+        period_month: new Date().getMonth() + 1,
+        period_year: new Date().getFullYear(),
+        base_salary: 5000000,
+        allowances: 1250000,
+        deductions: 250000,
+        net_salary: 6000000,
+        meal_allowance: 500000,
+        gasoline_allowance: 300000,
+        position_allowance: 200000,
+        thr_allowance: 0,
+        discretionary_allowance: 100000,
+        bpjs_deduction: 150000,
+        absent_deduction: 100000,
+        reward_allowance: 150000,
+        reward_details: [{ title: 'Bonus Performa', amount: 150000 }],
+        status: 'paid',
+        updated_at: new Date().toISOString()
+    };
+
+    generateSalarySlip(dummyPayroll, dummyEmployee, customSettings);
 };

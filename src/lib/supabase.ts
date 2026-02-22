@@ -26,7 +26,21 @@ export const supabase = createClient(
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true
+      detectSessionInUrl: true,
+      storage: window.sessionStorage
+    }
+  }
+)
+
+// Non-persisting client for administrative tasks (prevent session hijacking)
+export const supabaseNoSession = createClient(
+  finalUrl,
+  finalKey,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
     }
   }
 )
@@ -155,6 +169,11 @@ export interface Database {
         Insert: Omit<ProjectWorker, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<ProjectWorker, 'id' | 'created_at'>>
       }
+      reward_types: {
+        Row: RewardTypeMaster
+        Insert: Omit<RewardTypeMaster, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<RewardTypeMaster, 'id' | 'created_at'>>
+      }
     }
   }
 }
@@ -191,8 +210,10 @@ export interface Employee {
   sales_achieved?: number
   attendance_score: number
   innovation_projects?: number
-  team_leadership?: boolean
-  customer_rating?: number
+  team_leadership?: boolean;
+  customer_rating?: number;
+  allowances?: { title: string; amount: number }[];
+  deductions?: { title: string; amount: number }[];
   created_at: string
   updated_at: string
 }
@@ -210,7 +231,7 @@ export interface Department {
 export interface LeaveRequest {
   id: string
   employee_id: string
-  leave_type: 'annual' | 'sick' | 'maternity' | 'paternity' | 'marriage' | 'bereavement' | 'unpaid' | 'permission'
+  leave_type: 'annual' | 'sick' | 'maternity' | 'paternity' | 'marriage' | 'bereavement' | 'unpaid' | 'permission' | 'situational'
   start_date: string
   end_date: string
   days: number
@@ -249,6 +270,28 @@ export interface PayrollRecord {
   net_salary: number
   status: 'pending' | 'paid' | 'cancelled'
   pay_date?: string
+  // New Fields
+  gasoline_allowance?: number
+  meal_allowance?: number
+  position_allowance?: number
+  discretionary_allowance?: number
+  thr_allowance?: number
+  reward_allowance?: number
+  reward_details?: { title: string, amount: number }[]
+  bpjs_deduction?: number
+  absent_deduction?: number
+  bank_account_details?: string
+  updated_at: string
+}
+
+export interface RewardTypeMaster {
+  id: string
+  name: string
+  code: string
+  default_points: number
+  monetary_percentage?: number
+  description?: string
+  icon_name: string
   created_at: string
   updated_at: string
 }
@@ -256,7 +299,7 @@ export interface PayrollRecord {
 export interface RewardRecord {
   id: string
   employee_id: string
-  type: 'employee_of_month' | 'innovation_award' | 'best_team_leader' | 'perfect_attendance' | 'customer_champion' | 'closing' | 'custom'
+  type: string
   title: string
   description: string
   points: number

@@ -58,19 +58,21 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // Hooks
-import { useRewards, useEmployees } from '@/hooks/useSupabase';
+import { useRewards, useEmployees, useRewardTypes } from '@/hooks/useSupabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/ui/use-toast';
 import type { RewardRecord } from '@/lib/supabase';
 
 // Types
-type RewardType = 'employee_of_month' | 'innovation_award' | 'best_team_leader' | 'perfect_attendance' | 'customer_champion' | 'closing' | 'custom';
+type RewardType = string;
 type RewardStatus = 'active' | 'claimed' | 'expired';
 
 interface RewardFormData {
   employee_id: string;
-  type: RewardType;
+  types: string[];
   title: string;
   description: string;
   points: string;
@@ -115,6 +117,16 @@ const statusIcons = {
   expired: XCircle
 };
 
+const iconOptions = [
+  { name: 'Award', icon: Award },
+  { name: 'Star', icon: Star },
+  { name: 'Trophy', icon: Trophy },
+  { name: 'Medal', icon: Medal },
+  { name: 'Crown', icon: Crown },
+  { name: 'Target', icon: Target },
+  { name: 'Gift', icon: Gift },
+];
+
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('id-ID', {
     day: 'numeric',
@@ -124,9 +136,11 @@ function formatDate(dateString: string) {
 }
 
 export function RewardManagement() {
-  const { rewards, loading, error, addReward, claimReward } = useRewards();
+  const { rewards, loading, error, addReward, claimReward, updateReward, deleteReward } = useRewards();
   const { employees } = useEmployees();
+  const { rewardTypes } = useRewardTypes();
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState<'all' | RewardStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -136,12 +150,36 @@ export function RewardManagement() {
 
   const [formData, setFormData] = useState<RewardFormData>({
     employee_id: '',
-    type: 'employee_of_month',
+    types: [],
     title: '',
     description: '',
     points: '100',
     awarded_date: new Date().toISOString().split('T')[0]
   });
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [rewardToDelete, setRewardToDelete] = useState<string | null>(null);
+
+  // Dynamic mappings
+  const dynamicRewardTypeLabels = React.useMemo(() => {
+    const labels: Record<string, string> = { ...rewardTypeLabels };
+    rewardTypes.forEach(t => {
+      labels[t.code] = t.name;
+    });
+    return labels;
+  }, [rewardTypes]);
+
+  const dynamicRewardTypeIcons = React.useMemo(() => {
+    const icons: Record<string, React.ElementType> = { ...rewardTypeIcons };
+    rewardTypes.forEach(t => {
+      if (!icons[t.code]) {
+        icons[t.code] = iconOptions.find(io => io.name === t.icon_name)?.icon || Award;
+      }
+    });
+    return icons;
+  }, [rewardTypes]);
 
   // Filter rewards based on active tab and search
   const filteredRewards = rewards.filter(reward => {
@@ -150,7 +188,7 @@ export function RewardManagement() {
     const employeeName = employee?.name || '';
     const matchesSearch = employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       reward.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      rewardTypeLabels[reward.type as RewardType].toLowerCase().includes(searchQuery.toLowerCase());
+      (dynamicRewardTypeLabels[reward.type] || reward.type).toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesRole = user?.role === 'staff'
       ? reward.employee_id === user.employee_id
@@ -190,41 +228,127 @@ export function RewardManagement() {
   const resetForm = () => {
     setFormData({
       employee_id: '',
-      type: 'employee_of_month',
+      types: [],
       title: '',
       description: '',
       points: '100',
       awarded_date: new Date().toISOString().split('T')[0]
     });
+    setIsEditing(false);
+    setEditId(null);
   };
 
   // Handle add reward
   const handleAddReward = async () => {
     try {
-      if (!formData.employee_id || !formData.title || !formData.description) {
-        alert('Mohon lengkapi semua field yang wajib diisi');
+      if (!formData.employee_id || formData.types.length === 0 || !formData.description) {
+        toast({
+          title: 'Error',
+          description: 'Mohon lengkapi semua field yang wajib diisi',
+          variant: 'destructive'
+        });
         return;
       }
 
-      const points = parseInt(formData.points) || 0;
+      const pointsValue = parseInt(formData.points) || 0;
+      const selectedEmployee = employees.find(e => e.id === formData.employee_id);
 
-      const newReward = {
-        employee_id: formData.employee_id,
-        type: formData.type,
-        title: formData.title,
-        description: formData.description,
-        points,
-        status: 'active' as const,
-        awarded_date: formData.awarded_date,
-        claimed_date: null
-      };
+      if (isEditing && editId) {
+        const typeCode = formData.types[0];
+        const typeData = rewardTypes.find(t => t.code === typeCode);
+        let points = pointsValue;
 
-      await addReward(newReward);
+        if (typeData?.monetary_percentage && selectedEmployee?.salary) {
+          points = Math.round((selectedEmployee.salary * typeData.monetary_percentage) / 100);
+        }
+
+        await updateReward(editId, {
+          employee_id: formData.employee_id,
+          type: typeCode,
+          title: formData.title,
+          description: formData.description,
+          points,
+          awarded_date: formData.awarded_date
+        });
+
+        toast({
+          title: 'Berhasil',
+          description: 'Penghargaan berhasil diperbarui'
+        });
+      } else {
+        for (const typeCode of formData.types) {
+          const typeData = rewardTypes.find(t => t.code === typeCode);
+          let points = typeData ? typeData.default_points : pointsValue;
+
+          // If monetary_percentage is set, calculate based on salary
+          if (typeData?.monetary_percentage && selectedEmployee?.salary) {
+            points = Math.round((selectedEmployee.salary * typeData.monetary_percentage) / 100);
+          }
+
+          const newReward = {
+            employee_id: formData.employee_id,
+            type: typeCode,
+            title: formData.title || (typeData?.name || 'Penghargaan'),
+            description: formData.description,
+            points,
+            status: 'active' as const,
+            awarded_date: formData.awarded_date,
+            claimed_date: null
+          };
+
+          await addReward(newReward);
+        }
+
+        toast({
+          title: 'Berhasil',
+          description: `${formData.types.length} penghargaan berhasil diberikan`
+        });
+      }
+
       setShowAddDialog(false);
       resetForm();
-    } catch (error) {
-      console.error('Failed to add reward:', error);
-      alert('Gagal menambah penghargaan');
+    } catch (err: any) {
+      console.error('❌ Failed to save reward:', err);
+      toast({
+        title: 'Error',
+        description: err.message || 'Gagal menyimpan penghargaan',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Handle edit reward
+  const handleEditReward = (reward: RewardRecord) => {
+    setFormData({
+      employee_id: reward.employee_id,
+      types: [reward.type],
+      title: reward.title,
+      description: reward.description,
+      points: reward.points.toString(),
+      awarded_date: reward.awarded_date
+    });
+    setEditId(reward.id);
+    setIsEditing(true);
+    setShowAddDialog(true);
+  };
+
+  // Handle delete reward
+  const handleDeleteReward = async () => {
+    if (!rewardToDelete) return;
+    try {
+      await deleteReward(rewardToDelete);
+      toast({
+        title: 'Berhasil',
+        description: 'Penghargaan berhasil dihapus'
+      });
+      setShowDeleteDialog(false);
+      setRewardToDelete(null);
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err.message || 'Gagal menghapus penghargaan',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -245,14 +369,26 @@ export function RewardManagement() {
   };
 
   // Auto-fill title based on type
+  // Auto-fill title based on types
   useEffect(() => {
-    if (formData.type && formData.type !== 'custom') {
-      setFormData(prev => ({
-        ...prev,
-        title: rewardTypeLabels[formData.type]
-      }));
+    if (formData.types.length === 1) {
+      const typeCode = formData.types[0];
+      const label = dynamicRewardTypeLabels[typeCode] || typeCode;
+      if (label && !formData.title) {
+        setFormData(prev => ({
+          ...prev,
+          title: label
+        }));
+      }
+    } else if (formData.types.length > 1) {
+      if (!formData.title) {
+        setFormData(prev => ({
+          ...prev,
+          title: 'Multiple Rewards'
+        }));
+      }
     }
-  }, [formData.type]);
+  }, [formData.types, dynamicRewardTypeLabels]);
 
   if (loading) {
     return (
@@ -451,7 +587,7 @@ export function RewardManagement() {
                     {filteredRewards.map((reward) => {
                       const employee = employees.find(emp => emp.id === reward.employee_id);
                       const StatusIcon = statusIcons[reward.status as RewardStatus];
-                      const TypeIcon = rewardTypeIcons[reward.type as RewardType];
+                      const TypeIcon = dynamicRewardTypeIcons[reward.type] || Award;
 
                       return (
                         <motion.tr
@@ -465,7 +601,7 @@ export function RewardManagement() {
                             <div className="flex items-center gap-3">
                               <Avatar className="w-8 h-8">
                                 <AvatarFallback className="bg-hrd/20 text-hrd font-body text-xs">
-                                  {employee?.name.split(' ').map(n => n[0]).join('') || 'N/A'}
+                                  {employee?.name?.split(' ')?.map(n => n[0])?.join('') || 'N/A'}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
@@ -488,7 +624,7 @@ export function RewardManagement() {
                             </div>
                           </TableCell>
                           <TableCell className="font-body text-sm">
-                            {rewardTypeLabels[reward.type as RewardType]}
+                            {dynamicRewardTypeLabels[reward.type] || reward.type}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -530,11 +666,20 @@ export function RewardManagement() {
                                       Klaim
                                     </DropdownMenuItem>
                                   )}
-                                  <DropdownMenuItem className="font-body">
-                                    <Send className="w-4 h-4 mr-2" />
-                                    Kirim Notifikasi
+                                  <DropdownMenuItem
+                                    className="font-body"
+                                    onClick={() => handleEditReward(reward)}
+                                  >
+                                    <Edit className="w-4 h-4 mr-2" />
+                                    Ubah
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem className="font-body text-red-600">
+                                  <DropdownMenuItem
+                                    className="font-body text-red-600"
+                                    onClick={() => {
+                                      setRewardToDelete(reward.id);
+                                      setShowDeleteDialog(true);
+                                    }}
+                                  >
                                     <Trash2 className="w-4 h-4 mr-2" />
                                     Hapus
                                   </DropdownMenuItem>
@@ -554,10 +699,12 @@ export function RewardManagement() {
       </Tabs>
 
       {/* Add Reward Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+      <Dialog open={showAddDialog} onOpenChange={(open) => { if (!open) resetForm(); setShowAddDialog(open); }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display">Beri Penghargaan</DialogTitle>
+            <DialogTitle className="font-display">
+              {isEditing ? 'Ubah Penghargaan' : 'Beri Penghargaan'}
+            </DialogTitle>
             <DialogDescription className="font-body">
               Berikan penghargaan kepada karyawan berprestasi
             </DialogDescription>
@@ -579,26 +726,65 @@ export function RewardManagement() {
               </Select>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label className="font-body">Jenis Penghargaan <span className="text-red-500">*</span></Label>
-              <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value as RewardType })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih jenis penghargaan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(rewardTypeLabels).map(([key, label]) => {
-                    const IconComponent = rewardTypeIcons[key as RewardType];
-                    return (
-                      <SelectItem key={key} value={key} className="font-body">
-                        <div className="flex items-center gap-2">
-                          <IconComponent className="w-4 h-4" />
-                          {label}
+              <ScrollArea className="h-[200px] w-full rounded-xl border border-gray-100 p-4 bg-gray-50/30">
+                <div className="space-y-4">
+                  {isEditing ? (
+                    (() => {
+                      const typeCode = formData.types[0];
+                      const typeData = rewardTypes.find(t => t.code === typeCode);
+                      const name = typeData ? typeData.name : (rewardTypeLabels[typeCode] || typeCode);
+                      const IconComponent = dynamicRewardTypeIcons[typeCode] || Award;
+                      return (
+                        <div className="flex items-center space-x-3 p-2 rounded-lg bg-yellow-50/50 border border-yellow-100">
+                          <Checkbox id={`type-${typeCode}`} checked={true} disabled />
+                          <div className="flex items-center gap-3 flex-1">
+                            <div className="bg-yellow-100 p-1.5 rounded-md">
+                              <IconComponent className="w-4 h-4 text-yellow-600" />
+                            </div>
+                            <span className="text-sm font-body font-semibold text-yellow-900">{name}</span>
+                          </div>
                         </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+                      );
+                    })()
+                  ) : (
+                    (rewardTypes.length > 0 ? rewardTypes : Object.entries(rewardTypeLabels).map(([code, name]) => ({ code, name }))).map((item: any) => {
+                      const code = item.code || item.id;
+                      const name = item.name;
+                      const IconComponent = dynamicRewardTypeIcons[code] || Award;
+                      const isSelected = formData.types.includes(code);
+
+                      return (
+                        <div
+                          key={code}
+                          className={`flex items-center space-x-3 p-2 rounded-lg transition-colors cursor-pointer ${isSelected ? 'bg-yellow-50/50' : 'hover:bg-gray-100/50'}`}
+                          onClick={() => {
+                            const newTypes = isSelected
+                              ? formData.types.filter(t => t !== code)
+                              : [...formData.types, code];
+                            setFormData(prev => ({ ...prev, types: newTypes }));
+                          }}
+                        >
+                          <Checkbox
+                            id={`type-${code}`}
+                            checked={isSelected}
+                            onCheckedChange={() => { }} // Handled by div onClick for better UX
+                          />
+                          <div className="flex items-center gap-3 flex-1">
+                            <div className={`p-1.5 rounded-md ${isSelected ? 'bg-yellow-100' : 'bg-gray-100'}`}>
+                              <IconComponent className={`w-4 h-4 ${isSelected ? 'text-yellow-600' : 'text-gray-500'}`} />
+                            </div>
+                            <span className={`text-sm font-body ${isSelected ? 'font-semibold text-yellow-900' : 'text-gray-700'}`}>
+                              {name}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </ScrollArea>
             </div>
 
             <div className="space-y-2">
@@ -608,7 +794,6 @@ export function RewardManagement() {
                 className="font-body"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                disabled={formData.type !== 'custom'}
               />
             </div>
 
@@ -645,18 +830,39 @@ export function RewardManagement() {
             </div>
 
             {/* Preview */}
-            {formData.title && formData.description && (
+            {formData.types.length > 0 && formData.description && (
               <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-yellow-100 flex items-center justify-center">
-                    {React.createElement(rewardTypeIcons[formData.type], { className: "w-5 h-5 text-yellow-600" })}
+                    {(() => {
+                      const firstTypeCode = formData.types[0];
+                      const IconComponent = dynamicRewardTypeIcons[firstTypeCode] || Award;
+                      return <IconComponent className="w-5 h-5 text-yellow-600" />;
+                    })()}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium font-body text-yellow-800">{formData.title}</p>
-                    <p className="text-sm text-yellow-700 font-body">{formData.description}</p>
+                    <p className="font-medium font-body text-yellow-800">
+                      {formData.types.length > 1 ? `Batch: ${formData.types.length} Rewards` : (formData.title || dynamicRewardTypeLabels[formData.types[0]])}
+                    </p>
+                    <p className="text-sm text-yellow-700 font-body truncate">{formData.description}</p>
                     <div className="flex items-center gap-1 mt-1">
                       <Star className="w-3 h-3 text-yellow-600" />
-                      <span className="text-xs font-mono text-yellow-800">{formData.points} poin</span>
+                      <span className="text-xs font-mono text-yellow-800">
+                        {formData.types.length > 1
+                          ? 'Multiple points'
+                          : (() => {
+                            const typeCode = formData.types[0];
+                            const typeData = rewardTypes.find(t => t.code === typeCode);
+                            const selectedEmployee = employees.find(e => e.id === formData.employee_id);
+
+                            if (typeData?.monetary_percentage && selectedEmployee?.salary) {
+                              const calculated = Math.round((selectedEmployee.salary * typeData.monetary_percentage) / 100);
+                              return `Rp ${calculated.toLocaleString()} (${typeData.monetary_percentage}%)`;
+                            }
+                            return `${formData.points} poin`;
+                          })()
+                        }
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -669,7 +875,39 @@ export function RewardManagement() {
             </Button>
             <Button onClick={handleAddReward} className="bg-hrd hover:bg-hrd-dark font-body">
               <Award className="w-4 h-4 mr-2" />
-              Berikan Penghargaan
+              {isEditing ? 'Simpan Perubahan' : 'Berikan Penghargaan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="font-display">Hapus Penghargaan</DialogTitle>
+            <DialogDescription className="font-body">
+              Apakah Anda yakin ingin menghapus penghargaan ini? Tindakan ini tidak dapat dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setRewardToDelete(null);
+              }}
+              className="font-body"
+            >
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteReward}
+              className="font-body"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Hapus
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -689,8 +927,8 @@ export function RewardManagement() {
               {/* Status Badge */}
               <div className="flex justify-center">
                 <Badge className={`${statusColors[selectedReward.status as RewardStatus]} font-body px-4 py-2`}>
-                  {React.createElement(statusIcons[selectedReward.status as RewardStatus], { className: "w-4 h-4 mr-2" })}
-                  {statusLabels[selectedReward.status as RewardStatus]}
+                  {React.createElement(statusIcons[selectedReward.status as RewardStatus] || AlertCircle, { className: "w-4 h-4 mr-2" })}
+                  {statusLabels[selectedReward.status as RewardStatus] || selectedReward.status}
                 </Badge>
               </div>
 
@@ -698,7 +936,7 @@ export function RewardManagement() {
               <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                 <Avatar className="w-12 h-12">
                   <AvatarFallback className="bg-hrd/20 text-hrd font-body">
-                    {employees.find(emp => emp.id === selectedReward.employee_id)?.name.split(' ').map(n => n[0]).join('') || 'N/A'}
+                    {employees.find(emp => emp.id === selectedReward.employee_id)?.name?.split(' ')?.map(n => n[0])?.join('') || 'N/A'}
                   </AvatarFallback>
                 </Avatar>
                 <div>
@@ -715,11 +953,11 @@ export function RewardManagement() {
               <div className="space-y-4">
                 <div className="flex items-center gap-4 p-4 bg-yellow-50 rounded-lg">
                   <div className="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center">
-                    {React.createElement(rewardTypeIcons[selectedReward.type as RewardType], { className: "w-6 h-6 text-yellow-600" })}
+                    {React.createElement(dynamicRewardTypeIcons[selectedReward.type] || Award, { className: "w-6 h-6 text-yellow-600" })}
                   </div>
                   <div className="flex-1">
                     <h4 className="font-display font-bold text-yellow-800">{selectedReward.title}</h4>
-                    <p className="text-sm text-yellow-700 font-body">{rewardTypeLabels[selectedReward.type as RewardType]}</p>
+                    <p className="text-sm text-yellow-700 font-body">{dynamicRewardTypeLabels[selectedReward.type] || selectedReward.type}</p>
                   </div>
                   <div className="text-right">
                     <div className="flex items-center gap-1">

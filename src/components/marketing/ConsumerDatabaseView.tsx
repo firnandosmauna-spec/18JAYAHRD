@@ -48,7 +48,8 @@ export default function ConsumerDatabaseView() {
         family_name: '',
         family_relationship: '',
         family_phone: '',
-        family_address: ''
+        family_address: '',
+        source: ''
     });
     const [submitting, setSubmitting] = useState(false);
     const [activeTab, setActiveTab] = useState('data-diri');
@@ -129,7 +130,8 @@ export default function ConsumerDatabaseView() {
             family_name: consumer.family_name,
             family_relationship: consumer.family_relationship || '',
             family_phone: consumer.family_phone,
-            family_address: consumer.family_address
+            family_address: consumer.family_address,
+            source: consumer.source || ''
         });
         setEditingId(consumer.id);
         setIsAddDialogOpen(true);
@@ -237,7 +239,8 @@ export default function ConsumerDatabaseView() {
                 family_name: '',
                 family_relationship: '',
                 family_phone: '',
-                family_address: ''
+                family_address: '',
+                source: ''
             });
             setActiveTab('data-diri');
             fetchConsumers();
@@ -282,7 +285,9 @@ export default function ConsumerDatabaseView() {
                 family_name: '',
                 family_relationship: '',
                 family_phone: '',
-                family_address: ''
+
+                family_address: '',
+                source: ''
             });
             setEditingId(null);
         }
@@ -473,6 +478,27 @@ export default function ConsumerDatabaseView() {
                                                         <Label htmlFor="sales_person">Nama Sales / Marketing</Label>
                                                         <Input id="sales_person" name="sales_person" value={formData.sales_person} onChange={handleInputChange} placeholder="Nama sales yang menangani" />
                                                     </div>
+                                                </div>
+                                                <div className="md:col-span-2 space-y-2 mt-4">
+                                                    <Label htmlFor="source">Sumber Konsumen</Label>
+                                                    <Select
+                                                        value={formData.source}
+                                                        onValueChange={(val) => handleSelectChange('source', val)}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Pilih Sumber" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="Medsos">Medsos (FB/IG/Tiktok)</SelectItem>
+                                                            <SelectItem value="Iklan Online">Iklan Online</SelectItem>
+                                                            <SelectItem value="Iklan Offline">Iklan Offline (Spanduk/Brosur)</SelectItem>
+                                                            <SelectItem value="Teman/Keluarga">Dikenalkan Teman/Keluarga</SelectItem>
+                                                            <SelectItem value="Pameran">Pameran / Event</SelectItem>
+                                                            <SelectItem value="Walk-in">Walk-in / Datang Langsung</SelectItem>
+                                                            <SelectItem value="Website">Website</SelectItem>
+                                                            <SelectItem value="Lainnya">Lainnya</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                             </div>
                                         </TabsContent>
@@ -666,6 +692,10 @@ export default function ConsumerDatabaseView() {
                                                     <p className="font-medium text-blue-600">{selectedConsumer.housing_project || '-'}</p>
                                                 </div>
                                                 <div>
+                                                    <Label className="text-slate-500 text-xs">Sumber Konsumen</Label>
+                                                    <p className="font-medium">{selectedConsumer.source || '-'}</p>
+                                                </div>
+                                                <div>
                                                     <Label className="text-slate-500 text-xs">Gaji / Penghasilan</Label>
                                                     <p className="font-medium">
                                                         {selectedConsumer.salary ? `Rp ${selectedConsumer.salary.toLocaleString()}` : '-'}
@@ -780,11 +810,11 @@ export default function ConsumerDatabaseView() {
                     </Dialog>
 
                 </div>
-            </div>
+            </div >
 
             {
                 loading ? (
-                    <div className="flex justify-center items-center h-40">
+                    <div className="flex justify-center items-center h-40" >
                         <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
                     </div>
                 ) : filteredConsumers.length === 0 ? (

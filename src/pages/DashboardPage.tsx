@@ -33,8 +33,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UserProfile } from '@/components/auth/UserProfile';
+import { EditProfileDialog } from '@/components/auth/EditProfileDialog';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Dialog,
   DialogContent,
@@ -233,6 +235,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const handleModuleClick = (module: ModuleConfig) => {
     if (hasModuleAccess(module.id)) {
@@ -684,35 +687,46 @@ export default function DashboardPage() {
 
             {/* Profile Tab */}
             <TabsContent value="profile" className="space-y-4 mt-4">
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-hrd flex items-center justify-center text-white text-xl font-bold">
-                    {user?.name.split(' ').map(n => n[0]).join('')}
-                  </div>
+              <div className="space-y-6">
+                <div className="flex items-center gap-4 p-4 border rounded-lg bg-gray-50/50">
+                  <Avatar className="h-16 w-16">
+                    <AvatarImage src={user?.avatar} />
+                    <AvatarFallback className="bg-hrd text-white text-xl font-bold">
+                      {user?.name.split(' ').map(n => n[0]).join('')}
+                    </AvatarFallback>
+                  </Avatar>
                   <div>
                     <h3 className="font-display font-bold text-lg">{user?.name}</h3>
                     <p className="text-sm text-muted-foreground font-body capitalize">{user?.role}</p>
                   </div>
                 </div>
 
-                <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <Label className="font-body">Nama Lengkap</Label>
-                    <FormInput defaultValue={user?.name} className="font-body" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="font-body">Email</Label>
-                    <FormInput defaultValue={user?.email} className="font-body" disabled />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="font-body">Password Baru</Label>
-                    <FormInput type="password" placeholder="Kosongkan jika tidak ingin mengubah" className="font-body" />
+                <div className="space-y-4">
+                  <h4 className="font-display font-bold">Aksi Akun</h4>
+                  <div className="grid gap-3">
+                    <EditProfileDialog
+                      open={isEditDialogOpen}
+                      onOpenChange={setIsEditDialogOpen}
+                    />
+                    <Button
+                      variant="outline"
+                      className="font-body w-full justify-start h-12 hover:bg-gray-100"
+                      onClick={() => setIsEditDialogOpen(true)}
+                    >
+                      <Settings className="w-4 h-4 mr-3" />
+                      Ganti Nama & Avatar
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="font-body w-full justify-start h-12 hover:bg-gray-100"
+                      onClick={() => setIsEditDialogOpen(true)}
+                    >
+                      <Lock className="w-4 h-4 mr-3" />
+                      Ganti Kata Sandi
+                    </Button>
                   </div>
                 </div>
-
-                <Button className="bg-hrd hover:bg-hrd/90 font-body">
-                  Simpan Perubahan
-                </Button>
               </div>
             </TabsContent>
 

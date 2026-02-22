@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { RegisterForm } from '@/components/auth/RegisterForm';
@@ -12,29 +12,22 @@ export function AuthPage() {
   const navigate = useNavigate();
   const sessionCheckRef = useRef(false);
 
-  // Get the intended destination from location state, OR localStorage, default to dashboard
-  const savedPath = localStorage.getItem('lastVisitedPath');
+  // Get the intended destination from location state, OR sessionStorage, default to dashboard
+  const savedPath = sessionStorage.getItem('lastVisitedPath');
   const from = location.state?.from?.pathname || savedPath || '/dashboard';
 
-  // Logic: 
-  // 1. If user arrives and is ALREADY authenticated (stale session), logout immediately (Security Request).
-  // 2. If user MANUALLY logs in (isAuthenticated becomes true after being false), redirect to dashboard.
+  const [searchParams] = useSearchParams();
+  const isSwitching = searchParams.get('switch') === 'true';
+
   useEffect(() => {
     if (isLoading) return;
 
-    if (!sessionCheckRef.current) {
-      // First time check after loading is done
-      sessionCheckRef.current = true;
-      if (isAuthenticated) {
-        logout();
-      }
-    } else {
-      // Subsequent updates - if authenticated now, it must be from a fresh login
-      if (isAuthenticated) {
-        navigate(from, { replace: true });
-      }
+    // If we are authenticated, redirect to the dashboard
+    // UNLESS we are in switching mode (to allow login as another user)
+    if (isAuthenticated && !isSwitching) {
+      navigate(from, { replace: true });
     }
-  }, [isLoading, isAuthenticated, logout, navigate, from]);
+  }, [isLoading, isAuthenticated, navigate, from, isSwitching]);
 
   // Show loading while checking authentication
   if (isLoading) {

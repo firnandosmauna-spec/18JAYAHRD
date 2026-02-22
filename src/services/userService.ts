@@ -77,6 +77,29 @@ export const userService = {
         return data as AppUser;
     },
 
+    // Find and link employee by email
+    async findAndLinkEmployee(userId: string, email: string) {
+        console.log(`DEBUG: Attempting to auto-link user ${userId} with email ${email}`);
+        const { data: employee, error } = await supabase
+            .from('employees')
+            .select('id')
+            .eq('email', email)
+            .maybeSingle();
+
+        if (error) {
+            console.error("DEBUG: findAndLinkEmployee error:", error);
+            throw error;
+        }
+
+        if (employee) {
+            console.log(`DEBUG: Found matching employee ${employee.id}, linking...`);
+            return await this.linkEmployee(userId, employee.id);
+        }
+
+        console.log("DEBUG: No matching employee found for auto-link.");
+        return null;
+    },
+
     // Sync all active employees into profiles
     async syncAllEmployees() {
         console.log("DEBUG: Starting Sync All Employees...");
@@ -101,11 +124,17 @@ export const userService = {
             const existingEmpIds = new Set(existingProfiles?.map(p => p.employee_id));
 
             // 3. Filter new
-            const newProfiles = employees?.filter(emp =>
-                !existingEmpIds.has(emp.id) &&
-                !existingEmails.has(emp.email?.toLowerCase() || `${emp.name.toLowerCase().replace(/ /g, '.')}@jayatempo.com`)
-            ).map(emp => ({
-                id: emp.id, // Using employee UUID as profile UUID for consistency if no auth yet
+            const newProfiles = employees?.filter(emp => {
+                const emailMatch = Array.from(existingEmails).some(e => e === emp.email?.toLowerCase());
+                const idMatch = existingEmpIds.has(emp.id);
+
+                if (emailMatch || idMatch) {
+                    console.log(`ℹ️ [UserSync] Skipping employee ${emp.name}: Already registered (ID: ${idMatch}, Email: ${emailMatch})`);
+                    return false;
+                }
+                return true;
+            }).map(emp => ({
+                id: emp.id,
                 email: emp.email || `${emp.name.toLowerCase().replace(/ /g, '.')}@jayatempo.com`,
                 name: emp.name,
                 role: (emp.position?.toLowerCase().includes('admin') || emp.position?.toLowerCase().includes('manager')) ? 'manager' : 'staff',
@@ -117,13 +146,17 @@ export const userService = {
 
             if (!newProfiles || newProfiles.length === 0) return { success: true, count: 0 };
 
-            // 4. Batch Upsert
+            // 4. Batch Upsert with validation
             const { error: insertError } = await supabase
                 .from('profiles')
                 .upsert(newProfiles, { onConflict: 'id' });
 
             if (insertError) {
                 console.error("DEBUG: Sync Insert Error:", insertError);
+                // Check for PK violation which might imply ID collision
+                if (insertError.code === '23505') {
+                    throw new Error("Identity collision detected: One or more employee IDs already exist as profile IDs.");
+                }
                 throw insertError;
             }
 
@@ -259,6 +292,22 @@ export const userService = {
         } catch (err: any) {
             console.error("Sync Sales->Marketing Error:", err);
             return { success: false, error: err.message };
+        }
+    },
+
+    // Update password for any user (Requires RPC with security definer)
+    async adminUpdatePassword(userId: string, newPassword: string) {
+        try {
+            const { data, error } = await supabase.rpc('admin_reset_password', {
+                target_user_id: userId,
+                new_password: newPassword
+            });
+
+            if (error) throw error;
+            return !!data;
+        } catch (err) {
+            console.error("Admin Update Password Error:", err);
+            throw err;
         }
     }
 };

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseNoSession } from '@/lib/supabase'
 import type { Profile } from '@/lib/supabase'
 
 export interface SignUpData {
@@ -50,8 +50,8 @@ export class AuthService {
       console.warn("DEBUG: Employee lookup failed (might be new user not in employee DB):", err);
     }
 
-    // 2. Register in Auth
-    const { data: authData, error } = await supabase.auth.signUp({
+    // 2. Register in Auth (Using non-persisting client to prevent session hijacking)
+    const { data: authData, error } = await supabaseNoSession.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
@@ -106,21 +106,28 @@ export class AuthService {
 
   // Get current user profile
   async getUserProfile(userId: string): Promise<Profile | null> {
+    const startTime = performance.now();
     try {
+      console.log(`📡 [AuthService] DB fetch started for ${userId}`);
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
 
+      const duration = (performance.now() - startTime).toFixed(2);
+
       if (error) {
+        console.error(`❌ [AuthService] DB fetch error for ${userId} after ${duration}ms:`, error);
         if (error.code === 'PGRST116') return null;
         throw error;
       }
 
+      console.log(`✅ [AuthService] DB fetch completed for ${userId} in ${duration}ms`);
       return data;
     } catch (error) {
-      console.error('Error fetching user profile:', error);
+      const duration = (performance.now() - startTime).toFixed(2);
+      console.error(`❌ [AuthService] Exception fetching profile for ${userId} after ${duration}ms:`, error);
       return null;
     }
   }
@@ -139,12 +146,13 @@ export class AuthService {
 
     if (error) throw error;
 
-    // Optional: Sync metadata if name/role changes
+    // Metadata sync should only happen if the user is updating THEIR OWN profile
+    const { data: { session } } = await supabase.auth.getSession();
     const metadata: any = {};
     if (updates.name) metadata.name = updates.name;
     if (updates.role) metadata.role = updates.role;
 
-    if (Object.keys(metadata).length > 0) {
+    if (session?.user?.id === userId && Object.keys(metadata).length > 0) {
       await supabase.auth.updateUser({ data: metadata });
     }
 

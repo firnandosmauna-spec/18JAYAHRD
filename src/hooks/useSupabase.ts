@@ -7,11 +7,13 @@ import {
   attendanceService,
   payrollService,
   rewardService,
+  rewardTypeService,
   notificationService,
   positionService,
   contractService,
   jobHistoryService,
   leaveQuotaService,
+  loanService,
   handleSupabaseError
 } from '@/services/supabaseService'
 import type {
@@ -21,6 +23,7 @@ import type {
   AttendanceRecord,
   PayrollRecord,
   RewardRecord,
+  RewardTypeMaster,
   NotificationRecord,
   Position,
   EmployeeContract,
@@ -329,6 +332,16 @@ export function useAttendance(startDate?: string, endDate?: string) {
         setError(errorMsg)
         throw new Error(errorMsg)
       }
+    },
+    deleteAttendance: async (id: string) => {
+      try {
+        await attendanceService.delete(id)
+        setAttendance(prev => prev.filter(record => record.id !== id))
+      } catch (err) {
+        const errorMsg = handleSupabaseError(err)
+        setError(errorMsg)
+        throw new Error(errorMsg)
+      }
     }
   }
 }
@@ -376,6 +389,18 @@ export function usePayroll(month: number, year: number) {
     }
   }
 
+  const updatePayroll = async (id: string, updates: Partial<Omit<PayrollRecord, 'id' | 'created_at'>>) => {
+    try {
+      const updatedRecord = await payrollService.update(id, updates)
+      setPayroll(prev => prev.map(record => record.id === id ? updatedRecord : record))
+      return updatedRecord
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
   useEffect(() => {
     fetchPayroll()
   }, [month, year])
@@ -387,6 +412,7 @@ export function usePayroll(month: number, year: number) {
     refetch: fetchPayroll,
     addPayroll,
     markAsPaid,
+    updatePayroll,
     deletePayroll: async (id: string) => {
       try {
         await payrollService.delete(id)
@@ -443,6 +469,29 @@ export function useRewards() {
     }
   }
 
+  const updateReward = async (id: string, reward: Partial<Omit<RewardRecord, 'id' | 'created_at' | 'updated_at'>>) => {
+    try {
+      const updatedReward = await rewardService.update(id, reward)
+      setRewards(prev => prev.map(r => r.id === id ? updatedReward : r))
+      return updatedReward
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
+  const deleteReward = async (id: string) => {
+    try {
+      await rewardService.delete(id)
+      setRewards(prev => prev.filter(r => r.id !== id))
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
   useEffect(() => {
     fetchRewards()
   }, [])
@@ -453,8 +502,70 @@ export function useRewards() {
     error,
     refetch: fetchRewards,
     addReward,
-    claimReward
+    claimReward,
+    updateReward,
+    deleteReward
   }
+}
+
+export function useRewardTypes() {
+  const [rewardTypes, setRewardTypes] = useState<RewardTypeMaster[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchRewardTypes = async () => {
+    try {
+      setLoading(true);
+      const data = await rewardTypeService.getAll();
+      setRewardTypes(data);
+      setError(null);
+    } catch (err) {
+      setError(handleSupabaseError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addRewardType = async (typeData: Omit<RewardTypeMaster, 'id' | 'created_at' | 'updated_at'>) => {
+    try {
+      const newType = await rewardTypeService.create(typeData);
+      setRewardTypes(prev => [...prev, newType]);
+      return newType;
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err);
+      setError(errorMsg);
+      throw new Error(errorMsg);
+    }
+  };
+
+  const updateRewardType = async (id: string, updates: Partial<Omit<RewardTypeMaster, 'id' | 'created_at'>>) => {
+    try {
+      const updatedType = await rewardTypeService.update(id, updates);
+      setRewardTypes(prev => prev.map(t => t.id === id ? updatedType : t));
+      return updatedType;
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err);
+      setError(errorMsg);
+      throw new Error(errorMsg);
+    }
+  };
+
+  const deleteRewardType = async (id: string) => {
+    try {
+      await rewardTypeService.delete(id);
+      setRewardTypes(prev => prev.filter(t => t.id !== id));
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err);
+      setError(errorMsg);
+      throw new Error(errorMsg);
+    }
+  };
+
+  useEffect(() => {
+    fetchRewardTypes();
+  }, []);
+
+  return { rewardTypes, loading, error, refetch: fetchRewardTypes, addRewardType, updateRewardType, deleteRewardType };
 }
 
 // Notifications Hooks

@@ -57,12 +57,22 @@ export default function Attendance() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
-            // Get linked employee_id
+            // Get linked employee_id and role
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('employee_id')
+                .select('employee_id, role')
                 .eq('id', user.id)
                 .single();
+
+            // Get admin attendance requirement setting
+            const { data: setting } = await supabase
+                .from('system_settings')
+                .select('value')
+                .eq('key', 'admin_attendance_required')
+                .maybeSingle();
+
+            const isAdminAttendanceRequired = setting ? (setting.value === 'true' || setting.value === true) : true;
+            const isBlocked = !profile?.employee_id && (profile?.role !== 'admin' || isAdminAttendanceRequired);
 
             if (profile?.employee_id) {
                 setEmployeeId(profile.employee_id);
@@ -83,8 +93,32 @@ export default function Attendance() {
                         console.error('Error fetching attendance:', error);
                     }
                 }
-            } else {
-                Alert.alert('Profil Belum Lengkap', 'Akun Anda belum terhubung dengan data karyawan.');
+            } else if (isBlocked) {
+                if (user.email) {
+                    // Attempt auto-link
+                    console.log('Attempting auto-link for mobile user:', user.email);
+                    const { data: employee } = await supabase
+                        .from('employees')
+                        .select('id')
+                        .eq('email', user.email)
+                        .maybeSingle();
+
+                    if (employee) {
+                        console.log('Found matching employee, linking...');
+                        await supabase
+                            .from('profiles')
+                            .update({ employee_id: employee.id })
+                            .eq('id', user.id);
+
+                        setEmployeeId(employee.id);
+                        // Re-fetch status to get today's record if any
+                        fetchAttendanceStatus();
+                    } else {
+                        Alert.alert('Profil Belum Lengkap', 'Akun Anda belum terhubung dengan data karyawan. Harap hubungi Admin HRD.');
+                    }
+                } else {
+                    Alert.alert('Profil Belum Lengkap', 'Akun Anda belum terhubung dengan data karyawan.');
+                }
             }
         } catch (error) {
             console.error('Error:', error);

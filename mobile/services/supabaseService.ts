@@ -120,6 +120,44 @@ export const employeeService = {
 
         if (error) throw error
         return data || []
+    },
+
+    // Get employee by email
+    async getByEmail(email: string) {
+        const { data, error } = await supabase
+            .from('employees')
+            .select('*')
+            .eq('email', email)
+            .maybeSingle()
+
+        if (error) throw error
+        return data
+    }
+}
+
+// Profile Services
+export const profileService = {
+    async getById(id: string) {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', id)
+            .single()
+
+        if (error) throw error
+        return data
+    },
+
+    async update(id: string, updates: any) {
+        const { data, error } = await supabase
+            .from('profiles')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single()
+
+        if (error) throw error
+        return data
     }
 }
 

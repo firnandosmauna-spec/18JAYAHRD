@@ -12,8 +12,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, MoreVertical, RefreshCw, Search, Shield, ShieldAlert, ShieldCheck, UserPlus, Users } from "lucide-react";
+import { Loader2, MoreVertical, RefreshCw, Search, Shield, ShieldAlert, ShieldCheck, UserPlus, Users, Key } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AdminChangePasswordDialog } from "./AdminChangePasswordDialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 
@@ -48,6 +49,9 @@ export function UserManagement() {
     const [isRegisterDialogOpen, setIsRegisterDialogOpen] = useState(false);
     const [selectedRegisterEmp, setSelectedRegisterEmp] = useState<any>(null);
     const [registerData, setRegisterData] = useState({ email: '', password: '' });
+
+    // Admin Password Change state
+    const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
 
     useEffect(() => {
         loadUsers();
@@ -156,13 +160,11 @@ export function UserManagement() {
 
             toast({
                 title: "Registrasi Berhasil",
-                description: "Akun telah dibuat. Sesi Anda akan beralih ke pengguna baru.",
+                description: "Akun telah berhasil dibuat untuk karyawan ini.",
             });
 
-            // Give time for toast
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+            // Refresh the users list instead of reloading the page
+            loadUsers();
 
         } catch (err: any) {
             console.error("Register Error:", err);
@@ -378,8 +380,19 @@ export function UserManagement() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => handleEditClick(user)} className="font-body">
+                                                <DropdownMenuItem onClick={() => handleEditClick(user)} className="font-body font-medium">
+                                                    <Shield className="mr-2 h-4 w-4" />
                                                     Edit Akses
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                    onClick={() => {
+                                                        setSelectedUser(user);
+                                                        setIsPasswordDialogOpen(true);
+                                                    }}
+                                                    className="font-body text-red-600 focus:text-red-700 focus:bg-red-50"
+                                                >
+                                                    <Key className="mr-2 h-4 w-4" />
+                                                    Ganti Password
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
@@ -434,7 +447,7 @@ export function UserManagement() {
                                                     onClick={() => handleRegisterClick(emp)}
                                                 >
                                                     <UserPlus className="w-3 h-3 mr-1" />
-                                                    Register & Login
+                                                    Register Akun
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
@@ -458,8 +471,7 @@ export function UserManagement() {
                         <DialogHeader>
                             <DialogTitle>Registrasi Akun Karyawan</DialogTitle>
                             <DialogDescription>
-                                Buat akun login untuk <b>{selectedRegisterEmp?.name}</b>.<br />
-                                <span className="text-amber-600 font-bold">PERHATIAN:</span> Setelah akun dibuat, Anda otomatis akan login sebagai pengguna baru ini.
+                                Buat akun login untuk <b>{selectedRegisterEmp?.name}</b>.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-2">
@@ -481,7 +493,7 @@ export function UserManagement() {
                             <Button variant="outline" onClick={() => setIsRegisterDialogOpen(false)}>Batal</Button>
                             <Button onClick={handleRegisterConfirm} disabled={loading || !registerData.password}>
                                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Buat Akun & Login
+                                Buat Akun
                             </Button>
                         </DialogFooter>
                     </DialogContent>
@@ -577,6 +589,13 @@ export function UserManagement() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+
+                <AdminChangePasswordDialog
+                    open={isPasswordDialogOpen}
+                    onOpenChange={setIsPasswordDialogOpen}
+                    userId={selectedUser?.id || ''}
+                    userName={selectedUser?.name || ''}
+                />
             </CardContent>
         </Card >
     );
