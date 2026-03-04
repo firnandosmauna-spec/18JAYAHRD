@@ -163,7 +163,7 @@ export default function Attendance() {
 
             const officeLat = Number(settings.office_latitude) || -0.0263;
             const officeLng = Number(settings.office_longitude) || 109.3425;
-            const officeRadius = Number(settings.office_radius) || 100; // Increased default for GPS jitter
+            const officeRadius = Number(settings.office_radius) || 200; // Increased default for GPS jitter
             const officeSSID = settings.office_wifi_ssid;
 
             // 2. Request Permission
@@ -185,16 +185,19 @@ export default function Attendance() {
                 officeLng
             );
 
-            if (distance > officeRadius) {
-                Alert.alert(
-                    'Diluar Jangkauan',
-                    `Anda berada ${Math.round(distance)}m dari kantor. Maksimal jarak adalah ${officeRadius}m.`
-                );
-                setSubmitting(false);
-                return;
-            }
+            const now = new Date();
+            const timeString = now.toTimeString().split(' ')[0];
+            const today = getLocalYYYYMMDD();
 
-            // 5. Get Address (Reverse Geocode)
+            const workStartTime = new Date(now);
+            workStartTime.setHours(WORK_START_HOUR, WORK_START_MINUTE, 0, 0);
+
+            const lateThreshold = new Date(workStartTime);
+            lateThreshold.setMinutes(workStartTime.getMinutes() + LATE_TOLERANCE_MINUTES);
+
+            const status = now > lateThreshold ? 'late' : 'present';
+
+            // Get Address (Reverse Geocode) early for both paths
             let address = 'Lokasi Terdeteksi';
             try {
                 let geocode = await Location.reverseGeocodeAsync({
@@ -212,17 +215,59 @@ export default function Attendance() {
                 address = `${location.coords.latitude.toFixed(5)}, ${location.coords.longitude.toFixed(5)}`;
             }
 
+            if (distance > officeRadius) {
+                const distanceKm = (distance / 1000).toFixed(2);
+                const distanceDesc = distance > 1000 ? `${distanceKm}km` : `${Math.round(distance)}m`;
+
+                Alert.alert(
+                    'Diluar Jangkauan',
+                    `Anda berada ${distanceDesc} dari kantor. Maksimal jarak adalah ${officeRadius}m.\n\nKoordinat Anda: ${location.coords.latitude.toFixed(6)}, ${location.coords.longitude.toFixed(6)}`,
+                    [
+                        { text: 'Batal', style: 'cancel', onPress: () => setSubmitting(false) },
+                        {
+                            text: 'Absen Saja (Butuh Alasan)',
+                            onPress: () => {
+                                Alert.prompt(
+                                    'Alasan Absen Luar Jangkauan',
+                                    'Mohon masukkan alasan mengapa Anda absen di luar jangkauan area kantor:',
+                                    [
+                                        { text: 'Batal', style: 'cancel', onPress: () => setSubmitting(false) },
+                                        {
+                                            text: 'Kirim',
+                                            onPress: async (reason) => {
+                                                if (!reason || reason.trim() === '') {
+                                                    Alert.alert('Error', 'Alasan wajib diisi.');
+                                                    setSubmitting(false);
+                                                    return;
+                                                }
+                                                // Execute insertion with reason
+                                                await processCheckIn(address, status, distance, reason);
+                                            }
+                                        }
+                                    ]
+                                );
+                            }
+                        }
+                    ]
+                );
+                return;
+            }
+
+            // Normal check-in
+            await processCheckIn(address, status, distance);
+
+        } catch (error: any) {
+            console.error('Check In Exception:', error);
+            Alert.alert('Gagal Check In', error.message);
+            setSubmitting(false);
+        }
+    };
+
+    const processCheckIn = async (address: string, status: string, distance: number, reason: string = '') => {
+        try {
+            const today = getLocalYYYYMMDD();
             const now = new Date();
             const timeString = now.toTimeString().split(' ')[0];
-            const today = getLocalYYYYMMDD();
-
-            const workStartTime = new Date(now);
-            workStartTime.setHours(WORK_START_HOUR, WORK_START_MINUTE, 0, 0);
-
-            const lateThreshold = new Date(workStartTime);
-            lateThreshold.setMinutes(workStartTime.getMinutes() + LATE_TOLERANCE_MINUTES);
-
-            const status = now > lateThreshold ? 'late' : 'present';
 
             const { data, error } = await supabase
                 .from('attendance')
@@ -233,15 +278,16 @@ export default function Attendance() {
                     check_out: null,
                     status: status,
                     location: address,
+                    notes: reason ? `[LUAR JANGKAUAN] ${reason}` : null
                 })
                 .select()
                 .single();
 
             if (error) throw error;
             setTodayRecord(data);
-            Alert.alert('Berhasil', `Check In berhasil di ${address} (Jarak: ${Math.round(distance)}m)`);
+            Alert.alert('Berhasil', `Check In berhasil di ${address} (Jarak: ${Math.round(distance)}m)${reason ? '\n\nStatus: Luar Jangkauan' : ''}`);
         } catch (error: any) {
-            Alert.alert('Gagal Check In', error.message);
+            Alert.alert('Gagal Simpan Data', error.message);
         } finally {
             setSubmitting(false);
         }

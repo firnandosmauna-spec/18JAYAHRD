@@ -1,0 +1,6 @@
+﻿src/components/hrd/PayrollManagement_backup.tsx(3687,11): error TS17002: Expected corresponding JSX closing tag for 'DialogContent'.
+src/components/hrd/PayrollManagement_backup.tsx(3715,9): error TS17002: Expected corresponding JSX closing tag for 'Dialog'.
+src/components/hrd/PayrollManagement_backup.tsx(3717,7): error TS17002: Expected corresponding JSX closing tag for 'div'.
+src/components/hrd/PayrollManagement_backup.tsx(3721,5): error TS1005: ')' expected.
+src/components/hrd/PayrollManagement_backup.tsx(4145,5): error TS1128: Declaration or statement expected.
+src/components/hrd/PayrollManagement_backup.tsx(4147,3): error TS1109: Expression expected.

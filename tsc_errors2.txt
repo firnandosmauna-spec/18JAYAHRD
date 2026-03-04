@@ -1,0 +1,1 @@
+﻿src/components/hrd/PayrollManagement.tsx(846,11): error TS2353: Object literal may only specify known properties, and 'manual_allowance_details' does not exist in type 'Omit<PayrollRecord, "created_at" | "updated_at" | "id">'.

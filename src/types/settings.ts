@@ -32,7 +32,7 @@ export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
     attendance_late_tolerance: 5,
     office_latitude: -0.0263, // Default Pontianak (adjust as needed)
     office_longitude: 109.3425,
-    office_radius: 50,
+    office_radius: 200,
     office_wifi_ssid: '',
 };
 

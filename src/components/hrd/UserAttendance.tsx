@@ -16,6 +16,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useAttendance, useEmployees } from '@/hooks/useSupabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { AttendanceRecord } from '@/lib/supabase';
@@ -67,6 +77,16 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     const [gettingLocation, setGettingLocation] = useState(false);
     const [locationError, setLocationError] = useState<string | null>(null);
     const [penaltyRate, setPenaltyRate] = useState<number>(0);
+
+    // Out of range check-in states
+    const [showReasonDialog, setShowReasonDialog] = useState(false);
+    const [pendingCheckInData, setPendingCheckInData] = useState<{
+        loc: string;
+        status: string;
+        distance: number;
+    } | null>(null);
+    const [checkInReason, setCheckInReason] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -206,26 +226,35 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 officeLng
             );
 
+            // 4. Determine Lateness status
+            const now = new Date();
+            const scheduleStartMinutes = 8 * 60; // 08:00
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const isLate = currentMinutes > (scheduleStartMinutes + 5);
+            const status = isLate ? 'late' : 'present';
+
             if (distance > officeRadius) {
-                toast({
-                    title: 'Diluar Jangkauan',
-                    description: `Jarak Anda ${Math.round(distance)}m. Maksimal ${officeRadius}m.`,
-                    variant: 'destructive'
-                });
+                setPendingCheckInData({ loc, status, distance });
+                setShowReasonDialog(true);
                 return;
             }
 
+            await processCheckIn(loc, status, distance);
+        } catch (error: any) {
+            toast({ title: 'Gagal Check In', description: error.message, variant: 'destructive' });
+        }
+    };
+
+    const processCheckIn = async (loc: string, status: string, distance: number, reason: string = '') => {
+        setIsSubmitting(true);
+        try {
             const now = new Date();
             const checkInTime = now.toTimeString().slice(0, 5);
 
-            // Logic: Office Hours (08:00 - 16:00)
+            // Recalculate late minutes for notes
             const scheduleStartMinutes = 8 * 60; // 08:00
             const currentMinutes = now.getHours() * 60 + now.getMinutes();
-            // Strict Calculation: No tolerance for simple calculation
-            // If check in > 08:00, it is late.
-            // Requirement says "terlambat 1 menit dipotong", so basically > 08:00 is late.
-
-            const isLate = currentMinutes > (scheduleStartMinutes + 5);
+            const isLate = status === 'late';
             const lateMinutes = isLate ? (currentMinutes - (scheduleStartMinutes + 5)) : 0;
             const penalty = lateMinutes * (penaltyRate || 1000);
 
@@ -236,12 +265,13 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             const notes = [];
             if (isLate) notes.push(`Terlambat ${lateMinutes}m (Potongan Rp ${penalty.toLocaleString('id-ID')})`);
             if (isSP1) notes.push(`⚠️ SP1 TRIGGERED (Total ${newWeeklyLateMinutes}m/minggu)`);
+            if (reason) notes.push(`[LUAR JANGKAUAN] ${reason}`);
 
             await addAttendance({
-                employee_id: user.employee_id,
+                employee_id: user!.employee_id!,
                 date: today,
                 check_in: checkInTime,
-                status: isLate ? 'late' : 'present',
+                status: status as any,
                 location: loc,
                 notes: notes.join('. ')
             });
@@ -258,8 +288,13 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             }
 
             refetch();
+            setShowReasonDialog(false);
+            setCheckInReason('');
+            setPendingCheckInData(null);
         } catch (error: any) {
             toast({ title: 'Gagal Check In', description: error.message, variant: 'destructive' });
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -483,6 +518,54 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Reason Dialog for Out of Range Check-In */}
+            <Dialog open={showReasonDialog} onOpenChange={setShowReasonDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Absen di Luar Jangkauan</DialogTitle>
+                        <DialogDescription>
+                            Anda terdeteksi berada {pendingCheckInData ? Math.round(pendingCheckInData.distance) : 0}m dari kantor.
+                            Mohon berikan alasan mengapa Anda melakukan absensi di luar area kantor.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Alasan Absensi <span className="text-red-500">*</span></Label>
+                            <Textarea
+                                placeholder="Contoh: Sedang tugas di proyek A, GPS tidak akurat, dll."
+                                value={checkInReason}
+                                onChange={(e) => setCheckInReason(e.target.value)}
+                                className="min-h-[100px]"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowReasonDialog(false)}>
+                            Batal
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                if (pendingCheckInData && checkInReason.trim()) {
+                                    processCheckIn(
+                                        pendingCheckInData.loc,
+                                        pendingCheckInData.status,
+                                        pendingCheckInData.distance,
+                                        checkInReason
+                                    );
+                                } else {
+                                    toast({ title: 'Alasan Wajib Diisi', variant: 'destructive' });
+                                }
+                            }}
+                            disabled={isSubmitting || !checkInReason.trim()}
+                            className="bg-hrd hover:bg-hrd-dark"
+                        >
+                            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LogIn className="w-4 h-4 mr-2" />}
+                            Kirim & Absen
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
