@@ -16,6 +16,7 @@ import {
   loanService,
   handleSupabaseError
 } from '@/services/supabaseService'
+import { userService } from '@/services/userService'
 import type {
   Employee,
   Department,
@@ -101,6 +102,10 @@ export function useEmployees() {
 
   const deleteEmployee = async (id: string) => {
     try {
+      // 1. Delete associated user profile if it exists
+      await userService.deleteByEmployeeId(id)
+
+      // 2. Delete employee record
       await employeeService.delete(id)
       setEmployees(prev => prev.filter(emp => emp.id !== id))
     } catch (err) {
@@ -173,6 +178,29 @@ export function useDepartments() {
     }
   }
 
+  const updateDepartment = async (id: string, updates: Partial<Omit<Department, 'id' | 'created_at'>>) => {
+    try {
+      const updatedDepartment = await departmentService.update(id, updates)
+      setDepartments(prev => prev.map(dept => dept.id === id ? updatedDepartment : dept))
+      return updatedDepartment
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
+  const deleteDepartment = async (id: string) => {
+    try {
+      await departmentService.delete(id)
+      setDepartments(prev => prev.filter(dept => dept.id !== id))
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
   useEffect(() => {
     fetchDepartments()
   }, [])
@@ -182,7 +210,9 @@ export function useDepartments() {
     loading,
     error,
     refetch: fetchDepartments,
-    addDepartment
+    addDepartment,
+    updateDepartment,
+    deleteDepartment
   }
 }
 

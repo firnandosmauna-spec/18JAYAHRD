@@ -16,7 +16,7 @@ interface RegisterFormProps {
 const roleOptions: { value: UserRole; label: string }[] = [
   { value: 'staff', label: 'Staff' },
   { value: 'manager', label: 'Manager' },
-  { value: 'admin', label: 'Admin' },
+  { value: 'Administrator', label: 'Administrator' },
 ];
 
 const moduleOptions: { value: ModuleType; label: string }[] = [
@@ -133,7 +133,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="px-0">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -184,6 +184,8 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               onChange={handleInputChange}
               required
               disabled={isSubmitting}
+              autoComplete="off"
+              data-lpignore="true"
             />
           </div>
 
@@ -241,6 +243,8 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                 onChange={handleInputChange}
                 required
                 disabled={isSubmitting}
+                autoComplete="new-password"
+                data-lpignore="true"
               />
               <Button
                 type="button"
@@ -271,6 +275,8 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                 onChange={handleInputChange}
                 required
                 disabled={isSubmitting}
+                autoComplete="new-password"
+                data-lpignore="true"
               />
               <Button
                 type="button"

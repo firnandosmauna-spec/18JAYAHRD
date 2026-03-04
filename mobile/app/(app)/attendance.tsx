@@ -133,11 +133,40 @@ export default function Attendance() {
         fetchAttendanceStatus();
     }, []);
 
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371e3; // Earth radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // distance in meters
+    };
+
     const handleCheckIn = async () => {
         if (!employeeId) return;
         setSubmitting(true);
         try {
-            // 1. Request Permission
+            // 1. Fetch Attendance Settings for validation
+            const { data: settingsData } = await supabase
+                .from('system_settings')
+                .select('*')
+                .in('key', ['office_latitude', 'office_longitude', 'office_radius', 'office_wifi_ssid']);
+
+            const settings: any = {};
+            settingsData?.forEach(s => settings[s.key] = s.value);
+
+            const officeLat = Number(settings.office_latitude) || -0.0263;
+            const officeLng = Number(settings.office_longitude) || 109.3425;
+            const officeRadius = Number(settings.office_radius) || 100; // Increased default for GPS jitter
+            const officeSSID = settings.office_wifi_ssid;
+
+            // 2. Request Permission
             let { status: permissionStatus } = await Location.requestForegroundPermissionsAsync();
             if (permissionStatus !== 'granted') {
                 Alert.alert('Izin Ditolak', 'Aplikasi membutuhkan izin lokasi untuk melakukan absensi.');
@@ -145,10 +174,27 @@ export default function Attendance() {
                 return;
             }
 
-            // 2. Get Location
-            let location = await Location.getCurrentPositionAsync({});
+            // 3. Get Location
+            let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
 
-            // 3. Get Address (Reverse Geocode)
+            // 4. Validate Distance
+            const distance = calculateDistance(
+                location.coords.latitude,
+                location.coords.longitude,
+                officeLat,
+                officeLng
+            );
+
+            if (distance > officeRadius) {
+                Alert.alert(
+                    'Diluar Jangkauan',
+                    `Anda berada ${Math.round(distance)}m dari kantor. Maksimal jarak adalah ${officeRadius}m.`
+                );
+                setSubmitting(false);
+                return;
+            }
+
+            // 5. Get Address (Reverse Geocode)
             let address = 'Lokasi Terdeteksi';
             try {
                 let geocode = await Location.reverseGeocodeAsync({
@@ -159,7 +205,6 @@ export default function Attendance() {
                 if (geocode.length > 0) {
                     const g = geocode[0];
                     address = `${g.street || ''} ${g.name || ''}, ${g.city || ''}`;
-                    // Cleanup extra spaces
                     address = address.replace(/\s+/g, ' ').trim();
                 }
             } catch (geoError) {
@@ -168,11 +213,9 @@ export default function Attendance() {
             }
 
             const now = new Date();
-            // Use toTimeString() split to ensure HH:MM:SS format (e.g., "14:30:00")
             const timeString = now.toTimeString().split(' ')[0];
             const today = getLocalYYYYMMDD();
 
-            // Determine status based on time (08:00 + 5m tolerance)
             const workStartTime = new Date(now);
             workStartTime.setHours(WORK_START_HOUR, WORK_START_MINUTE, 0, 0);
 
@@ -187,7 +230,7 @@ export default function Attendance() {
                     employee_id: employeeId,
                     date: today,
                     check_in: timeString,
-                    check_out: null, // Force null to ensure it's not set by default
+                    check_out: null,
                     status: status,
                     location: address,
                 })
@@ -196,7 +239,7 @@ export default function Attendance() {
 
             if (error) throw error;
             setTodayRecord(data);
-            Alert.alert('Berhasil', `Check In berhasil di ${address}`);
+            Alert.alert('Berhasil', `Check In berhasil di ${address} (Jarak: ${Math.round(distance)}m)`);
         } catch (error: any) {
             Alert.alert('Gagal Check In', error.message);
         } finally {

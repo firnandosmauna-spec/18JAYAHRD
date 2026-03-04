@@ -309,7 +309,7 @@ export function LoanManagement() {
                                                         </Button>
                                                     </div>
                                                 )}
-                                                {user?.role === 'admin' && (
+                                                {user?.role === 'Administrator' && (
                                                     <Button size="icon" variant="ghost" className="text-gray-400 hover:text-red-600" onClick={() => handleDelete(loan.id)}>
                                                         <MoreVertical className="w-4 h-4" />
                                                     </Button>

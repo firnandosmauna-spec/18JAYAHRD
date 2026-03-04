@@ -79,7 +79,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="px-0">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -97,6 +97,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
               onChange={handleInputChange}
               required
               disabled={isLoading}
+              autoComplete="off"
             />
           </div>
 
@@ -112,6 +113,7 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
                 onChange={handleInputChange}
                 required
                 disabled={isLoading}
+                autoComplete="new-password"
               />
               <Button
                 type="button"

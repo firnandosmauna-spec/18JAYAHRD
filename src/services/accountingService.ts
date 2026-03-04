@@ -24,6 +24,15 @@ class AccountingService {
         return data;
     }
 
+    async deleteAccount(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('accounting_accounts')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    }
+
     // Journal Entries
     async getJournalEntries(): Promise<JournalEntry[]> {
         const { data, error } = await supabase

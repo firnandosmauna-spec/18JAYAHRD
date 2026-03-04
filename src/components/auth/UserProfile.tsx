@@ -100,7 +100,7 @@ export function UserProfile() {
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case 'admin':
+      case 'Administrator':
         return 'bg-red-100 text-red-800';
       case 'manager':
         return 'bg-blue-100 text-blue-800';

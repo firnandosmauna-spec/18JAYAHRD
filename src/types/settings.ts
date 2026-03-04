@@ -15,6 +15,10 @@ export interface AttendanceSettings {
     work_end_time_saturday: string;
     admin_attendance_required: boolean;
     attendance_late_tolerance: number;
+    office_latitude: number;
+    office_longitude: number;
+    office_radius: number;
+    office_wifi_ssid: string;
 }
 
 export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
@@ -26,6 +30,10 @@ export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
     work_end_time_saturday: '13:00',
     admin_attendance_required: true,
     attendance_late_tolerance: 5,
+    office_latitude: -0.0263, // Default Pontianak (adjust as needed)
+    office_longitude: 109.3425,
+    office_radius: 50,
+    office_wifi_ssid: '',
 };
 
 export interface LeaveSettings {

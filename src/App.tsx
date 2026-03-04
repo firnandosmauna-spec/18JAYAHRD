@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { SopOverlay } from "@/components/SopOverlay";
 import { Toaster } from "@/components/ui/toaster";
 
 // Static imports to fix Suspense hang
@@ -119,6 +120,7 @@ function App() {
   return (
     <AuthProvider>
       <RoutePersister />
+      <SopOverlay />
       <ErrorBoundary>
         <Suspense fallback={<LoadingFallback />}>
           <Routes>

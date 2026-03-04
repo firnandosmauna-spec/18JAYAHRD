@@ -677,7 +677,7 @@ export default function DashboardPage() {
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="profile" className="font-body">Profil</TabsTrigger>
               <TabsTrigger value="preferences" className="font-body">Preferensi</TabsTrigger>
-              {user?.role === 'admin' && (
+              {user?.role === 'Administrator' && (
                 <TabsTrigger value="admin" className="font-body">
                   <Shield className="w-4 h-4 mr-1" />
                   Administrator
@@ -768,7 +768,7 @@ export default function DashboardPage() {
             </TabsContent>
 
             {/* Admin Tab */}
-            {user?.role === 'admin' && (
+            {user?.role === 'Administrator' && (
               <TabsContent value="admin" className="space-y-4 mt-4">
                 <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <p className="text-sm font-body text-yellow-800">

@@ -411,10 +411,13 @@ export function PayrollManagement() {
 
           // --- Auto-Calculate Allowances based on Settings ---
           if (payrollSettings) {
-            const daysInMonth = new Date(formData.period_year, formData.period_month, 0).getDate();
+            const workingDays = 26; // Fixed 26 days divisor as per user request
 
-            mealAllowance = Math.round(((payrollSettings.payroll_allowance_meal || 0) / daysInMonth) * presentCount);
-            gasolineAllowance = Math.round(((payrollSettings.payroll_allowance_gasoline || 0) / daysInMonth) * presentCount);
+            // Prorate base salary based on attendance
+            baseSalaryValue = Math.round((baseSalaryValue / workingDays) * presentCount);
+
+            mealAllowance = Math.round(((payrollSettings.payroll_allowance_meal || 0) / workingDays) * presentCount);
+            gasolineAllowance = Math.round(((payrollSettings.payroll_allowance_gasoline || 0) / workingDays) * presentCount);
 
             // Try to find BPJS in employee's profile first
             const employeeBpjs = employee.deductions?.find((d: any) =>
@@ -431,10 +434,10 @@ export function PayrollManagement() {
             thrAllowance = payrollSettings.payroll_allowance_thr || 0;
 
             if (payrollSettings.payroll_allowance_meal > 0 && mealAllowance > 0) {
-              newAllowanceDetails.push(`Uang Makan: ${presentCount}/${daysInMonth} hari x ${formatCurrency(payrollSettings.payroll_allowance_meal)} = ${formatCurrency(mealAllowance)}`);
+              newAllowanceDetails.push(`Uang Makan: ${presentCount}/${workingDays} hari kerja x ${formatCurrency(payrollSettings.payroll_allowance_meal)} = ${formatCurrency(mealAllowance)}`);
             }
             if (payrollSettings.payroll_allowance_gasoline > 0 && gasolineAllowance > 0) {
-              newAllowanceDetails.push(`Uang Bensin: ${presentCount}/${daysInMonth} hari x ${formatCurrency(payrollSettings.payroll_allowance_gasoline)} = ${formatCurrency(gasolineAllowance)}`);
+              newAllowanceDetails.push(`Uang Bensin: ${presentCount}/${workingDays} hari kerja x ${formatCurrency(payrollSettings.payroll_allowance_gasoline)} = ${formatCurrency(gasolineAllowance)}`);
             }
           }
 
@@ -463,7 +466,7 @@ export function PayrollManagement() {
 
         setFormData(prev => ({
           ...prev,
-          base_salary: salary,
+          base_salary: baseSalaryValue.toString(),
           deductions: (totalDeductions + totalManualDeductions).toString(),
           bank_account_details: employee.bank_account || '',
           meal_allowance: mealAllowance.toString(),
@@ -800,10 +803,13 @@ export function PayrollManagement() {
         }
 
         const presentCount = attendance?.filter((a: any) => ['present', 'late', 'business_trip', 'wfh'].includes(a.status)).length || 0;
-        const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+        const workingDays = 26; // Fixed 26 days divisor
 
-        mealAllowance = Math.round(((payrollSettings?.payroll_allowance_meal || 0) / daysInMonth) * presentCount);
-        gasolineAllowance = Math.round(((payrollSettings?.payroll_allowance_gasoline || 0) / daysInMonth) * presentCount);
+        // Prorate base salary based on attendance
+        baseSalary = Math.round((baseSalary / workingDays) * presentCount);
+
+        mealAllowance = Math.round(((payrollSettings?.payroll_allowance_meal || 0) / workingDays) * presentCount);
+        gasolineAllowance = Math.round(((payrollSettings?.payroll_allowance_gasoline || 0) / workingDays) * presentCount);
 
         // --- Perfect Attendance Reward (Automatic) ---
         const isPerfect = absentCount === 0 && totalLateMinutes === 0 && (attendance?.length || 0) > 0;

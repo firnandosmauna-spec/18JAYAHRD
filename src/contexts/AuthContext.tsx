@@ -6,7 +6,7 @@ import type { Profile } from '@/lib/supabase';
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { usePresence } from '@/hooks/usePresence';
 
-export type UserRole = 'admin' | 'manager' | 'staff' | 'marketing';
+export type UserRole = 'Administrator' | 'manager' | 'staff' | 'marketing';
 export type ModuleType = 'hrd' | 'accounting' | 'inventory' | 'customer' | 'project' | 'sales' | 'purchase' | 'marketing';
 
 export interface User {
@@ -40,7 +40,7 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const getDefaultModules = (role: UserRole): ModuleType[] => {
   switch (role) {
-    case 'admin':
+    case 'Administrator':
       return ['hrd', 'accounting', 'inventory', 'customer', 'project', 'sales', 'purchase', 'marketing'];
     case 'manager':
       return ['hrd', 'accounting', 'sales', 'purchase', 'marketing'];
@@ -69,8 +69,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateAuthState = (newSession: Session | null, newUser: User | null, newProfile: Profile | null) => {
     let finalizedUser = newUser;
+
+    // SAFETY NET: If we have an existing user who is an Administrator, 
+    // and the new identity temporarily shows 'staff' (e.g. during a refresh or profile sync delay),
+    // preserve the higher role to prevent UI flickering or sudden access loss.
     if (user && newUser && user.id === newUser.id) {
       if (newUser.role === 'staff' && user.role !== 'staff') {
+        console.log(`[Auth] Preserving higher role (${user.role}) over temporary 'staff' role for user ${user.id}`);
         finalizedUser = {
           ...newUser,
           role: user.role,
@@ -109,37 +114,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data) {
         let userModules = (data.modules as ModuleType[]) || [];
-        const role = data.role as UserRole;
+        // Normalize role name
+        let role = data.role as string;
+        if (role && (role.trim().toLowerCase() === 'admin' || role.trim().toLowerCase() === 'administrator')) {
+          role = 'Administrator';
+        }
+        const userRole = role as UserRole;
+        console.log(`[Auth] Profile loaded: ${userId}, Role: ${userRole}`);
 
-        if (['admin', 'manager', 'staff', 'marketing'].includes(role)) {
+        if (['Administrator', 'manager', 'staff', 'marketing'].includes(userRole)) {
           if (!userModules.includes('marketing')) {
             userModules = [...userModules, 'marketing'];
           }
         }
 
         if (userModules.length === 0) {
-          userModules = getDefaultModules(role);
+          userModules = getDefaultModules(userRole);
         }
 
         const newUser: User = {
           id: data.id,
           email: data.email,
           name: data.name,
-          role: role,
+          role: userRole,
           avatar: data.avatar,
-          modules: userModules,
+          modules: (userRole === 'Administrator') ? getDefaultModules(userRole) : userModules,
           employee_id: data.employee_id,
         };
 
         updateAuthState(currentSession, newUser, data);
       } else {
-        const role = (metadata?.role as UserRole) || 'staff';
+        // Fallback to metadata if profile record doesn't exist yet
+        let role = (metadata?.role as string) || 'staff';
+        if (role && (role.trim().toLowerCase() === 'admin' || role.trim().toLowerCase() === 'administrator')) {
+          role = 'Administrator';
+        }
+        const userRole = role as UserRole;
+        console.log(`[Auth] Profile record missing for ${userId}, falling back to metadata role: ${userRole}`);
+
         const fallbackUser: User = {
           id: userId,
           email: metadata?.email || '',
           name: metadata?.name || 'User',
-          role: role,
-          modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
+          role: userRole,
+          modules: (metadata?.modules as ModuleType[]) || getDefaultModules(userRole),
         };
         updateAuthState(currentSession, fallbackUser, null);
       }
@@ -161,7 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (currentSession) {
           const metadata = currentSession.user.user_metadata;
-          const role = (metadata?.role as UserRole) || 'staff';
+          let roleRaw = (metadata?.role as string) || 'staff';
+          if (roleRaw && (roleRaw.trim().toLowerCase() === 'admin' || roleRaw.trim().toLowerCase() === 'administrator')) {
+            roleRaw = 'Administrator';
+          }
+          const role = roleRaw as UserRole;
           const defaultModules = getDefaultModules(role);
 
           updateAuthState(currentSession, {
@@ -229,7 +251,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           const metadata = currentSession.user.user_metadata;
-          const role = (metadata?.role as UserRole) || 'staff';
+          let roleRaw = (metadata?.role as string) || 'staff';
+          if (roleRaw && (roleRaw.trim().toLowerCase() === 'admin' || roleRaw.trim().toLowerCase() === 'administrator')) {
+            roleRaw = 'Administrator';
+          }
+          const role = roleRaw as UserRole;
 
           updateAuthState(currentSession, {
             id: userId,
@@ -327,12 +353,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const data = await authService.updateUserProfile(user.id, updates);
       if (data) {
+        let roleRaw = data.role as string;
+        if (roleRaw && (roleRaw.trim().toLowerCase() === 'admin' || roleRaw.trim().toLowerCase() === 'administrator')) {
+          roleRaw = 'Administrator';
+        }
+        const userRole = roleRaw as UserRole;
+
         setProfile(data);
         setUser(prev => prev ? ({
           ...prev,
           name: data.name,
-          role: data.role as UserRole,
-          modules: (data.modules as ModuleType[]) || prev.modules,
+          role: userRole,
+          modules: (userRole === 'Administrator') ? getDefaultModules(userRole) : ((data.modules as ModuleType[]) || prev.modules),
           employee_id: data.employee_id
         }) : null);
         return true;
@@ -355,7 +387,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const hasModuleAccess = (module: ModuleType): boolean => {
-    if (user?.role === 'admin') return true;
+    if (user?.role === 'Administrator') return true;
     return user?.modules.includes(module) ?? false;
   };
 

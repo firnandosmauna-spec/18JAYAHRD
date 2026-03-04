@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../..
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
-import { Plus, Loader2, Search, Filter } from 'lucide-react';
+import { Plus, Loader2, Search, Filter, Trash2, Edit } from 'lucide-react';
 import { Input } from '../../components/ui/input';
 import { formatCurrency } from '../../lib/utils';
 import { supabase } from '../../lib/supabase';
@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../../components/ui/label';
 
 export function CoAView() {
-    const { accounts, loading, refresh, createAccount } = useAccounts();
+    const { accounts, loading, refresh, createAccount, deleteAccount } = useAccounts();
     const [searchTerm, setSearchTerm] = React.useState('');
     const [isAddDialogOpen, setIsAddDialogOpen] = React.useState(false);
     const [newAccount, setNewAccount] = React.useState({
@@ -72,6 +72,19 @@ export function CoAView() {
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const handleDelete = async (account?: any) => {
+        const acc = account || editingAccount;
+        if (!acc) return;
+        if (!window.confirm(`Hapus akun ${acc.name}? Tindakan ini tidak dapat dibatalkan.`)) return;
+
+        setSubmitting(true);
+        const success = await deleteAccount(acc.id);
+        if (success) {
+            setIsEditDialogOpen(false);
+        }
+        setSubmitting(false);
     };
 
     const filteredAccounts = accounts.filter(acc =>
@@ -263,12 +276,23 @@ export function CoAView() {
                                 </div>
                             </div>
                         )}
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Batal</Button>
-                            <Button type="submit" className="bg-accounting hover:bg-accounting-dark text-white" disabled={submitting}>
-                                {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                                Perbarui Akun
+                        <DialogFooter className="flex justify-between items-center w-full">
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                onClick={() => handleDelete()}
+                                disabled={submitting}
+                                className="mr-auto"
+                            >
+                                Hapus
                             </Button>
+                            <div className="flex gap-2">
+                                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Batal</Button>
+                                <Button type="submit" className="bg-accounting hover:bg-accounting-dark text-white" disabled={submitting}>
+                                    {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                                    Perbarui Akun
+                                </Button>
+                            </div>
                         </DialogFooter>
                     </form>
                 </DialogContent>
@@ -312,6 +336,7 @@ export function CoAView() {
                                         <th className="px-6 py-4 text-sm font-semibold text-gray-900 border-b border-gray-100">Tipe</th>
                                         <th className="px-6 py-4 text-sm font-semibold text-gray-900 border-b border-gray-100 text-right">Saldo</th>
                                         <th className="px-6 py-4 text-sm font-semibold text-gray-900 border-b border-gray-100">Status</th>
+                                        <th className="px-6 py-4 text-sm font-semibold text-gray-900 border-b border-gray-100 text-right">Aksi</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -344,6 +369,33 @@ export function CoAView() {
                                                     <Badge variant={account.is_active ? 'secondary' : 'default'} className={account.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
                                                         {account.is_active ? 'Aktif' : 'Non-aktif'}
                                                     </Badge>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingAccount({ ...account });
+                                                                setIsEditDialogOpen(true);
+                                                            }}
+                                                        >
+                                                            <Edit className="w-4 h-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDelete(account);
+                                                            }}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))

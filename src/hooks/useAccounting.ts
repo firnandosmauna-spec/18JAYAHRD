@@ -49,7 +49,26 @@ export function useAccounts() {
         }
     };
 
-    return { accounts, loading, error, refresh: fetchAccounts, createAccount };
+    const deleteAccount = async (id: string) => {
+        try {
+            await accountingService.deleteAccount(id);
+            await fetchAccounts();
+            toast({
+                title: 'Success',
+                description: 'Account deleted successfully',
+            });
+            return true;
+        } catch (err: any) {
+            toast({
+                title: 'Error deleting account',
+                description: err.message,
+                variant: 'destructive',
+            });
+            return false;
+        }
+    };
+
+    return { accounts, loading, error, refresh: fetchAccounts, createAccount, deleteAccount };
 }
 
 export function useJournalEntries() {

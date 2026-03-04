@@ -37,7 +37,7 @@ export function usePermissions() {
     // Returns the access level: 'full' | 'view' | 'own' | 'none'
     const checkAccess = useCallback((resource: string): string => {
         if (!user?.role) return 'none';
-        if (user.role === 'admin') return 'full'; // Super admin always has full access (fallback)
+        if (user.role === 'Administrator') return 'full'; // Super admin always has full access (fallback)
 
         const perm = permissions.find(
             p => p.role === user.role && p.resource === resource

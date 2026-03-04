@@ -15,7 +15,7 @@ export const userService = {
         try {
             const { data, error } = await supabase
                 .from('profiles')
-                .select('*, employees(name, position)')
+                .select('*, employees!fk_profiles_employee(name, position)')
                 .order('created_at', { ascending: false });
 
             if (error) {
@@ -134,10 +134,15 @@ export const userService = {
                 }
                 return true;
             }).map(emp => ({
-                id: emp.id,
+                id: crypto.randomUUID(), // Use a random ID for synced profiles (they will be replaced on real register)
                 email: emp.email || `${emp.name.toLowerCase().replace(/ /g, '.')}@jayatempo.com`,
                 name: emp.name,
-                role: (emp.position?.toLowerCase().includes('admin') || emp.position?.toLowerCase().includes('manager')) ? 'manager' : 'staff',
+                role: (() => {
+                    const pos = emp.position?.toLowerCase().trim() || '';
+                    if (pos === 'admin' || pos === 'administrator') return 'Administrator';
+                    if (pos === 'manager') return 'manager';
+                    return 'staff';
+                })() as UserRole,
                 employee_id: emp.id,
                 modules: ['hrd']
             }));
@@ -201,10 +206,15 @@ export const userService = {
             // If it succeeds, it allows the user to appear in the list, but they can't login until an Auth User with this ID is created.)
             const email = employee.email || `${employee.name.toLowerCase().replace(/ /g, '.')}@jayatempo.com`;
             const newProfile = {
-                id: employee.id, // Using employee ID as Profile ID (Requires NO Foreign Key to auth.users OR matching Auth ID)
+                id: crypto.randomUUID(), // Use a random ID for temporary profiles
                 email: email,
                 name: employee.name,
-                role: (employee.position?.toLowerCase().includes('admin') || employee.position?.toLowerCase().includes('manager')) ? 'manager' : 'staff',
+                role: (() => {
+                    const pos = employee.position?.toLowerCase().trim() || '';
+                    if (pos === 'admin' || pos === 'administrator') return 'Administrator';
+                    if (pos === 'manager') return 'manager';
+                    return 'staff';
+                })() as UserRole,
                 employee_id: employee.id,
                 modules: ['hrd']
             };
@@ -307,6 +317,25 @@ export const userService = {
             return !!data;
         } catch (err) {
             console.error("Admin Update Password Error:", err);
+            throw err;
+        }
+    },
+
+    // Delete user profile by employee_id
+    async deleteByEmployeeId(employeeId: string) {
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .delete()
+                .eq('employee_id', employeeId);
+
+            if (error) {
+                console.error("DEBUG: Error deleting profile by employeeId:", error);
+                throw error;
+            }
+            return true;
+        } catch (err) {
+            console.error("DEBUG: Catch in deleteByEmployeeId:", err);
             throw err;
         }
     }

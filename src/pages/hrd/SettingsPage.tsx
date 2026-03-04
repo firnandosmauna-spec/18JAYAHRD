@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { settingsService } from "@/services/settingsService";
 import { useToast } from "@/components/ui/use-toast";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Calendar, ShieldCheck, Clock } from "lucide-react";
+import { Loader2, Calendar, ShieldCheck, Clock, FileText } from "lucide-react";
+import { sopService } from "@/services/sopService";
 import { GeneralSettings, DEFAULT_GENERAL_SETTINGS, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, LeaveSettings, DEFAULT_LEAVE_SETTINGS, PayrollSettings, DEFAULT_PAYROLL_SETTINGS } from "@/types/settings";
 import { UserManagement } from "@/components/hrd/UserManagement";
 import { RewardTypeManagement } from "@/components/hrd/RewardTypeManagement";
@@ -34,6 +35,10 @@ const attendanceSchema = z.object({
     work_end_time_saturday: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Format jam tidak valid (HH:mm)"),
     admin_attendance_required: z.boolean(),
     attendance_late_tolerance: z.coerce.number().min(0, "Harus berupa angka positif"),
+    office_latitude: z.coerce.number(),
+    office_longitude: z.coerce.number(),
+    office_radius: z.coerce.number().min(1, "Radius minimal 1 meter"),
+    office_wifi_ssid: z.string().optional(),
 });
 
 const leaveSchema = z.object({
@@ -57,6 +62,8 @@ export default function SettingsPage() {
     const { toast } = useToast();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [sopTitle, setSopTitle] = useState("");
+    const [sopContent, setSopContent] = useState("");
 
     const generalForm = useForm<GeneralSettings>({
         resolver: zodResolver(generalSchema),
@@ -95,6 +102,13 @@ export default function SettingsPage() {
             attendanceForm.reset(attendanceData);
             leaveForm.reset(leaveData);
             payrollForm.reset(payrollData);
+
+            // Load SOP
+            const sopData = await sopService.getActiveSOP();
+            if (sopData) {
+                setSopTitle(sopData.title);
+                setSopContent(sopData.content);
+            }
         } catch (error) {
             console.error("Failed to load settings", error);
             toast({
@@ -146,7 +160,11 @@ export default function SettingsPage() {
                 { key: 'work_start_time_saturday', value: data.work_start_time_saturday, description: 'Jam masuk kerja (Sabtu)' },
                 { key: 'work_end_time_saturday', value: data.work_end_time_saturday, description: 'Jam pulang kerja (Sabtu)' },
                 { key: 'admin_attendance_required', value: data.admin_attendance_required, description: 'Wajibkan absensi untuk akun Admin' },
-                { key: 'attendance_late_tolerance', value: data.attendance_late_tolerance, description: 'Toleransi keterlambatan (menit)' }
+                { key: 'attendance_late_tolerance', value: data.attendance_late_tolerance, description: 'Toleransi keterlambatan (menit)' },
+                { key: 'office_latitude', value: data.office_latitude, description: 'Latitude lokasi kantor' },
+                { key: 'office_longitude', value: data.office_longitude, description: 'Longitude lokasi kantor' },
+                { key: 'office_radius', value: data.office_radius, description: 'Radius batas absensi (meter)' },
+                { key: 'office_wifi_ssid', value: data.office_wifi_ssid || '', description: 'SSID WiFi Kantor' }
             ];
 
             await settingsService.updateSettings(updates);
@@ -226,6 +244,27 @@ export default function SettingsPage() {
         }
     };
 
+    const onSOPSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            setSaving(true);
+            await sopService.saveSOP(sopTitle, sopContent);
+            toast({
+                title: "Sukses",
+                description: "SOP perusahaan berhasil diperbarui.",
+            });
+        } catch (error: any) {
+            console.error("Failed to save SOP", error);
+            toast({
+                title: "Error",
+                description: error.message || "Gagal menyimpan SOP.",
+                variant: "destructive",
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex h-full items-center justify-center p-6">
@@ -248,6 +287,7 @@ export default function SettingsPage() {
                     <TabsTrigger value="leave">Cuti/Izin</TabsTrigger>
                     <TabsTrigger value="payroll">Payroll</TabsTrigger>
                     <TabsTrigger value="reward">Reward</TabsTrigger>
+                    <TabsTrigger value="sop">SOP</TabsTrigger>
                     <TabsTrigger value="accounting">Akunting</TabsTrigger>
                 </TabsList>
 
@@ -381,6 +421,46 @@ export default function SettingsPage() {
                                                 checked={attendanceForm.watch("admin_attendance_required")}
                                                 onCheckedChange={(val) => attendanceForm.setValue("admin_attendance_required", val)}
                                             />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <h3 className="text-sm font-bold text-gray-900 border-l-4 border-blue-600 pl-3">Geofencing & WiFi</h3>
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 space-y-3">
+                                                <Label className="font-body text-gray-700">Latitude Kantor</Label>
+                                                <Input
+                                                    type="number"
+                                                    step="any"
+                                                    className="font-mono bg-white"
+                                                    {...attendanceForm.register("office_latitude")}
+                                                />
+                                            </div>
+                                            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 space-y-3">
+                                                <Label className="font-body text-gray-700">Longitude Kantor</Label>
+                                                <Input
+                                                    type="number"
+                                                    step="any"
+                                                    className="font-mono bg-white"
+                                                    {...attendanceForm.register("office_longitude")}
+                                                />
+                                            </div>
+                                            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 space-y-3">
+                                                <Label className="font-body text-gray-700">Radius Absensi (Meter)</Label>
+                                                <Input
+                                                    type="number"
+                                                    className="font-mono bg-white"
+                                                    {...attendanceForm.register("office_radius")}
+                                                />
+                                            </div>
+                                            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 space-y-3">
+                                                <Label className="font-body text-gray-700">SSID WiFi Kantor (Opsional)</Label>
+                                                <Input
+                                                    className="font-mono bg-white"
+                                                    placeholder="Contoh: MyOfficeWiFi"
+                                                    {...attendanceForm.register("office_wifi_ssid")}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 
@@ -695,6 +775,51 @@ export default function SettingsPage() {
                                 <Button type="submit" disabled={saving} className="bg-hrd hover:bg-hrd-dark rounded-xl h-11 px-8 font-body">
                                     {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     Simpan Pengaturan Payroll
+                                </Button>
+                            </form>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="sop">
+                    <Card className="border-none shadow-sm">
+                        <CardHeader className="bg-teal-50/30">
+                            <CardTitle className="font-display text-teal-800 flex items-center gap-2">
+                                <FileText className="w-5 h-5" />
+                                Master SOP Perusahaan
+                            </CardTitle>
+                            <CardDescription className="font-body">
+                                Atur Standar Operasional Prosedur yang akan muncul di dashboard setiap karyawan.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-6">
+                            <form onSubmit={onSOPSubmit} className="space-y-6">
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="font-body">Judul SOP / Peraturan</Label>
+                                        <Input
+                                            value={sopTitle}
+                                            onChange={(e) => setSopTitle(e.target.value)}
+                                            placeholder="Contoh: Standar Operasional Prosedur 2024"
+                                            className="font-body"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="font-body">Isi Kebijakan</Label>
+                                        <Textarea
+                                            value={sopContent}
+                                            onChange={(e) => setSopContent(e.target.value)}
+                                            placeholder="Tuliskan isi SOP di sini..."
+                                            className="font-body min-h-[400px] resize-none"
+                                            required
+                                        />
+                                        <p className="text-[10px] text-muted-foreground italic">Gunakan baris baru untuk memisahkan poin-poin peraturan.</p>
+                                    </div>
+                                </div>
+                                <Button type="submit" disabled={saving || !sopTitle || !sopContent} className="bg-teal-600 hover:bg-teal-700 rounded-xl h-11 px-8 font-body">
+                                    {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Simpan SOP Perusahaan
                                 </Button>
                             </form>
                         </CardContent>

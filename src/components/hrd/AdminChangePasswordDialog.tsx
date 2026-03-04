@@ -92,16 +92,24 @@ export function AdminChangePasswordDialog({ open, onOpenChange, userId, userName
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
+                    {/* TRAP BROWSER AUTOFILL: Hidden inputs so browser fills these instead of real ones */}
+                    <div style={{ opacity: 0, position: 'absolute', top: -9999, zIndex: -1 }}>
+                        <input type="text" name="fakeusernameremembered" tabIndex={-1} autoComplete="username" />
+                        <input type="password" name="fakepasswordremembered" tabIndex={-1} autoComplete="current-password" />
+                    </div>
+
                     <div className="grid gap-2">
                         <Label htmlFor="admin-new-password">Password Baru</Label>
                         <div className="relative">
                             <Input
-                                id="admin-new-password"
+                                id={`admin-new-password-${userId}`}
                                 type={showPassword ? "text" : "password"}
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
                                 placeholder="Masukkan password baru"
                                 className="pr-10"
+                                autoComplete="new-password"
+                                data-lpignore="true"
                             />
                             <button
                                 type="button"
@@ -115,11 +123,13 @@ export function AdminChangePasswordDialog({ open, onOpenChange, userId, userName
                     <div className="grid gap-2">
                         <Label htmlFor="admin-confirm-password">Konfirmasi Password</Label>
                         <Input
-                            id="admin-confirm-password"
+                            id={`admin-confirm-password-${userId}`}
                             type={showPassword ? "text" : "password"}
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             placeholder="Ulangi password baru"
+                            autoComplete="new-password"
+                            data-lpignore="true"
                         />
                     </div>
                 </div>

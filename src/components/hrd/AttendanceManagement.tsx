@@ -1462,7 +1462,7 @@ export function AttendanceManagement() {
           <DialogFooter className="gap-2 sm:gap-0">
             {selectedAttendance && (
               <div className="flex-1 flex gap-2">
-                {user?.role === 'admin' && selectedAttendance.status === 'late' && (
+                {user?.role === 'Administrator' && selectedAttendance.status === 'late' && (
                   <Button
                     variant="outline"
                     className="bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100 font-body"

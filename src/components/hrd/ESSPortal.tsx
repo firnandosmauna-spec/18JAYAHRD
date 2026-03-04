@@ -68,7 +68,7 @@ export function ESSPortal() {
         const attemptAutoLink = async () => {
             if (user && !user.employee_id && user.email && !isLinking) {
                 // If admin and attendance not required, don't force auto-link
-                if (user.role === 'admin' && attendanceSettings && !attendanceSettings.admin_attendance_required) {
+                if (user.role === 'Administrator' && attendanceSettings && !attendanceSettings.admin_attendance_required) {
                     return;
                 }
 
@@ -155,7 +155,7 @@ export function ESSPortal() {
     }
 
     // Check if we should block the portal
-    const isAttendanceRequired = user?.role !== 'admin' || (attendanceSettings?.admin_attendance_required ?? true);
+    const isAttendanceRequired = user?.role !== 'Administrator' || (attendanceSettings?.admin_attendance_required ?? true);
 
     if (!user?.employee_id && isAttendanceRequired) {
         return (

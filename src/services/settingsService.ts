@@ -51,7 +51,11 @@ export const settingsService = {
             'work_end_time_weekday',
             'work_start_time_saturday',
             'work_end_time_saturday',
-            'admin_attendance_required'
+            'admin_attendance_required',
+            'office_latitude',
+            'office_longitude',
+            'office_radius',
+            'office_wifi_ssid'
         ];
         const settings = await this.getSettings(keys);
 
@@ -72,6 +76,14 @@ export const settingsService = {
                 result.work_end_time_saturday = setting.value;
             } else if (setting.key === 'admin_attendance_required') {
                 result.admin_attendance_required = setting.value === 'true' || setting.value === true;
+            } else if (setting.key === 'office_latitude') {
+                result.office_latitude = Number(setting.value);
+            } else if (setting.key === 'office_longitude') {
+                result.office_longitude = Number(setting.value);
+            } else if (setting.key === 'office_radius') {
+                result.office_radius = Number(setting.value);
+            } else if (setting.key === 'office_wifi_ssid') {
+                result.office_wifi_ssid = setting.value;
             }
         });
 
@@ -143,7 +155,7 @@ export const settingsService = {
                 value,
                 description,
                 updated_at: new Date().toISOString()
-            })
+            }, { onConflict: 'key' })
             .select()
             .single();
 
@@ -160,7 +172,7 @@ export const settingsService = {
 
         const { data, error } = await supabase
             .from('system_settings')
-            .upsert(updates)
+            .upsert(updates, { onConflict: 'key' })
             .select();
 
         if (error) throw error;

@@ -4,7 +4,7 @@ export interface User {
   email: string;
   password_hash: string;
   name: string;
-  role: 'admin' | 'manager' | 'staff';
+  role: 'Administrator' | 'manager' | 'staff';
   avatar?: string;
   modules: string[];
   created_at: string;

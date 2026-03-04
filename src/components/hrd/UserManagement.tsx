@@ -49,6 +49,7 @@ export function UserManagement() {
     const [isRegisterDialogOpen, setIsRegisterDialogOpen] = useState(false);
     const [selectedRegisterEmp, setSelectedRegisterEmp] = useState<any>(null);
     const [registerData, setRegisterData] = useState({ email: '', password: '' });
+    const [registerRole, setRegisterRole] = useState<UserRole>('staff');
 
     // Admin Password Change state
     const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
@@ -131,7 +132,7 @@ export function UserManagement() {
 
     const getRoleBadge = (role: string) => {
         switch (role) {
-            case 'admin': return <Badge className="bg-red-100 text-red-800 hover:bg-red-200">Admin</Badge>;
+            case 'Administrator': return <Badge className="bg-red-100 text-red-800 hover:bg-red-200">Administrator</Badge>;
             case 'manager': return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">Manager</Badge>;
             case 'staff': return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-200">Staff</Badge>;
             case 'marketing': return <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-200">Marketing</Badge>;
@@ -143,6 +144,21 @@ export function UserManagement() {
         setSelectedRegisterEmp(emp);
         const email = emp.email || `${emp.name.toLowerCase().replace(/ /g, '.')}@jayatempo.com`;
         setRegisterData({ email, password: '' });
+
+        // Initial suggestion based on position - PRECISE MATCHING to avoid greediness
+        const positionLower = emp.position?.toLowerCase().trim() || '';
+        let suggestedRole: UserRole = 'staff';
+
+        if (positionLower === 'admin' || positionLower === 'administrator') {
+            suggestedRole = 'Administrator';
+        } else if (positionLower === 'manager') {
+            suggestedRole = 'manager';
+        } else if (positionLower === 'marketing') {
+            suggestedRole = 'marketing';
+        }
+
+        setRegisterRole(suggestedRole);
+
         setIsRegisterDialogOpen(true);
     };
 
@@ -150,13 +166,20 @@ export function UserManagement() {
         if (!registerData.password || !selectedRegisterEmp) return;
         setLoading(true);
         try {
-            await authService.signUp({
+            const role = registerRole;
+
+            const result = await authService.signUp({
                 email: registerData.email,
                 password: registerData.password,
                 name: selectedRegisterEmp.name,
-                role: 'staff', // Default role
-                modules: ['hrd'] // Default module
+                role: role,
+                employeeId: selectedRegisterEmp.id,
+                modules: role === 'Administrator' ? ['hrd', 'accounting', 'inventory', 'sales', 'purchase', 'customer', 'project', 'marketing'] : ['hrd']
             });
+
+            if (result && !result.success) {
+                throw new Error(result.error || "Gagal membuat akun.");
+            }
 
             toast({
                 title: "Registrasi Berhasil",
@@ -265,7 +288,7 @@ export function UserManagement() {
                         </Button>
                     )}
 
-                    {!loading && users.length === 0 && currentUser?.role === 'admin' && (
+                    {!loading && users.length === 0 && currentUser?.role === 'Administrator' && (
                         <Button
                             variant="default"
                             size="sm"
@@ -292,7 +315,7 @@ export function UserManagement() {
                         </Button>
                     )}
 
-                    {!loading && currentUser?.role === 'admin' && (
+                    {!loading && currentUser?.role === 'Administrator' && (
                         <Button
                             variant="default"
                             size="sm"
@@ -474,28 +497,54 @@ export function UserManagement() {
                                 Buat akun login untuk <b>{selectedRegisterEmp?.name}</b>.
                             </DialogDescription>
                         </DialogHeader>
-                        <div className="space-y-4 py-2">
-                            <div className="space-y-2">
-                                <Label>Email</Label>
-                                <Input value={registerData.email} disabled />
+                        <form onSubmit={(e) => { e.preventDefault(); handleRegisterConfirm(); }}>
+                            <div className="space-y-4 py-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="reg-email">Email</Label>
+                                    <Input
+                                        id="reg-email"
+                                        name="username"
+                                        value={registerData.email}
+                                        readOnly
+                                        autoComplete="username"
+                                        className="bg-gray-50 cursor-default"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Peran (Role)</Label>
+                                    <Select value={registerRole} onValueChange={(val) => setRegisterRole(val as UserRole)}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Pilih Peran" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Administrator">Administrator</SelectItem>
+                                            <SelectItem value="manager">Manager</SelectItem>
+                                            <SelectItem value="staff">Staff</SelectItem>
+                                            <SelectItem value="marketing">Marketing</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="reg-password">Password Baru</Label>
+                                    <Input
+                                        id="reg-password"
+                                        name="new-password"
+                                        type="password"
+                                        placeholder="Min. 6 karakter"
+                                        value={registerData.password}
+                                        onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
+                                        autoComplete="new-password"
+                                    />
+                                </div>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Password Baru</Label>
-                                <Input
-                                    type="password"
-                                    placeholder="Min. 6 karakter"
-                                    value={registerData.password}
-                                    onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
-                                />
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsRegisterDialogOpen(false)}>Batal</Button>
-                            <Button onClick={handleRegisterConfirm} disabled={loading || !registerData.password}>
-                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Buat Akun
-                            </Button>
-                        </DialogFooter>
+                            <DialogFooter className="mt-6">
+                                <Button type="button" variant="outline" onClick={() => setIsRegisterDialogOpen(false)}>Batal</Button>
+                                <Button type="submit" disabled={loading || !registerData.password}>
+                                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Buat Akun
+                                </Button>
+                            </DialogFooter>
+                        </form>
                     </DialogContent>
                 </Dialog>
 
@@ -517,14 +566,14 @@ export function UserManagement() {
                                         <SelectValue placeholder="Pilih Peran" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="admin">Admin</SelectItem>
+                                        <SelectItem value="Administrator">Administrator</SelectItem>
                                         <SelectItem value="manager">Manager</SelectItem>
                                         <SelectItem value="staff">Staff</SelectItem>
                                         <SelectItem value="marketing">Marketing</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    Admin memiliki akses penuh. Peran lain dibatasi sesuai modul yang dipilih.
+                                    Administrator memiliki akses penuh. Peran lain dibatasi sesuai modul yang dipilih.
                                 </p>
                             </div>
 
@@ -537,21 +586,21 @@ export function UserManagement() {
                                                 id={`module-${module.id}`}
                                                 checked={editModules.includes(module.id)}
                                                 onCheckedChange={() => toggleModule(module.id)}
-                                                disabled={editRole === 'admin'} // Admin always has all
+                                                disabled={editRole === 'Administrator'} // Administrator always has all
                                             />
                                             <label
                                                 htmlFor={`module-${module.id}`}
-                                                className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${editRole === 'admin' ? 'opacity-50' : ''}`}
+                                                className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${editRole === 'Administrator' ? 'opacity-50' : ''}`}
                                             >
                                                 {module.label}
                                             </label>
                                         </div>
                                     ))}
                                 </div>
-                                {editRole === 'admin' && (
+                                {editRole === 'Administrator' && (
                                     <p className="text-xs text-blue-600 flex items-center gap-1">
                                         <ShieldCheck className="w-3 h-3" />
-                                        Admin otomatis memiliki akses ke semua modul.
+                                        Administrator otomatis memiliki akses ke semua modul.
                                     </p>
                                 )}
                             </div>

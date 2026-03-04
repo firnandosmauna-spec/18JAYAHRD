@@ -1,8 +1,10 @@
 
 import { useState, useEffect } from "react";
-import { supabase, Position, Department } from "@/lib/supabase";
+import { Department } from "@/lib/supabase";
+import { useDepartments } from "@/hooks/useSupabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
     Table,
     TableBody,
@@ -16,7 +18,6 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
     DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -30,96 +31,52 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Pencil, Trash2, Plus, Search, Building2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-export default function PositionsPage() {
-    const [positions, setPositions] = useState<Position[]>([]);
-    const [departments, setDepartments] = useState<Department[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+export default function DepartmentsPage() {
+    const { departments, loading, addDepartment, updateDepartment, deleteDepartment, refetch } = useDepartments();
     const [searchQuery, setSearchQuery] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const [positionToDelete, setPositionToDelete] = useState<string | null>(null);
-    const [currentPosition, setCurrentPosition] = useState<Partial<Position>>({});
+    const [deptToDelete, setDeptToDelete] = useState<string | null>(null);
+    const [currentDept, setCurrentDept] = useState<Partial<Department>>({});
     const { toast } = useToast();
-
-    useEffect(() => {
-        fetchPositions();
-    }, []);
-
-    const fetchPositions = async () => {
-        try {
-            const { data, error } = await supabase
-                .from("positions")
-                .select("*")
-                .select("*")
-                .order("department");
-
-            if (error) throw error;
-            setPositions(data || []);
-        } catch (error: any) {
-            console.error("Error fetching positions:", error);
-            toast({
-                title: "Error",
-                description: "Failed to load positions: " + error.message,
-                variant: "destructive",
-            });
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
 
     const handleSave = async () => {
         try {
-            if (!currentPosition.department || !currentPosition.level) {
+            if (!currentDept.name) {
                 toast({
                     title: "Validation Error",
-                    description: "Mohon isi semua field yang wajib (Departemen, Posisi)",
+                    description: "Nama Departemen wajib diisi",
                     variant: "destructive",
                 });
                 return;
             }
 
-            // Auto-generate title: "{Level} - {Department}"
-            const generatedTitle = `${currentPosition.level} - ${currentPosition.department}`;
-
-            const positionData = {
-                title: generatedTitle,
-                department: currentPosition.department,
-                level: currentPosition.level,
-                gaji_pokok: 0, // Default to 0 as requested
-                job_desc: "", // Empty as requested
+            const deptData = {
+                name: currentDept.name,
+                description: currentDept.description || "",
+                budget: currentDept.budget || 0,
             };
 
-            let error;
-            if (currentPosition.id) {
-                const { error: updateError } = await supabase
-                    .from("positions")
-                    .update(positionData)
-                    .eq("id", currentPosition.id);
-                error = updateError;
+            if (currentDept.id) {
+                await updateDepartment(currentDept.id, deptData);
+                toast({
+                    title: "Berhasil",
+                    description: "Departemen berhasil diperbarui",
+                });
             } else {
-                const { error: insertError } = await supabase
-                    .from("positions")
-                    .insert(positionData);
-                error = insertError;
+                await addDepartment(deptData);
+                toast({
+                    title: "Berhasil",
+                    description: "Departemen berhasil dibuat",
+                });
             }
 
-            if (error) throw error;
-
-            toast({
-                title: "Success",
-                description: `Position ${currentPosition.id ? "updated" : "created"} successfully`,
-            });
-
             setIsDialogOpen(false);
-            fetchPositions();
-            setCurrentPosition({});
+            setCurrentDept({});
         } catch (error: any) {
             toast({
                 title: "Error",
@@ -130,22 +87,19 @@ export default function PositionsPage() {
     };
 
     const confirmDelete = (id: string) => {
-        setPositionToDelete(id);
+        setDeptToDelete(id);
         setIsDeleteDialogOpen(true);
     };
 
     const handleDelete = async () => {
-        if (!positionToDelete) return;
+        if (!deptToDelete) return;
 
         try {
-            const { error } = await supabase.from("positions").delete().eq("id", positionToDelete);
-            if (error) throw error;
-
+            await deleteDepartment(deptToDelete);
             toast({
                 title: "Berhasil",
-                description: "Posisi berhasil dihapus",
+                description: "Departemen berhasil dihapus",
             });
-            fetchPositions();
         } catch (error: any) {
             toast({
                 title: "Gagal",
@@ -154,27 +108,36 @@ export default function PositionsPage() {
             });
         } finally {
             setIsDeleteDialogOpen(false);
-            setPositionToDelete(null);
+            setDeptToDelete(null);
         }
     };
 
-    const filteredPositions = positions.filter((p) =>
-        p.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (p.level && p.level.toLowerCase().includes(searchQuery.toLowerCase()))
+    const filteredDepartments = departments.filter((d) =>
+        d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (d.description && d.description.toLowerCase().includes(searchQuery.toLowerCase()))
     );
+
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+        }).format(amount);
+    };
 
     return (
         <div className="p-8 space-y-8">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Job Positions</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">Departemen</h1>
                     <p className="text-muted-foreground mt-2">
-                        Manage job titles, levels, and standard salaries.
+                        Kelola struktur organisasi dan departemen perusahaan.
                     </p>
                 </div>
-                <Button onClick={() => { setCurrentPosition({}); setIsDialogOpen(true); }}>
+                <Button onClick={() => { setCurrentDept({}); setIsDialogOpen(true); }}>
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Position
+                    Tambah Departemen
                 </Button>
             </div>
 
@@ -183,7 +146,7 @@ export default function PositionsPage() {
                     <div className="flex items-center space-x-2">
                         <Search className="w-4 h-4 text-muted-foreground" />
                         <Input
-                            placeholder="Search positions..."
+                            placeholder="Cari departemen..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="max-w-sm"
@@ -195,43 +158,43 @@ export default function PositionsPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Departemen</TableHead>
-                                    <TableHead>Posisi</TableHead>
+                                    <TableHead>Nama Departemen</TableHead>
+                                    <TableHead>Deskripsi</TableHead>
+                                    <TableHead>Anggaran</TableHead>
                                     <TableHead className="text-right">Aksi</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {isLoading ? (
+                                {loading ? (
                                     <TableRow>
-                                        <TableCell colSpan={3} className="text-center py-8">
-                                            Loading positions...
+                                        <TableCell colSpan={4} className="text-center py-8">
+                                            Memuat data...
                                         </TableCell>
                                     </TableRow>
-                                ) : filteredPositions.length === 0 ? (
+                                ) : filteredDepartments.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                                            No positions found.
+                                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                                            Tidak ada departemen ditemukan.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filteredPositions.map((position) => (
-                                        <TableRow key={position.id}>
-                                            <TableCell>
-                                                {position.department}
+                                    filteredDepartments.map((dept) => (
+                                        <TableRow key={dept.id}>
+                                            <TableCell className="font-medium">
+                                                {dept.name}
+                                            </TableCell>
+                                            <TableCell className="max-w-xs truncate">
+                                                {dept.description || "-"}
                                             </TableCell>
                                             <TableCell>
-                                                {position.level && (
-                                                    <Badge variant="secondary" className="capitalize">
-                                                        {position.level}
-                                                    </Badge>
-                                                )}
+                                                {formatCurrency(dept.budget || 0)}
                                             </TableCell>
                                             <TableCell className="text-right space-x-2">
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
                                                     onClick={() => {
-                                                        setCurrentPosition(position);
+                                                        setCurrentDept(dept);
                                                         setIsDialogOpen(true);
                                                     }}
                                                 >
@@ -241,7 +204,7 @@ export default function PositionsPage() {
                                                     variant="ghost"
                                                     size="icon"
                                                     className="text-red-500 hover:text-red-600"
-                                                    onClick={() => confirmDelete(position.id)}
+                                                    onClick={() => confirmDelete(dept.id)}
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </Button>
@@ -258,32 +221,43 @@ export default function PositionsPage() {
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader>
-                        <DialogTitle>{currentPosition.id ? "Edit Position" : "Add New Position"}</DialogTitle>
+                        <DialogTitle>{currentDept.id ? "Edit Departemen" : "Tambah Departemen"}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="department">Departemen <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="name">Nama Departemen <span className="text-red-500">*</span></Label>
                             <Input
-                                id="department"
-                                value={currentPosition.department || ""}
-                                onChange={(e) => setCurrentPosition({ ...currentPosition, department: e.target.value })}
-                                placeholder="Contoh: HRD, Finance"
+                                id="name"
+                                value={currentDept.name || ""}
+                                onChange={(e) => setCurrentDept({ ...currentDept, name: e.target.value })}
+                                placeholder="Contoh: HRD, Finance, Operasional"
                             />
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="level">Posisi <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="description">Deskripsi</Label>
+                            <Textarea
+                                id="description"
+                                value={currentDept.description || ""}
+                                onChange={(e) => setCurrentDept({ ...currentDept, description: e.target.value })}
+                                placeholder="Deskripsi singkat tentang departemen"
+                                rows={3}
+                            />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="budget">Anggaran (IDR)</Label>
                             <Input
-                                id="level"
-                                value={currentPosition.level || ""}
-                                onChange={(e) => setCurrentPosition({ ...currentPosition, level: e.target.value })}
-                                placeholder="Contoh: Manager HRD, Staff Akuntansi"
+                                id="budget"
+                                type="number"
+                                value={currentDept.budget || 0}
+                                onChange={(e) => setCurrentDept({ ...currentDept, budget: parseFloat(e.target.value) || 0 })}
                             />
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSave}>Save Position</Button>
+                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Batal</Button>
+                        <Button onClick={handleSave}>Simpan</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -293,7 +267,7 @@ export default function PositionsPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Konfirmasi Penghapusan</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Apakah Anda yakin ingin menghapus data posisi ini? Tindakan ini tidak dapat dibatalkan.
+                            Apakah Anda yakin ingin menghapus departemen ini? Tindakan ini tidak dapat dibatalkan.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

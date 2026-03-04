@@ -83,6 +83,7 @@ import { PayrollManagement } from '@/components/hrd/PayrollManagement';
 import { LoanManagement } from '@/components/hrd/LoanManagement';
 import { RewardManagement } from '@/components/hrd/RewardManagement';
 import PositionsPage from '@/pages/hrd/PositionsPage';
+import DepartmentsPage from '@/pages/hrd/DepartmentsPage';
 import SettingsPage from '@/pages/hrd/SettingsPage'; // Import Settings Page
 import { Settings as SettingsIcon } from 'lucide-react'; // Rename to avoid conflict if Settings is already imported
 import { NotificationProvider, useNotificationsContext } from '@/contexts/NotificationContext';
@@ -108,6 +109,7 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import type { Employee } from '@/lib/supabase';
 import { DataMigration } from '@/utils/migration';
 import { userService, type AppUser } from '@/services/userService';
+import { storageService } from '@/services/storageService';
 
 // Navigation items
 
@@ -317,6 +319,7 @@ function EmployeeListSupabase() {
   // Check if we should open add dialog from query parameter
   useEffect(() => {
     if (searchParams.get('add') === 'true') {
+      resetForm();
       setShowAddDialog(true);
       // Remove query parameter after opening dialog
       setSearchParams({});
@@ -343,6 +346,9 @@ function EmployeeListSupabase() {
     allowances: [] as { title: string; amount: number }[],
     deductions: [] as { title: string; amount: number }[]
   });
+
+  const [contractFile, setContractFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Fetch users for linking status
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -394,11 +400,15 @@ function EmployeeListSupabase() {
       allowances: [],
       deductions: []
     });
+    setContractFile(null);
   };
 
   // Derive filters from positions
-  // RESTRICTED LEVELS: As per request, only these 3 are allowed for new selection.
-  const uniqueLevels = ['Administrator', 'Staf', 'Manager'];
+  // Dynamically get unique levels from positions table, with defaults if empty
+  const uniqueLevels = Array.from(new Set([
+    'Administrator', 'Staf', 'Manager',
+    ...positions.map(p => p.level)
+  ].filter(Boolean)));
 
   // Create a combined list of departments from both the Departments table and distinct names in Positions
   const derivedDepartments = [...departments];
@@ -568,7 +578,8 @@ function EmployeeListSupabase() {
       // It is safer to recalculate name or use the one we just built.
       // But wait... handleAddEmployee is inside the component. We can access derivedDepartments!
       const selectedDeptObj = derivedDepartments.find(d => d.id === formData.department);
-      const selectedDeptName = selectedDeptObj?.name || '';
+      const selectedDeptName = selectedDeptObj?.name ||
+        (formData.department.startsWith('temp-') ? formData.department.replace('temp-', '') : formData.department);
 
       const fullJobTitle = `${formData.position} - ${selectedDeptName}`;
 
@@ -577,6 +588,19 @@ function EmployeeListSupabase() {
       // So we send null for department_id.
       const isTempId = formData.department.startsWith('temp-');
       const finalDeptId = isTempId ? null : formData.department;
+
+      let contractUrl = null;
+      if (contractFile) {
+        setIsUploading(true);
+        try {
+          contractUrl = await storageService.uploadEmployeeContract(contractFile, formData.name);
+        } catch (uploadError: any) {
+          setIsUploading(false);
+          toast({ variant: "destructive", title: "Gagal Upload Kontrak", description: uploadError.message || String(uploadError) });
+          return;
+        }
+        setIsUploading(false);
+      }
 
       const newEmployee = {
         name: formData.name.trim(),
@@ -600,6 +624,7 @@ function EmployeeListSupabase() {
         customer_rating: null,
         allowances: formData.allowances,
         deductions: formData.deductions,
+        contract_file_url: contractUrl,
       };
 
       console.log("DEBUG: Sending to addEmployee:", newEmployee);
@@ -672,7 +697,20 @@ function EmployeeListSupabase() {
       const isTempId = formData.department.startsWith('temp-');
       const finalDeptId = isTempId ? null : formData.department;
 
-      const updates = {
+      let contractUrl = selectedEmployee?.contract_file_url || null;
+      if (contractFile) {
+        setIsUploading(true);
+        try {
+          contractUrl = await storageService.uploadEmployeeContract(contractFile, formData.name);
+        } catch (uploadError: any) {
+          setIsUploading(false);
+          toast({ variant: "destructive", title: "Gagal Upload Kontrak", description: uploadError.message || String(uploadError) });
+          return;
+        }
+        setIsUploading(false);
+      }
+
+      const updates: any = {
         name: formData.name.trim(),
         position: fullJobTitle,
         department: selectedDeptName,
@@ -686,6 +724,7 @@ function EmployeeListSupabase() {
         department_id: finalDeptId,
         allowances: formData.allowances,
         deductions: formData.deductions,
+        contract_file_url: contractUrl,
       };
 
       await updateEmployee(selectedEmployee.id, updates);
@@ -983,46 +1022,47 @@ function EmployeeListSupabase() {
                   placeholder="Contoh: Budi Santoso"
                   className="font-body"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="font-body">Posisi <span className="text-red-500">*</span></Label>
-                  <Select
+                  <Input
+                    placeholder="Contoh: Manager"
+                    className="font-body"
                     value={formData.position}
-                    onValueChange={handlePositionChange}
-                  >
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder="Pilih..." />
-                    </SelectTrigger>
-                    <SelectContent className="z-[999999]">
-                      {uniqueLevels.map((level) => (
-                        <SelectItem key={level} value={level} className="font-body">
-                          {level}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) => setFormData(prev => ({ ...prev, position: e.target.value }))}
+                    list="positions-list"
+                  />
+                  <datalist id="positions-list">
+                    {uniqueLevels.map(level => (
+                      <option key={level} value={level} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="space-y-2">
                   <Label className="font-body">Departemen <span className="text-red-500">*</span></Label>
-                  <Select
-                    value={formData.department}
-                    onValueChange={(val) => setFormData({ ...formData, department: val })}
-                  >
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder="Pilih..." />
-                    </SelectTrigger>
-                    <SelectContent className="z-[999999]">
-                      {filteredDepartments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id} className="font-body">
-                          {dept.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    placeholder="Contoh: HRD"
+                    className="font-body"
+                    value={
+                      departments.find(d => d.id === formData.department)?.name ||
+                      (formData.department.startsWith('temp-') ? formData.department.replace('temp-', '') : formData.department)
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const matchingDept = departments.find(d => d.name.trim().toLowerCase() === val.trim().toLowerCase());
+                      setFormData(prev => ({ ...prev, department: matchingDept ? matchingDept.id : `temp-${val}` }));
+                    }}
+                    list="departments-list"
+                  />
+                  <datalist id="departments-list">
+                    {derivedDepartments.map(dept => (
+                      <option key={dept.id} value={dept.name} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
@@ -1033,7 +1073,7 @@ function EmployeeListSupabase() {
                   placeholder="nama.karyawan@perusahaan.com"
                   className="font-body bg-white border-blue-200 focus:ring-blue-500"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                 />
                 <p className="text-[11px] text-blue-600 font-medium">
                   ⓘ Penting: Email ini digunakan untuk menghubungkan akun saat register.
@@ -1042,7 +1082,7 @@ function EmployeeListSupabase() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="font-body">Gaji Pokok</Label>
+                  <Label className="font-body">Gaji Pokok <span className="text-red-500">*</span></Label>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-gray-500 text-sm">Rp</span>
                     <Input
@@ -1050,17 +1090,17 @@ function EmployeeListSupabase() {
                       placeholder="0"
                       className="font-mono pl-9"
                       value={formData.salary}
-                      onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+                      onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value }))}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="font-body">Tanggal Gabung</Label>
+                  <Label className="font-body">Tanggal Gabung <span className="text-red-500">*</span></Label>
                   <Input
                     type="date"
                     className="font-mono"
                     value={formData.join_date}
-                    onChange={(e) => setFormData({ ...formData, join_date: e.target.value })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, join_date: e.target.value }))}
                   />
                 </div>
               </div>
@@ -1068,21 +1108,18 @@ function EmployeeListSupabase() {
               <div className="grid grid-cols-2 gap-4 border-t pt-4">
                 <div className="space-y-2">
                   <Label className="font-body">Bank</Label>
-                  <Select
+                  <Input
+                    placeholder="Contoh: BCA, Mandiri"
+                    className="font-body"
                     value={formData.bank}
-                    onValueChange={(val) => setFormData({ ...formData, bank: val })}
-                  >
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder="Pilih Bank" />
-                    </SelectTrigger>
-                    <SelectContent className="z-[999999]">
-                      <SelectItem value="BCA" className="font-body">BCA</SelectItem>
-                      <SelectItem value="Mandiri" className="font-body">Mandiri</SelectItem>
-                      <SelectItem value="BNI" className="font-body">BNI</SelectItem>
-                      <SelectItem value="BRI" className="font-body">BRI</SelectItem>
-                      <SelectItem value="CIMB" className="font-body">CIMB Niaga</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) => setFormData(prev => ({ ...prev, bank: e.target.value }))}
+                    list="banks-list"
+                  />
+                  <datalist id="banks-list">
+                    {['BCA', 'Mandiri', 'BNI', 'BRI', 'CIMB Niaga'].map(bank => (
+                      <option key={bank} value={bank} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="space-y-2">
                   <Label className="font-body">Nomor Rekening</Label>
@@ -1090,9 +1127,19 @@ function EmployeeListSupabase() {
                     placeholder="Contoh: 1234567890"
                     className="font-mono"
                     value={formData.bank_account}
-                    onChange={(e) => setFormData({ ...formData, bank_account: e.target.value })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, bank_account: e.target.value }))}
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2 border-t pt-4">
+                <Label className="font-body">Kontrak Karyawan (PDF) - Opsional</Label>
+                <Input
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => setContractFile(e.target.files ? e.target.files[0] : null)}
+                  className="font-body file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
               </div>
 
               <div className="space-y-4 border-t pt-4">
@@ -1245,44 +1292,45 @@ function EmployeeListSupabase() {
                 placeholder="Nama karyawan"
                 className="font-body"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
               <Label className="font-body">Posisi <span className="text-red-500">*</span></Label>
-              <Select
+              <Input
+                placeholder="Contoh: Manager"
+                className="font-body"
                 value={formData.position}
-                onValueChange={handlePositionChange}
-              >
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih posisi" />
-                </SelectTrigger>
-                <SelectContent>
-                  {uniqueLevels.map((level) => (
-                    <SelectItem key={level} value={level} className="font-body">
-                      {level}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(e) => setFormData(prev => ({ ...prev, position: e.target.value }))}
+                list="positions-list-edit"
+              />
+              <datalist id="positions-list-edit">
+                {uniqueLevels.map(level => (
+                  <option key={level} value={level} />
+                ))}
+              </datalist>
             </div>
             <div className="space-y-2">
-              <Label className="font-body">Departemen</Label>
-              <Select
-                value={formData.department}
-                onValueChange={(val) => setFormData({ ...formData, department: val })}
-              >
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredDepartments.map((dept) => (
-                    <SelectItem key={dept.id} value={dept.id} className="font-body">
-                      {dept.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="font-body">Departemen <span className="text-red-500">*</span></Label>
+              <Input
+                placeholder="Contoh: HRD"
+                className="font-body"
+                value={
+                  departments.find(d => d.id === formData.department)?.name ||
+                  (formData.department.startsWith('temp-') ? formData.department.replace('temp-', '') : formData.department)
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const matchingDept = departments.find(d => d.name.trim().toLowerCase() === val.trim().toLowerCase());
+                  setFormData(prev => ({ ...prev, department: matchingDept ? matchingDept.id : `temp-${val}` }));
+                }}
+                list="departments-list-edit"
+              />
+              <datalist id="departments-list-edit">
+                {derivedDepartments.map(dept => (
+                  <option key={dept.id} value={dept.name} />
+                ))}
+              </datalist>
             </div>
             <div className="space-y-2">
               <Label className="font-body">Gaji Pokok <span className="text-red-500">*</span></Label>
@@ -1291,7 +1339,7 @@ function EmployeeListSupabase() {
                 placeholder="15000000"
                 className="font-mono"
                 value={formData.salary}
-                onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -1300,7 +1348,7 @@ function EmployeeListSupabase() {
                 type="date"
                 className="font-mono"
                 value={formData.join_date}
-                onChange={(e) => setFormData({ ...formData, join_date: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, join_date: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -1310,7 +1358,9 @@ function EmployeeListSupabase() {
                 placeholder="email@company.com"
                 className="font-body"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                autoComplete="off"
+                data-lpignore="true"
               />
             </div>
             <div className="space-y-2">
@@ -1319,7 +1369,7 @@ function EmployeeListSupabase() {
                 placeholder="08123456789"
                 className="font-mono"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -1328,24 +1378,39 @@ function EmployeeListSupabase() {
                 placeholder="1234567890"
                 className="font-mono"
                 value={formData.bank_account}
-                onChange={(e) => setFormData({ ...formData, bank_account: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, bank_account: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
               <Label className="font-body">Bank</Label>
-              <Select value={formData.bank} onValueChange={(value) => setFormData({ ...formData, bank: value })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih bank" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BCA" className="font-body">BCA</SelectItem>
-                  <SelectItem value="Mandiri" className="font-body">Mandiri</SelectItem>
-                  <SelectItem value="BNI" className="font-body">BNI</SelectItem>
-                  <SelectItem value="BRI" className="font-body">BRI</SelectItem>
-                  <SelectItem value="CIMB" className="font-body">CIMB Niaga</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                placeholder="Contoh: BCA, Mandiri"
+                className="font-body"
+                value={formData.bank}
+                onChange={(e) => setFormData(prev => ({ ...prev, bank: e.target.value }))}
+                list="banks-list-edit"
+              />
+              <datalist id="banks-list-edit">
+                {['BCA', 'Mandiri', 'BNI', 'BRI', 'CIMB Niaga'].map(bank => (
+                  <option key={bank} value={bank} />
+                ))}
+              </datalist>
             </div>
+            <div className="space-y-2 border-t pt-4">
+              <Label className="font-body">Kontrak Karyawan (PDF) - Opsional</Label>
+              <Input
+                type="file"
+                accept=".pdf"
+                onChange={(e) => setContractFile(e.target.files ? e.target.files[0] : null)}
+                className="font-body file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              {selectedEmployee?.contract_file_url && (
+                <p className="text-xs text-muted-foreground mt-1 font-body">
+                  Karyawan ini sudah memiliki dokumen kontrak. Mengunggah file baru akan menggantikan dokumen lama.
+                </p>
+              )}
+            </div>
+
             <div className="space-y-4 border-t pt-4">
               <div className="flex items-center justify-between">
                 <Label className="font-body font-bold text-gray-700">Tunjangan Manual (Bulanan)</Label>
@@ -1550,6 +1615,22 @@ function EmployeeListSupabase() {
                     <div className="space-y-2">
                       <Label className="font-body text-muted-foreground">Rekening Bank</Label>
                       <p className="font-mono font-medium">{selectedEmployee.bank_account}</p>
+                    </div>
+                  )}
+                  {selectedEmployee.contract_file_url && (
+                    <div className="col-span-2 space-y-2 border-t pt-4 mt-2">
+                      <Label className="font-body text-muted-foreground">Dokumen Kontrak</Label>
+                      <div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(selectedEmployee.contract_file_url!, '_blank')}
+                          className="font-body bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          Lihat Kontrak PDF
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1902,7 +1983,7 @@ function HRDDashboard() {
           <p className="text-muted-foreground font-body">Kelola sumber daya manusia perusahaan</p>
         </div>
         <div className="flex items-center gap-3">
-          {user?.role === 'admin' && (
+          {user?.role === 'Administrator' && (
             <Button
               variant="outline"
               size="sm"
@@ -2044,6 +2125,7 @@ export default function HRDModuleSupabase() {
     ...(checkAccess('Dashboard') !== 'none' ? [{ label: 'Dashboard', href: '/hrd', icon: Users }] : []),
     { label: 'Portal Mandiri', href: '/hrd/portal', icon: User },
     ...(checkAccess('Karyawan') !== 'none' ? [{ label: 'Karyawan', href: '/hrd/employees', icon: Users }] : []),
+    ...(checkAccess('Departemen') !== 'none' || user?.role === 'Administrator' ? [{ label: 'Departemen', href: '/hrd/departments', icon: Building }] : []),
     ...(checkAccess('Posisi Jabatan') !== 'none' ? [{ label: 'Posisi Jabatan', href: '/hrd/positions', icon: Briefcase }] : []),
     ...(checkAccess('Rekrutmen') !== 'none' ? [{ label: 'Rekrutmen', href: '/hrd/recruitment', icon: UserPlus }] : []),
     ...(checkAccess('Cuti & Izin') !== 'none' ? [{ label: 'Cuti & Izin', href: '/hrd/leave', icon: Calendar }] : []),
@@ -2143,7 +2225,7 @@ export default function HRDModuleSupabase() {
   return (
     <NotificationProvider>
       {/* Administrative Session Switcher Overlay - Only show when testing non-admin accounts */}
-      {stashedSession && user?.role !== 'admin' && (
+      {stashedSession && user?.role !== 'Administrator' && (
         <div className="fixed bottom-6 right-6 z-[60]">
           <motion.div
             initial={{ opacity: 0, scale: 0.8, y: 20 }}
@@ -2187,6 +2269,10 @@ export default function HRDModuleSupabase() {
           <Route path="portal" element={<ESSPortal />} />
           <Route path="employees" element={<EmployeeListSupabase />} />
           <Route
+            path="departments"
+            element={['staff', 'marketing'].includes(user?.role || '') ? <Navigate to="/hrd" replace /> : <DepartmentsPage />}
+          />
+          <Route
             path="positions"
             element={['staff', 'marketing'].includes(user?.role || '') ? <Navigate to="/hrd" replace /> : <PositionsPage />}
           />
@@ -2196,7 +2282,7 @@ export default function HRDModuleSupabase() {
           <Route path="payroll" element={<PayrollManagement />} />
           <Route path="loans" element={<LoanManagement />} />
           <Route path="rewards" element={<RewardManagement />} />
-          <Route path="settings" element={user?.role === 'admin' ? <SettingsPage /> : <Navigate to="/hrd" replace />} />
+          <Route path="settings" element={user?.role === 'Administrator' ? <SettingsPage /> : <Navigate to="/hrd" replace />} />
         </Routes>
       </ModuleLayout>
 

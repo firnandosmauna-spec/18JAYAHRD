@@ -5,8 +5,9 @@ export interface SignUpData {
   email: string
   password: string
   name: string
-  role?: 'admin' | 'manager' | 'staff' | 'marketing'
+  role?: 'Administrator' | 'manager' | 'staff' | 'marketing'
   modules?: string[]
+  employeeId?: string | null
 }
 
 export interface SignInData {
@@ -19,69 +20,57 @@ export class AuthService {
   async signUp(data: SignUpData) {
     console.log("DEBUG: Signing up user:", data.email);
 
-    // 1. Lookup employee by email to auto-link
-    let linkedEmployeeId = null;
+    // 1. Lookup employee by email to auto-link (fallback if not provided)
+    let linkedEmployeeId = data.employeeId || null;
     let autoRole = data.role || 'staff';
     let autoModules = data.modules || ['hrd'];
 
-    try {
-      const { data: employee, error: empError } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('email', data.email)
-        .single();
+    if (!linkedEmployeeId) {
+      try {
+        const { data: employee, error: empError } = await supabase
+          .from('employees')
+          .select('*')
+          .eq('email', data.email)
+          .single();
 
-      if (employee) {
-        console.log("DEBUG: Found linked employee:", employee.name);
-        linkedEmployeeId = employee.id;
+        if (employee) {
+          console.log("DEBUG: Found linked employee by email:", employee.name);
+          linkedEmployeeId = employee.id;
 
-        // Auto-assign role based on position
-        const positionLower = (employee.position || '').toLowerCase();
-        if (positionLower.includes('manager') || positionLower.includes('kepala') || positionLower.includes('lead')) {
-          autoRole = 'manager';
-        } else if (positionLower.includes('admin')) {
-          autoRole = 'admin'; // Caution: usually we don't auto-grant admin, but maybe manager
+          // Auto-assign role based on position if not explicitly provided
+          if (!data.role) {
+            const positionLower = (employee.position || '').toLowerCase();
+            if (positionLower.includes('manager') || positionLower.includes('kepala') || positionLower.includes('lead')) {
+              autoRole = 'manager';
+            } else if (positionLower.includes('admin')) {
+              autoRole = 'Administrator';
+            }
+          }
         }
-
-        // Auto-assign modules (basic for now)
-        // If needed, we can expand logic here
+      } catch (err) {
+        console.warn("DEBUG: Employee lookup failed:", err);
       }
-    } catch (err) {
-      console.warn("DEBUG: Employee lookup failed (might be new user not in employee DB):", err);
     }
 
-    // 2. Register in Auth (Using non-persisting client to prevent session hijacking)
-    const { data: authData, error } = await supabaseNoSession.auth.signUp({
+    // 2. Register via Backend RPC
+    const { data: authData, error } = await supabase.rpc('admin_create_user', {
       email: data.email,
       password: data.password,
-      options: {
-        data: {
-          name: data.name,
-          role: autoRole,
-          modules: autoModules,
-          employee_id: linkedEmployeeId // Pass in metadata just in case
-        }
-      }
+      user_name: data.name,
+      user_role: autoRole,
+      target_employee_id: linkedEmployeeId
     });
 
-    if (error) throw error;
+    // If there's a Supabase client-level error (e.g., network, RPC function not found), throw it.
+    if (error) {
+      console.error("DEBUG: admin_create_user RPC error:", error);
+      throw error;
+    }
 
-    // 3. Explicitly link profile if employee found (Reliability layer)
-    // The trigger might do this, but this ensures it happens even if trigger is missing
-    if (authData.user && linkedEmployeeId) {
-      console.log("DEBUG: Explicitly linking profile to employee:", linkedEmployeeId);
-      // Small delay to ensure profile trigger finished creation (race condition handling)
-      setTimeout(async () => {
-        try {
-          await supabase.from('profiles').update({
-            employee_id: linkedEmployeeId,
-            role: autoRole, // Enforce role from logic
-            updated_at: new Date().toISOString()
-          }).eq('id', authData.user!.id);
-        } catch (linkErr) {
-          console.error("DEBUG: Failed to explicit link profile:", linkErr);
-        }
-      }, 1000);
+    // If the RPC call itself was successful but the function returned a 'success: false' payload
+    if (authData && !authData.success) {
+      console.error("DEBUG: admin_create_user returned failure:", authData.error, authData.detail);
+      throw new Error(authData.error || "Gagal membuat akun di database.");
     }
 
     return authData;

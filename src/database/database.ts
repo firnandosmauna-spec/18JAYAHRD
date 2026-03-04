@@ -30,7 +30,7 @@ class HRDDatabase {
         email: 'admin@company.com',
         password_hash: 'admin123', // In production, this would be properly hashed
         name: 'Administrator',
-        role: 'admin',
+        role: 'Administrator',
         modules: ['hrd', 'accounting', 'inventory', 'customer', 'project'],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

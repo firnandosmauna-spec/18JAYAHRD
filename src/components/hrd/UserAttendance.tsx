@@ -159,6 +159,21 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
         });
     };
 
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371e3; // Earth radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // distance in meters
+    };
+
     useEffect(() => {
         getLocation();
     }, []);
@@ -170,7 +185,36 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
         }
 
         try {
+            // 1. Fetch Attendance Settings
+            const settings = await settingsService.getAttendanceSettings();
+            const officeLat = settings.office_latitude || -0.0263;
+            const officeLng = settings.office_longitude || 109.3425;
+            const officeRadius = settings.office_radius || 100;
+
+            // 2. Get Location
             const loc = await getLocation() || location;
+            if (!coordinates) {
+                toast({ title: 'Gagal Mendapatkan Lokasi', description: 'Pastikan izin GPS aktif.', variant: 'destructive' });
+                return;
+            }
+
+            // 3. Validate Distance
+            const distance = calculateDistance(
+                coordinates.lat,
+                coordinates.lng,
+                officeLat,
+                officeLng
+            );
+
+            if (distance > officeRadius) {
+                toast({
+                    title: 'Diluar Jangkauan',
+                    description: `Jarak Anda ${Math.round(distance)}m. Maksimal ${officeRadius}m.`,
+                    variant: 'destructive'
+                });
+                return;
+            }
+
             const now = new Date();
             const checkInTime = now.toTimeString().slice(0, 5);
 

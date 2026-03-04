@@ -24,7 +24,7 @@ export const supabase = createClient(
   finalKey,
   {
     auth: {
-      persistSession: true,
+      persistSession: false,
       autoRefreshToken: true,
       detectSessionInUrl: true,
       storage: window.sessionStorage
@@ -32,7 +32,7 @@ export const supabase = createClient(
   }
 )
 
-// Non-persisting client for administrative tasks (prevent session hijacking)
+// Non-persisting client for administrative tasks (prevent session hijacking and instance conflicts)
 export const supabaseNoSession = createClient(
   finalUrl,
   finalKey,
@@ -40,7 +40,12 @@ export const supabaseNoSession = createClient(
     auth: {
       persistSession: false,
       autoRefreshToken: false,
-      detectSessionInUrl: false
+      detectSessionInUrl: false,
+      storage: {
+        getItem: () => null,
+        setItem: () => { },
+        removeItem: () => { },
+      }
     }
   }
 )
@@ -174,6 +179,11 @@ export interface Database {
         Insert: Omit<RewardTypeMaster, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<RewardTypeMaster, 'id' | 'created_at'>>
       }
+      company_sops: {
+        Row: CompanySOP
+        Insert: Omit<CompanySOP, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<CompanySOP, 'id' | 'created_at'>>
+      }
     }
   }
 }
@@ -183,12 +193,21 @@ export interface Profile {
   id: string
   email: string
   name: string
-  role: 'admin' | 'manager' | 'staff' | 'marketing'
+  role: 'Administrator' | 'manager' | 'staff' | 'marketing'
   avatar?: string
   modules: string[]
   employee_id?: string
   created_at: string
   updated_at: string
+}
+
+export interface CompanySOP {
+  id: string;
+  title: string;
+  content: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Employee {
@@ -214,6 +233,7 @@ export interface Employee {
   customer_rating?: number;
   allowances?: { title: string; amount: number }[];
   deductions?: { title: string; amount: number }[];
+  contract_file_url?: string | null;
   created_at: string
   updated_at: string
 }
