@@ -39,6 +39,7 @@ const attendanceSchema = z.object({
     office_longitude: z.coerce.number(),
     office_radius: z.coerce.number().min(1, "Radius minimal 1 meter"),
     office_wifi_ssid: z.string().optional(),
+    is_auto_nik: z.boolean(),
 });
 
 const leaveSchema = z.object({
@@ -164,7 +165,8 @@ export default function SettingsPage() {
                 { key: 'office_latitude', value: data.office_latitude, description: 'Latitude lokasi kantor' },
                 { key: 'office_longitude', value: data.office_longitude, description: 'Longitude lokasi kantor' },
                 { key: 'office_radius', value: data.office_radius, description: 'Radius batas absensi (meter)' },
-                { key: 'office_wifi_ssid', value: data.office_wifi_ssid || '', description: 'SSID WiFi Kantor' }
+                { key: 'office_wifi_ssid', value: data.office_wifi_ssid || '', description: 'SSID WiFi Kantor' },
+                { key: 'is_auto_nik', value: data.is_auto_nik, description: 'Gunakan NIK Otomatis untuk Karyawan Baru' }
             ];
 
             await settingsService.updateSettings(updates);
@@ -360,7 +362,7 @@ export default function SettingsPage() {
                         <CardHeader className="bg-orange-50/30">
                             <CardTitle className="font-display text-orange-800">Aturan Kehadiran</CardTitle>
                             <CardDescription className="font-body">
-                                Aturan pemotongan gaji dan sanksi keterlambatan otomatis.
+                                Aturan pemotongan gaji, sanksi keterlambatan, dan penomoran karyawan.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6 pt-6">
@@ -411,16 +413,28 @@ export default function SettingsPage() {
                                     </div>
 
                                     <div className="space-y-4">
-                                        <h3 className="text-sm font-bold text-gray-900 border-l-4 border-amber-500 pl-3">Pengaturan Admin</h3>
-                                        <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100 flex items-center justify-between">
-                                            <div className="space-y-0.5">
-                                                <Label className="font-body text-amber-900">Wajibkan Absensi Admin</Label>
-                                                <p className="text-[10px] text-amber-700">Jika dinonaktifkan, Admin dapat melewati blokir "Akun Belum Terhubung".</p>
+                                        <h3 className="text-sm font-bold text-gray-900 border-l-4 border-amber-500 pl-3">Pengaturan Penomoran & Admin</h3>
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100 flex items-center justify-between">
+                                                <div className="space-y-0.5">
+                                                    <Label className="font-body text-amber-900">NIK Otomatis</Label>
+                                                    <p className="text-[10px] text-amber-700">Buat NIK otomatis berdasarkan tanggal masuk.</p>
+                                                </div>
+                                                <Switch
+                                                    checked={attendanceForm.watch("is_auto_nik")}
+                                                    onCheckedChange={(val) => attendanceForm.setValue("is_auto_nik", val)}
+                                                />
                                             </div>
-                                            <Switch
-                                                checked={attendanceForm.watch("admin_attendance_required")}
-                                                onCheckedChange={(val) => attendanceForm.setValue("admin_attendance_required", val)}
-                                            />
+                                            <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100 flex items-center justify-between">
+                                                <div className="space-y-0.5">
+                                                    <Label className="font-body text-amber-900">Wajibkan Absensi Admin</Label>
+                                                    <p className="text-[10px] text-amber-700">Jika dinonaktifkan, Admin dapat melewati blokir.</p>
+                                                </div>
+                                                <Switch
+                                                    checked={attendanceForm.watch("admin_attendance_required")}
+                                                    onCheckedChange={(val) => attendanceForm.setValue("admin_attendance_required", val)}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 

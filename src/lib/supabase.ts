@@ -213,6 +213,7 @@ export interface CompanySOP {
 export interface Employee {
   id: string
   name: string
+  nik?: string
   position: string
   department: string
   department_id?: string

@@ -202,7 +202,7 @@ export function ESSPortal() {
                         <p className="text-white/80 font-body text-lg">{employee?.position || 'Karyawan'}</p>
                         <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-3">
                             <Badge variant="secondary" className="bg-white/20 text-white border-none hover:bg-white/30">
-                                NIK: {user?.id.slice(0, 8).toUpperCase()}
+                                NIK: {employee?.nik || user?.id.slice(0, 8).toUpperCase()}
                             </Badge>
                             <Badge variant="secondary" className="bg-white/20 text-white border-none hover:bg-white/30">
                                 {employee?.status === 'active' ? 'Aktif' : 'On Leave'}

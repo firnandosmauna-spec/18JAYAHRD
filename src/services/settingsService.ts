@@ -55,7 +55,8 @@ export const settingsService = {
             'office_latitude',
             'office_longitude',
             'office_radius',
-            'office_wifi_ssid'
+            'office_wifi_ssid',
+            'is_auto_nik'
         ];
         const settings = await this.getSettings(keys);
 
@@ -84,6 +85,8 @@ export const settingsService = {
                 result.office_radius = Number(setting.value);
             } else if (setting.key === 'office_wifi_ssid') {
                 result.office_wifi_ssid = setting.value;
+            } else if (setting.key === 'is_auto_nik') {
+                result.is_auto_nik = setting.value === 'true' || setting.value === true;
             }
         });
 

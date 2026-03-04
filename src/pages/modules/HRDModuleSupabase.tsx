@@ -110,6 +110,8 @@ import type { Employee } from '@/lib/supabase';
 import { DataMigration } from '@/utils/migration';
 import { userService, type AppUser } from '@/services/userService';
 import { storageService } from '@/services/storageService';
+import { settingsService } from '@/services/settingsService';
+import { type AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS } from '@/types/settings';
 
 // Navigation items
 
@@ -313,6 +315,19 @@ function EmployeeListSupabase() {
   const { toast } = useToast();
   const { user, onlineUsers } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings>(DEFAULT_ATTENDANCE_SETTINGS);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await settingsService.getAttendanceSettings();
+        setAttendanceSettings(settings);
+      } catch (error) {
+        console.error("Failed to load attendance settings:", error);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const [showAddDialog, setShowAddDialog] = useState(false);
 
@@ -343,6 +358,7 @@ function EmployeeListSupabase() {
     phone: '',
     email: '',
     address: '',
+    nik: '',
     allowances: [] as { title: string; amount: number }[],
     deductions: [] as { title: string; amount: number }[]
   });
@@ -397,6 +413,7 @@ function EmployeeListSupabase() {
       phone: '',
       email: '',
       address: '',
+      nik: '',
       allowances: [],
       deductions: []
     });
@@ -589,6 +606,17 @@ function EmployeeListSupabase() {
       const isTempId = formData.department.startsWith('temp-');
       const finalDeptId = isTempId ? null : formData.department;
 
+      // Handle NIK generation
+      let finalNik = formData.nik;
+      if (attendanceSettings?.is_auto_nik) {
+        // Format: YYYYMMDD + Sequence (3 digits)
+        const datePart = formData.join_date.replace(/-/g, '');
+        // Count employees with same join date to determine sequence
+        const sameDayCount = employees.filter(e => e.join_date === formData.join_date).length;
+        const sequence = (sameDayCount + 1).toString().padStart(3, '0');
+        finalNik = `${datePart}${sequence}`;
+      }
+
       let contractUrl = null;
       if (contractFile) {
         setIsUploading(true);
@@ -604,6 +632,7 @@ function EmployeeListSupabase() {
 
       const newEmployee = {
         name: formData.name.trim(),
+        nik: finalNik,
         position: fullJobTitle,
         department: selectedDeptName,
 
@@ -722,6 +751,7 @@ function EmployeeListSupabase() {
         email: formData.email || null,
         address: formData.address || null,
         department_id: finalDeptId,
+        nik: formData.nik || null,
         allowances: formData.allowances,
         deductions: formData.deductions,
         contract_file_url: contractUrl,
@@ -795,6 +825,7 @@ function EmployeeListSupabase() {
       phone: employee.phone || '',
       email: employee.email || '',
       address: employee.address || '',
+      nik: employee.nik || '',
       allowances: employee.allowances || [],
       deductions: employee.deductions || []
     });
@@ -897,7 +928,9 @@ function EmployeeListSupabase() {
         <Table>
           <TableHeader className="bg-gray-50">
             <TableRow>
-              <TableHead className="w-[250px] font-body">Karyawan</TableHead>
+              <TableHead className="w-[100px] font-body">NIK</TableHead>
+              <TableHead className="w-[200px] font-body">Karyawan</TableHead>
+              <TableHead className="font-body">Masa Kerja</TableHead>
               <TableHead className="font-body">Posisi</TableHead>
               <TableHead className="font-body">Departemen</TableHead>
               <TableHead className="font-body">Status</TableHead>
@@ -908,7 +941,7 @@ function EmployeeListSupabase() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center font-body text-muted-foreground">
+                <TableCell colSpan={8} className="h-24 text-center font-body text-muted-foreground">
                   <div className="flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>Memuat data...</span>
@@ -917,7 +950,7 @@ function EmployeeListSupabase() {
               </TableRow>
             ) : filteredEmployees.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center font-body text-muted-foreground">
+                <TableCell colSpan={8} className="h-24 text-center font-body text-muted-foreground">
                   Tidak ada karyawan ditemukan.
                 </TableCell>
               </TableRow>
@@ -930,6 +963,7 @@ function EmployeeListSupabase() {
 
                 return (
                   <TableRow key={employee.id} className="hover:bg-gray-50">
+                    <TableCell className="font-mono text-xs text-gray-500">{employee.nik || '-'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="w-9 h-9 border border-gray-100">
@@ -942,6 +976,9 @@ function EmployeeListSupabase() {
                           <span className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">{employee.email || '-'}</span>
                         </div>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <EmployeeDuration joinDate={employee.join_date} />
                     </TableCell>
                     <TableCell className="font-body text-sm font-medium text-gray-700">{employee.position}</TableCell>
                     <TableCell className="font-body text-sm text-gray-600">
@@ -1024,6 +1061,20 @@ function EmployeeListSupabase() {
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="font-body">NIK {attendanceSettings?.is_auto_nik ? '(Otomatis)' : ''}</Label>
+                <Input
+                  placeholder={attendanceSettings?.is_auto_nik ? "Akan dibuat otomatis" : "Contoh: 20240304001"}
+                  className="font-mono"
+                  value={formData.nik}
+                  onChange={(e) => setFormData(prev => ({ ...prev, nik: e.target.value }))}
+                  disabled={attendanceSettings?.is_auto_nik}
+                />
+                {attendanceSettings?.is_auto_nik && (
+                  <p className="text-[10px] text-muted-foreground italic">NIK akan dibuat berdasarkan Tanggal Gabung saat disimpan.</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1293,6 +1344,15 @@ function EmployeeListSupabase() {
                 className="font-body"
                 value={formData.name}
                 onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body">NIK</Label>
+              <Input
+                placeholder="Nomor Induk Karyawan"
+                className="font-mono"
+                value={formData.nik}
+                onChange={(e) => setFormData(prev => ({ ...prev, nik: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -1582,6 +1642,10 @@ function EmployeeListSupabase() {
                   <div className="space-y-2">
                     <Label className="font-body text-muted-foreground">Tanggal Bergabung</Label>
                     <p className="font-mono font-medium">{selectedEmployee.join_date}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="font-body text-muted-foreground">Masa Kerja</Label>
+                    <EmployeeDuration joinDate={selectedEmployee.join_date} />
                   </div>
                   {user?.role !== 'staff' && (
                     <div className="space-y-2">

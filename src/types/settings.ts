@@ -19,6 +19,7 @@ export interface AttendanceSettings {
     office_longitude: number;
     office_radius: number;
     office_wifi_ssid: string;
+    is_auto_nik: boolean;
 }
 
 export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
@@ -34,6 +35,7 @@ export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
     office_longitude: 109.3425,
     office_radius: 200,
     office_wifi_ssid: '',
+    is_auto_nik: true,
 };
 
 export interface LeaveSettings {
