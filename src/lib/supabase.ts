@@ -24,10 +24,10 @@ export const supabase = createClient(
   finalKey,
   {
     auth: {
-      persistSession: false,
+      persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      storage: window.sessionStorage
+      storage: window.localStorage
     }
   }
 )
