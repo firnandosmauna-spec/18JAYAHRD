@@ -116,98 +116,8 @@ import { type AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS } from '@/types/se
 // Navigation items
 
 
-// Notification Bell Component
-function NotificationBell() {
-  const { notifications, unreadCount, markAsRead, markAllAsRead, clearNotification } = useNotificationsContext();
-  const [isOpen, setIsOpen] = useState(false);
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'success': return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'warning': return <AlertCircle className="w-4 h-4 text-orange-500" />;
-      case 'error': return <XCircle className="w-4 h-4 text-red-500" />;
-      default: return <Bell className="w-4 h-4 text-blue-500" />;
-    }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="w-5 h-5 text-muted-foreground" />
-          {unreadCount > 0 && (
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-mono"
-            >
-              {unreadCount}
-            </motion.span>
-          )}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="font-display">Notifikasi</DialogTitle>
-            {unreadCount > 0 && (
-              <Button variant="ghost" size="sm" onClick={markAllAsRead} className="text-hrd font-body text-xs">
-                Tandai semua dibaca
-              </Button>
-            )}
-          </div>
-          <DialogDescription className="font-body">
-            {unreadCount > 0 ? `${unreadCount} notifikasi belum dibaca` : 'Semua notifikasi telah dibaca'}
-          </DialogDescription>
-        </DialogHeader>
-        <ScrollArea className="h-[400px] pr-4">
-          <div className="space-y-2">
-            <AnimatePresence>
-              {notifications.map((notification) => (
-                <motion.div
-                  key={notification.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${notification.read ? 'bg-gray-50 border-gray-200' : 'bg-hrd/5 border-hrd/20'
-                    }`}
-                  onClick={() => markAsRead(notification.id)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5">{getNotificationIcon(notification.type)}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className={`text-sm font-body ${notification.read ? 'text-gray-600' : 'text-[#1C1C1E] font-medium'}`}>
-                          {notification.title}
-                        </p>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            clearNotification(notification.id);
-                          }}
-                        >
-                          <X className="w-3 h-3" />
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground font-body mt-0.5">{notification.message}</p>
-                      <p className="text-xs text-muted-foreground font-mono mt-1">
-                        {new Date(notification.created_at).toLocaleString('id-ID')}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
+// --- Sub-components for Employee Details ---
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -365,6 +275,7 @@ function EmployeeListSupabase() {
 
   const [contractFile, setContractFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Fetch users for linking status
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -576,14 +487,21 @@ function EmployeeListSupabase() {
       }
 
       console.log("DEBUG: Validation passed");
+      setIsSaving(true);
       const salaryNum = parseInt(formData.salary);
       if (isNaN(salaryNum) || salaryNum <= 0) {
         console.warn("DEBUG: Validation failed - invalid salary");
+        setIsSaving(false);
         addNotification({
           title: 'Gaji Tidak Valid',
           message: 'Mohon masukkan gaji yang valid (angka positif)',
           type: 'warning',
           module: 'employee'
+        });
+        toast({
+          variant: "destructive",
+          title: "Gaji Tidak Valid",
+          description: "Mohon masukkan gaji yang valid (angka positif)",
         });
         return;
       }
@@ -672,9 +590,11 @@ function EmployeeListSupabase() {
         description: `Data karyawan ${formData.name} telah disimpan.`,
       });
 
+      setIsSaving(false);
       setShowAddDialog(false);
       resetForm();
     } catch (error) {
+      setIsSaving(false);
       console.error("DEBUG: addEmployee error:", error);
       addNotification({
         title: 'Gagal Menambah Karyawan',
@@ -695,29 +615,49 @@ function EmployeeListSupabase() {
   const handleEditEmployee = async () => {
     try {
       if (!formData.name || !formData.position || !formData.department || !formData.salary || !formData.join_date) {
+        const missing = [];
+        if (!formData.name) missing.push("Nama");
+        if (!formData.position) missing.push("Posisi");
+        if (!formData.department) missing.push("Departemen");
+        if (!formData.salary) missing.push("Gaji");
+        if (!formData.join_date) missing.push("Tanggal Gabung");
+
         addNotification({
           title: 'Form Tidak Lengkap',
-          message: 'Mohon lengkapi semua field yang wajib diisi',
+          message: `Mohon lengkapi: ${missing.join(', ')}`,
           type: 'warning',
           module: 'employee'
+        });
+        toast({
+          variant: "destructive",
+          title: "Form Tidak Lengkap",
+          description: `Mohon lengkapi: ${missing.join(', ')}`,
         });
         return;
       }
 
+      setIsSaving(true);
       const salaryNum = parseInt(formData.salary);
       if (isNaN(salaryNum) || salaryNum <= 0) {
+        setIsSaving(false);
         addNotification({
           title: 'Gaji Tidak Valid',
           message: 'Mohon masukkan gaji yang valid (angka positif)',
           type: 'warning',
           module: 'employee'
         });
+        toast({
+          variant: "destructive",
+          title: "Gaji Tidak Valid",
+          description: "Mohon masukkan gaji yang valid (angka positif)",
+        });
         return;
       }
 
       // Logic to find selected department object using derivedDepartments (includes temp ones)
       const selectedDeptObj = derivedDepartments.find(d => d.id === formData.department);
-      const selectedDeptName = selectedDeptObj?.name || '';
+      const selectedDeptName = selectedDeptObj?.name ||
+        (formData.department.startsWith('temp-') ? formData.department.replace('temp-', '') : formData.department);
 
       const fullJobTitle = `${formData.position} - ${selectedDeptName}`;
 
@@ -771,10 +711,12 @@ function EmployeeListSupabase() {
         description: `Perubahan data karyawan ${formData.name} telah disimpan.`,
       });
 
+      setIsSaving(false);
       setShowEditDialog(false);
       setSelectedEmployee(null);
       resetForm();
     } catch (error) {
+      setIsSaving(false);
       addNotification({
         title: 'Gagal Memperbarui Karyawan',
         message: `Error: ${error}`,
@@ -816,8 +758,10 @@ function EmployeeListSupabase() {
       name: employee.name,
       position: level, // extracted level
       // Attempt to match department to derived list
-      // Prefer ID if it matches, otherwise find by name
-      department: employee.department_id || derivedDepartments.find(d => d.name === employee.department)?.id || '',
+      // Prefer ID if it matches, otherwise find by name. If no match, use current name as temp ID.
+      department: employee.department_id ||
+        derivedDepartments.find(d => d.name === employee.department)?.id ||
+        (employee.department ? `temp-${employee.department}` : ''),
       salary: employee.salary.toString(),
       join_date: employee.join_date,
       bank_account: employee.bank_account || '',
@@ -1315,10 +1259,20 @@ function EmployeeListSupabase() {
                 </Button>
                 <Button
                   onClick={handleAddEmployee}
+                  disabled={isSaving || isUploading}
                   className="bg-hrd hover:bg-hrd-dark font-body text-white w-32 shadow-lg"
                 >
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Simpan
+                  {isSaving || isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Proses...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      Simpan
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -1587,8 +1541,19 @@ function EmployeeListSupabase() {
             <Button variant="outline" onClick={() => { setShowEditDialog(false); resetForm(); }} className="font-body">
               Batal
             </Button>
-            <Button onClick={handleEditEmployee} className="bg-hrd hover:bg-hrd-dark font-body">
-              Simpan Perubahan
+            <Button
+              onClick={handleEditEmployee}
+              disabled={isSaving || isUploading}
+              className="bg-hrd hover:bg-hrd-dark font-body"
+            >
+              {isSaving || isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                "Simpan Perubahan"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2058,7 +2023,6 @@ function HRDDashboard() {
               Ganti Akun (Test)
             </Button>
           )}
-          <NotificationBell />
         </div>
       </div>
 
@@ -2188,6 +2152,7 @@ export default function HRDModuleSupabase() {
   const filteredNavItems = [
     ...(checkAccess('Dashboard') !== 'none' ? [{ label: 'Dashboard', href: '/hrd', icon: Users }] : []),
     { label: 'Portal Mandiri', href: '/hrd/portal', icon: User },
+    ...(user?.role === 'Administrator' ? [{ label: 'Notifikasi', href: '/hrd/portal?tab=notifications', icon: Bell }] : []),
     ...(checkAccess('Karyawan') !== 'none' ? [{ label: 'Karyawan', href: '/hrd/employees', icon: Users }] : []),
     ...(checkAccess('Departemen') !== 'none' || user?.role === 'Administrator' ? [{ label: 'Departemen', href: '/hrd/departments', icon: Building }] : []),
     ...(checkAccess('Posisi Jabatan') !== 'none' ? [{ label: 'Posisi Jabatan', href: '/hrd/positions', icon: Briefcase }] : []),
@@ -2287,7 +2252,7 @@ export default function HRDModuleSupabase() {
   }
 
   return (
-    <NotificationProvider>
+    <>
       {/* Administrative Session Switcher Overlay - Only show when testing non-admin accounts */}
       {stashedSession && user?.role !== 'Administrator' && (
         <div className="fixed bottom-6 right-6 z-[60]">
@@ -2355,7 +2320,7 @@ export default function HRDModuleSupabase() {
         open={showMigrationDialog}
         onOpenChange={setShowMigrationDialog}
       />
-    </NotificationProvider>
+    </>
   );
 }
 

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UserProfile } from '@/components/auth/UserProfile';
+import { NotificationBell } from '@/components/hrd/NotificationBell';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -244,13 +245,7 @@ export default function ModuleLayout({ children, moduleId, title, navItems }: Mo
             </div>
 
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="w-5 h-5 text-muted-foreground" />
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-white text-xs rounded-full flex items-center justify-center font-mono">
-                  3
-                </span>
-              </Button>
-
+              {user?.role === 'Administrator' && <NotificationBell />}
               <UserProfile />
             </div>
           </div>

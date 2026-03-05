@@ -338,5 +338,25 @@ export const userService = {
             console.error("DEBUG: Catch in deleteByEmployeeId:", err);
             throw err;
         }
+    },
+
+    // Get user profile by employee_id
+    async getByEmployeeId(employeeId: string) {
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('employee_id', employeeId)
+                .maybeSingle();
+
+            if (error) {
+                console.error("DEBUG: Error fetching profile by employeeId:", error);
+                throw error;
+            }
+            return data as Profile | null;
+        } catch (err) {
+            console.error("DEBUG: Catch in getByEmployeeId:", err);
+            throw err;
+        }
     }
 };

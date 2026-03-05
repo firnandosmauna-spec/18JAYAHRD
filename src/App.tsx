@@ -4,6 +4,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { SopOverlay } from "@/components/SopOverlay";
 import { Toaster } from "@/components/ui/toaster";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 
 // Static imports to fix Suspense hang
 import { AuthPage } from "@/pages/AuthPage";
@@ -122,115 +123,117 @@ function App() {
       <RoutePersister />
       <SopOverlay />
       <ErrorBoundary>
-        <Suspense fallback={<LoadingFallback />}>
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<AuthPage />} />
-            <Route path="/auth" element={<AuthPage />} />
-            <Route path="/login" element={<AuthPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <NotificationProvider>
+          <Suspense fallback={<LoadingFallback />}>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<AuthPage />} />
+              <Route path="/auth" element={<AuthPage />} />
+              <Route path="/login" element={<AuthPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-            {/* Protected Routes */}
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <DashboardPage />
-                </ProtectedRoute>
-              }
-            />
+              {/* Protected Routes */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* HRD Module */}
-            <Route
-              path="/hrd/*"
-              element={
-                <ProtectedRoute requiredModule="hrd">
-                  <HRDModule />
-                </ProtectedRoute>
-              }
-            />
+              {/* HRD Module */}
+              <Route
+                path="/hrd/*"
+                element={
+                  <ProtectedRoute requiredModule="hrd">
+                    <HRDModule />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Accounting Module */}
-            <Route
-              path="/accounting/*"
-              element={
-                <ProtectedRoute requiredModule="accounting">
-                  <AccountingModule />
-                </ProtectedRoute>
-              }
-            />
+              {/* Accounting Module */}
+              <Route
+                path="/accounting/*"
+                element={
+                  <ProtectedRoute requiredModule="accounting">
+                    <AccountingModule />
+                  </ProtectedRoute>
+                }
+              />
 
 
-            {/* Inventory Module */}
-            <Route
-              path="/inventory/*"
-              element={
-                <ProtectedRoute requiredModule="inventory">
-                  <InventoryModule />
-                </ProtectedRoute>
-              }
-            />
+              {/* Inventory Module */}
+              <Route
+                path="/inventory/*"
+                element={
+                  <ProtectedRoute requiredModule="inventory">
+                    <InventoryModule />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Customer Service Module */}
-            <Route
-              path="/customer/*"
-              element={
-                <ProtectedRoute requiredModule="customer">
-                  <CustomerServiceModule />
-                </ProtectedRoute>
-              }
-            />
+              {/* Customer Service Module */}
+              <Route
+                path="/customer/*"
+                element={
+                  <ProtectedRoute requiredModule="customer">
+                    <CustomerServiceModule />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Project Module */}
-            <Route
-              path="/projects/*"
-              element={
-                <ProtectedRoute requiredModule="project">
-                  <ProjectModule />
-                </ProtectedRoute>
-              }
-            />
+              {/* Project Module */}
+              <Route
+                path="/projects/*"
+                element={
+                  <ProtectedRoute requiredModule="project">
+                    <ProjectModule />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Marketing Pipeline Module */}
-            <Route
-              path="/marketing/*"
-              element={
-                <ProtectedRoute requiredModule="marketing">
-                  <MarketingModule />
-                </ProtectedRoute>
-              }
-            />
+              {/* Marketing Pipeline Module */}
+              <Route
+                path="/marketing/*"
+                element={
+                  <ProtectedRoute requiredModule="marketing">
+                    <MarketingModule />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Sales Module */}
-            <Route
-              path="/sales/*"
-              element={
-                <ProtectedRoute requiredModule="sales">
-                  <SalesModule />
-                </ProtectedRoute>
-              }
-            />
+              {/* Sales Module */}
+              <Route
+                path="/sales/*"
+                element={
+                  <ProtectedRoute requiredModule="sales">
+                    <SalesModule />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Purchase Module */}
-            <Route
-              path="/purchase/*"
-              element={
-                <ProtectedRoute requiredModule="purchase">
-                  <PurchaseModule />
-                </ProtectedRoute>
-              }
-            />
+              {/* Purchase Module */}
+              <Route
+                path="/purchase/*"
+                element={
+                  <ProtectedRoute requiredModule="purchase">
+                    <PurchaseModule />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Supabase Test Page */}
-            <Route path="/supabase-test" element={<SupabaseTestPage />} />
+              {/* Supabase Test Page */}
+              <Route path="/supabase-test" element={<SupabaseTestPage />} />
 
-            {/* MCP Supabase Integration Page */}
-            <Route path="/mcp-supabase" element={<MCPSupabasePage />} />
+              {/* MCP Supabase Integration Page */}
+              <Route path="/mcp-supabase" element={<MCPSupabasePage />} />
 
-            {/* Catch all - redirect to login */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+              {/* Catch all - redirect to login */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </NotificationProvider>
       </ErrorBoundary>
       <Toaster />
     </AuthProvider>

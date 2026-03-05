@@ -20,10 +20,11 @@ import {
     CreditCard,
     Award,
     Loader2,
+    RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
@@ -41,7 +42,7 @@ export function ESSPortal() {
     const { user, profile, updateProfile, restoreAdminSession } = useAuth();
     const { employees } = useEmployees();
     const { departments } = useDepartments(); // Fetch departments to map IDs to names
-    const { markAllAsRead, unreadCount, notifications } = useNotificationsContext(); // Use notification context
+    const { markAllAsRead, unreadCount, notifications, loading, refetch: refetchNotifications } = useNotificationsContext(); // Use notification context
     const { toast } = useToast();
 
     const employee = employees.find(e => e.id === user?.employee_id);
@@ -193,6 +194,7 @@ export function ESSPortal() {
             >
                 <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
                     <Avatar className="h-24 w-24 border-4 border-white/20">
+                        {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} className="object-cover" />}
                         <AvatarFallback className="bg-white/10 text-2xl font-bold">
                             {user?.name?.split(' ').map(n => n[0]).join('')}
                         </AvatarFallback>
@@ -275,44 +277,62 @@ export function ESSPortal() {
                             </CardContent>
                         </Card>
 
-                        <Card className="shadow-sm border-gray-200">
-                            <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
-                                <CardTitle className="text-lg flex items-center gap-2">
-                                    <Bell className="w-5 h-5 text-hrd" />
-                                    Notifikasi Terbaru
-                                </CardTitle>
-                                {unreadCount > 0 && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-xs text-blue-600 h-6 px-2 hover:bg-blue-50"
-                                        onClick={() => markAllAsRead()}
-                                    >
-                                        Tandai Dibaca
-                                    </Button>
-                                )}
-                            </CardHeader>
-                            <CardContent className="p-0">
-                                <div className="divide-y max-h-[300px] overflow-y-auto">
-                                    {notifications.length === 0 ? (
-                                        <div className="p-4 text-center text-muted-foreground text-sm">
-                                            Tidak ada notifikasi baru
-                                        </div>
-                                    ) : (
-                                        notifications.slice(0, 5).map((notification) => (
-                                            <div key={notification.id} className={`p-4 hover:bg-gray-50 transition-colors ${!notification.read ? 'bg-blue-50/50' : ''}`}>
-                                                <p className={`text-sm ${!notification.read ? 'font-semibold text-blue-800' : 'font-medium text-gray-700'}`}>
-                                                    {notification.title}
-                                                </p>
-                                                <p className="text-xs text-muted-foreground mt-1">
-                                                    {new Date(notification.created_at).toLocaleString('id-ID')}
-                                                </p>
+                        {/* Notifications Card - Only for Admin */}
+                        {user?.role === 'Administrator' && (
+                            <Card className="shadow-sm border-gray-200">
+                                <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
+                                    <CardTitle className="text-lg flex items-center gap-2">
+                                        <Bell className="w-5 h-5 text-hrd" />
+                                        Notifikasi Terbaru
+                                    </CardTitle>
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 text-muted-foreground hover:text-hrd"
+                                            onClick={() => refetchNotifications()}
+                                            title="Perbarui Notifikasi"
+                                        >
+                                            <RefreshCw className="w-4 h-4" />
+                                        </Button>
+                                        {unreadCount > 0 && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-xs text-blue-600 h-8 px-2 hover:bg-blue-50"
+                                                onClick={() => markAllAsRead()}
+                                            >
+                                                Tandai Dibaca
+                                            </Button>
+                                        )}
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                    <div className="divide-y max-h-[300px] overflow-y-auto">
+                                        {loading ? (
+                                            <div className="p-8 flex justify-center items-center">
+                                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                                             </div>
-                                        ))
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                        ) : notifications.length === 0 ? (
+                                            <div className="p-4 text-center text-muted-foreground text-sm">
+                                                Tidak ada notifikasi baru
+                                            </div>
+                                        ) : (
+                                            notifications.slice(0, 5).map((notification) => (
+                                                <div key={notification.id} className={`p-4 hover:bg-gray-50 transition-colors ${!notification.read ? 'bg-blue-50/50' : ''}`}>
+                                                    <p className={`text-sm ${!notification.read ? 'font-semibold text-blue-800' : 'font-medium text-gray-700'}`}>
+                                                        {notification.title}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        {new Date(notification.created_at).toLocaleString('id-ID')}
+                                                    </p>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         <Card
                             className="shadow-sm border-gray-200 overflow-hidden group cursor-pointer hover:border-hrd transition-all"

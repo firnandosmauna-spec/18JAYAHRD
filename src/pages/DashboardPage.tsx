@@ -34,6 +34,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UserProfile } from '@/components/auth/UserProfile';
 import { EditProfileDialog } from '@/components/auth/EditProfileDialog';
+import { NotificationBell } from '@/components/hrd/NotificationBell';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -285,20 +286,7 @@ export default function DashboardPage() {
 
             {/* Right Actions */}
             <div className="flex items-center gap-4">
-              {/* Notifications */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative"
-                onClick={() => {/* TODO: Open notifications panel */ }}
-              >
-                <Bell className="w-5 h-5 text-muted-foreground" />
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-white text-xs rounded-full flex items-center justify-center font-mono">
-                  51
-                </span>
-              </Button>
-
-              {/* User Menu */}
+              {user?.role === 'Administrator' && <NotificationBell />}
               <UserProfile />
             </div>
           </div>

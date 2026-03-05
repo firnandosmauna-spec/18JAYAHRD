@@ -1,13 +1,16 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useNotifications } from '@/hooks/useSupabase';
 
 interface NotificationContextType {
     notifications: any[];
     unreadCount: number;
+    loading: boolean;
     addNotification: (notification: any) => void;
     markAsRead: (id: string) => void;
     markAllAsRead: () => void;
     clearNotification: (id: string) => void;
+    refetch: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -21,14 +24,17 @@ export function useNotificationsContext() {
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
+    const { user } = useAuth();
     const {
         notifications,
         unreadCount,
+        loading,
         addNotification: addSupabaseNotification,
         markAsRead,
         markAllAsRead,
-        deleteNotification
-    } = useNotifications();
+        deleteNotification,
+        refetch
+    } = useNotifications(user?.id);
 
     const addNotification = async (notification: any) => {
         try {
@@ -58,10 +64,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             value={{
                 notifications,
                 unreadCount,
+                loading,
                 addNotification,
                 markAsRead,
                 markAllAsRead,
-                clearNotification
+                clearNotification,
+                refetch
             }}
         >
             {children}

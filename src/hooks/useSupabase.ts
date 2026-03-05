@@ -250,6 +250,24 @@ export function useLeaveRequests() {
   const approveLeaveRequest = async (id: string, approvedBy: string) => {
     try {
       const updatedRequest = await leaveService.approve(id, approvedBy)
+
+      // Send notification to employee
+      try {
+        const profile = await userService.getByEmployeeId(updatedRequest.employee_id);
+        if (profile) {
+          await notificationService.create({
+            title: 'Cuti Disetujui',
+            message: `Pengajuan cuti Anda untuk tanggal ${updatedRequest.start_date} telah disetujui.`,
+            type: 'success',
+            module: 'Cuti & Izin',
+            user_id: profile.id,
+            read: false
+          });
+        }
+      } catch (notifErr) {
+        console.warn('⚠️ Failed to send approval notification:', notifErr);
+      }
+
       setLeaveRequests(prev => prev.map(req => req.id === id ? updatedRequest : req))
       return updatedRequest
     } catch (err) {
@@ -262,6 +280,24 @@ export function useLeaveRequests() {
   const rejectLeaveRequest = async (id: string) => {
     try {
       const updatedRequest = await leaveService.reject(id)
+
+      // Send notification to employee
+      try {
+        const profile = await userService.getByEmployeeId(updatedRequest.employee_id);
+        if (profile) {
+          await notificationService.create({
+            title: 'Cuti Ditolak',
+            message: `Pengajuan cuti Anda untuk tanggal ${updatedRequest.start_date} tidak dapat disetujui.`,
+            type: 'error',
+            module: 'Cuti & Izin',
+            user_id: profile.id,
+            read: false
+          });
+        }
+      } catch (notifErr) {
+        console.warn('⚠️ Failed to send rejection notification:', notifErr);
+      }
+
       setLeaveRequests(prev => prev.map(req => req.id === id ? updatedRequest : req))
       return updatedRequest
     } catch (err) {
