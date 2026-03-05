@@ -13,6 +13,7 @@ import DashboardPage from "@/pages/DashboardPage";
 import HRDModule from "@/pages/modules/HRDModuleSupabase";
 import InventoryModule from "@/pages/modules/InventoryModule";
 import CustomerServiceModule from "@/pages/modules/CustomerServiceModule";
+import AccountingModule from "@/pages/modules/AccountingModule";
 const ProjectModule = lazy(() => import("@/pages/modules/ProjectModule"));
 const SalesModule = lazy(() => import("@/pages/modules/SalesModule"));
 const PurchaseModule = lazy(() => import("@/pages/modules/PurchaseModule"));
@@ -20,7 +21,6 @@ const SupabaseTestPage = lazy(() => import("@/pages/SupabaseTestPage"));
 const MCPSupabasePage = lazy(() => import("@/pages/MCPSupabasePage"));
 const PositionsPage = lazy(() => import("@/pages/hrd/PositionsPage"));
 const MarketingModule = lazy(() => import("@/pages/modules/MarketingModule"));
-const AccountingModule = lazy(() => import("@/pages/modules/AccountingModule"));
 
 // Global Debug Listener
 if (typeof window !== 'undefined') {
