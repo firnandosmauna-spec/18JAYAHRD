@@ -21,7 +21,8 @@ import {
   Trash2,
   TrendingUp,
   Users,
-  RefreshCcw
+  RefreshCcw,
+  UserX
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -340,12 +341,18 @@ export function AttendanceManagement() {
     return matchesSearch && matchesEmployee;
   });
 
+  // Calculate employees who haven't clocked in at all today
+  const notPresentToday = employees.filter(emp =>
+    !todayAttendance.some(att => att.employee_id === emp.id)
+  );
+
   // Calculate statistics
   const stats = {
     totalEmployees: employees.length,
-    presentToday: todayAttendance.filter(att => att.status === 'present').length,
+    presentToday: todayAttendance.filter(att => ['present', 'late'].includes(att.status)).length,
     lateToday: todayAttendance.filter(att => att.status === 'late').length,
     absentToday: todayAttendance.filter(att => att.status === 'absent').length,
+    notYetPresentToday: notPresentToday.length,
     attendanceRate: employees.length > 0 ?
       Math.round((todayAttendance.filter(att => ['present', 'late'].includes(att.status)).length / employees.length) * 100) : 0
   };
@@ -786,14 +793,14 @@ export function AttendanceManagement() {
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center">
-                    <XCircle className="w-6 h-6 text-red-600" />
+                  <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center">
+                    <UserX className="w-6 h-6 text-orange-600" />
                   </div>
                   <Badge variant="secondary" className="font-mono text-xs">Hari Ini</Badge>
                 </div>
                 <div className="mt-4">
-                  <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.absentToday}</p>
-                  <p className="text-sm text-muted-foreground font-body">Tidak Hadir</p>
+                  <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.notYetPresentToday}</p>
+                  <p className="text-sm text-muted-foreground font-body">Belum Absen</p>
                 </div>
               </CardContent>
             </Card>
@@ -957,6 +964,29 @@ export function AttendanceManagement() {
               </Table>
             </CardContent>
           </Card>
+
+          {/* Section: Karyawan Belum Absen */}
+          {user?.role !== 'staff' && notPresentToday.length > 0 && (
+            <Card className="border-orange-200 bg-orange-50/30 mt-6">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <UserX className="w-5 h-5 text-orange-600" />
+                  <CardTitle className="text-lg font-display text-orange-900">Karyawan Belum Absen ({notPresentToday.length})</CardTitle>
+                </div>
+                <CardDescription className="text-orange-700">Daftar karyawan yang belum melakukan absensi hari ini</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {notPresentToday.map((emp) => (
+                    <Badge key={emp.id} variant="outline" className="bg-white border-orange-200 text-orange-800 font-body py-1.5 px-3">
+                      <User className="w-3 h-3 mr-1.5 opacity-50" />
+                      {emp.name}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* History Tab - Visible for everyone now */}
@@ -1196,6 +1226,37 @@ export function AttendanceManagement() {
                       </div>
                     )}
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* New: Summary Section for Not Yet Present */}
+              <Card className="border-gray-200 lg:col-span-2">
+                <CardHeader>
+                  <CardTitle className="font-display">Karyawan Belum Absen</CardTitle>
+                  <CardDescription className="font-body">
+                    Daftar karyawan yang belum tercatat kehadirannya hari ini
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {notPresentToday.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {notPresentToday.map((emp) => (
+                        <div key={emp.id} className="flex items-center gap-2 p-2 border border-gray-100 rounded-md bg-gray-50/50">
+                          <Avatar className="w-6 h-6">
+                            <AvatarFallback className="text-[10px] bg-gray-200 text-gray-600">
+                              {emp.name.split(' ').map(n => n[0]).join('')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-xs font-medium font-body truncate">{emp.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground font-body">Semua karyawan sudah melakukan absensi hari ini</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
