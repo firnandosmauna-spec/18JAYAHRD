@@ -409,17 +409,33 @@ export function PayrollManagement() {
             rawStatuses: attendance?.slice(0, 5).map((a: any) => a.status || 'null')
           });
 
-          // --- Auto-Calculate Allowances based on Settings ---
+          // --- Auto-Calculate Allowances & Deductions based on Settings ---
           if (payrollSettings) {
             const workingDays = 26; // Fixed 26 days divisor as per user request
+            const dailyAbsentPenalty = Math.round((
+              (payrollSettings.payroll_allowance_position || 0) +
+              (payrollSettings.payroll_allowance_meal || 0) +
+              (payrollSettings.payroll_allowance_gasoline || 0)
+            ) / workingDays);
 
-            // Prorate base salary based on attendance
+            // Base salary proration (keep existing logic or adjust if needed)
+            // The user specifically mentioned allowances, usually base salary is also prorated
             baseSalaryValue = Math.round((baseSalaryValue / workingDays) * presentCount);
 
-            mealAllowance = Math.round(((payrollSettings.payroll_allowance_meal || 0) / workingDays) * presentCount);
-            gasolineAllowance = Math.round(((payrollSettings.payroll_allowance_gasoline || 0) / workingDays) * presentCount);
+            // Allowances are now recorded at full monthly value (no more proration here)
+            // Deduction will be handled separately in absentDeductionAmount
+            mealAllowance = payrollSettings.payroll_allowance_meal || 0;
+            gasolineAllowance = payrollSettings.payroll_allowance_gasoline || 0;
+            positionAllowance = payrollSettings.payroll_allowance_position || 0;
 
-            // Try to find BPJS in employee's profile first
+            // Explicit absence deduction based on (P+M+G)/26
+            if (absentCount > 0) {
+              const formulaAbsenceDeduction = absentCount * dailyAbsentPenalty;
+              absentDeductionAmount += formulaAbsenceDeduction;
+              newDeductionDetails.push(`Absensi: ${absentCount} hari x Rp ${dailyAbsentPenalty.toLocaleString('id-ID')} = Rp ${formulaAbsenceDeduction.toLocaleString('id-ID')}`);
+            }
+
+            // bpjs
             const employeeBpjs = employee.deductions?.find((d: any) =>
               d.title.toUpperCase().includes('BPJS')
             );
@@ -430,14 +446,13 @@ export function PayrollManagement() {
               bpjsDeduction = payrollSettings.payroll_bpjs_rate || 0;
             }
 
-            positionAllowance = payrollSettings.payroll_allowance_position || 0;
             thrAllowance = payrollSettings.payroll_allowance_thr || 0;
 
-            if (payrollSettings.payroll_allowance_meal > 0 && mealAllowance > 0) {
-              newAllowanceDetails.push(`Uang Makan: ${presentCount}/${workingDays} hari kerja x ${formatCurrency(payrollSettings.payroll_allowance_meal)} = ${formatCurrency(mealAllowance)}`);
+            if (mealAllowance > 0) {
+              newAllowanceDetails.push(`Uang Makan: ${formatCurrency(mealAllowance)} (Utuh)`);
             }
-            if (payrollSettings.payroll_allowance_gasoline > 0 && gasolineAllowance > 0) {
-              newAllowanceDetails.push(`Uang Bensin: ${presentCount}/${workingDays} hari kerja x ${formatCurrency(payrollSettings.payroll_allowance_gasoline)} = ${formatCurrency(gasolineAllowance)}`);
+            if (gasolineAllowance > 0) {
+              newAllowanceDetails.push(`Uang Bensin: ${formatCurrency(gasolineAllowance)} (Utuh)`);
             }
           }
 
@@ -804,12 +819,24 @@ export function PayrollManagement() {
 
         const presentCount = attendance?.filter((a: any) => ['present', 'late', 'business_trip', 'wfh'].includes(a.status)).length || 0;
         const workingDays = 26; // Fixed 26 days divisor
+        const dailyAbsentPenalty = Math.round((
+          (payrollSettings?.payroll_allowance_position || 0) +
+          (payrollSettings?.payroll_allowance_meal || 0) +
+          (payrollSettings?.payroll_allowance_gasoline || 0)
+        ) / workingDays);
 
         // Prorate base salary based on attendance
         baseSalary = Math.round((baseSalary / workingDays) * presentCount);
 
-        mealAllowance = Math.round(((payrollSettings?.payroll_allowance_meal || 0) / workingDays) * presentCount);
-        gasolineAllowance = Math.round(((payrollSettings?.payroll_allowance_gasoline || 0) / workingDays) * presentCount);
+        // Allowances at full value
+        mealAllowance = payrollSettings?.payroll_allowance_meal || 0;
+        gasolineAllowance = payrollSettings?.payroll_allowance_gasoline || 0;
+        const position = payrollSettings?.payroll_allowance_position || 0;
+
+        // Absence deduction based on (P+M+G)/26
+        if (absentCount > 0) {
+          absentDeductionAmount += absentCount * dailyAbsentPenalty;
+        }
 
         // --- Perfect Attendance Reward (Automatic) ---
         const isPerfect = absentCount === 0 && totalLateMinutes === 0 && (attendance?.length || 0) > 0;
@@ -823,7 +850,6 @@ export function PayrollManagement() {
         }
 
         const bpjs = payrollSettings?.payroll_bpjs_rate || 0;
-        const position = payrollSettings?.payroll_allowance_position || 0;
         const discretionary = 0;
         const thr = payrollSettings?.payroll_allowance_thr || 0;
 

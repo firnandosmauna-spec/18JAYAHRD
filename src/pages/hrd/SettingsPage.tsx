@@ -221,7 +221,7 @@ export default function SettingsPage() {
                 { key: 'payroll_allowance_gasoline', value: data.payroll_allowance_gasoline, description: 'Uang bensin harian' },
                 { key: 'payroll_bpjs_rate', value: data.payroll_bpjs_rate, description: 'Potongan BPJS bulanan' },
                 { key: 'payroll_allowance_thr', value: data.payroll_allowance_thr, description: 'Tunjangan Hari Raya' },
-                { key: 'payroll_deduction_absent', value: data.payroll_deduction_absent, description: 'Potongan per hari absen' },
+                { key: 'payroll_deduction_absent', value: data.payroll_deduction_absent, description: 'Potongan per hari absen (Rumus: (P+M+G)/26)' },
                 { key: 'payroll_schedule_day', value: data.payroll_schedule_day, description: 'Tanggal penggajian rutin' },
                 { key: 'is_automatic_payroll', value: data.is_automatic_payroll, description: 'Otomatisasi pemrosesan payroll' },
                 { key: 'payroll_reward_perfect_attendance', value: data.payroll_reward_perfect_attendance, description: 'Reward Kehadiran Sempurna (100%)' },

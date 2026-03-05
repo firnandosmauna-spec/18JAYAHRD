@@ -69,7 +69,7 @@ import { usePresence } from '@/hooks/usePresence';
 import type { AttendanceRecord, LeaveRequest } from '@/lib/supabase';
 import { attendanceService, leaveService } from '@/services/supabaseService';
 import { settingsService } from '@/services/settingsService';
-import { AttendanceSettings } from '@/types/settings';
+import { AttendanceSettings, PayrollSettings } from '@/types/settings';
 
 // Types
 type AttendanceStatus = 'present' | 'late' | 'absent' | 'leave' | 'holiday';
@@ -272,22 +272,27 @@ export function AttendanceManagement() {
   const [penaltyRate, setPenaltyRate] = useState<number>(0);
   const [isEditing, setIsEditing] = useState(false);
   const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
+  const [payrollSettings, setPayrollSettings] = useState<PayrollSettings | null>(null);
   const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState<string>('all');
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const settings = await settingsService.getAttendanceSettings();
-        setPenaltyRate(settings.attendance_late_penalty);
+        const [aSettings, pSettings] = await Promise.all([
+          settingsService.getAttendanceSettings(),
+          settingsService.getPayrollSettings()
+        ]);
+
+        setPenaltyRate(aSettings.attendance_late_penalty);
+        setAttendanceSettings(aSettings);
+        setPayrollSettings(pSettings);
 
         // Update local variables for logic functions
-        WORK_START_WEEKDAY = settings.work_start_time_weekday;
-        WORK_END_WEEKDAY = settings.work_end_time_weekday;
-        WORK_START_SATURDAY = settings.work_start_time_saturday;
-        WORK_END_SATURDAY = settings.work_end_time_saturday;
-        LATE_TOLERANCE_MINUTES = settings.attendance_late_tolerance;
-
-        setAttendanceSettings(settings); // Store full settings object
+        WORK_START_WEEKDAY = aSettings.work_start_time_weekday;
+        WORK_END_WEEKDAY = aSettings.work_end_time_weekday;
+        WORK_START_SATURDAY = aSettings.work_start_time_saturday;
+        WORK_END_SATURDAY = aSettings.work_end_time_saturday;
+        LATE_TOLERANCE_MINUTES = aSettings.attendance_late_tolerance;
       } catch (err) {
         console.error('Error fetching settings:', err);
       }
@@ -442,20 +447,33 @@ export function AttendanceManagement() {
     }
   };
 
-  const calculatePenalty = (checkIn?: string, dateString?: string): number => {
-    if (!checkIn || penaltyRate <= 0) return 0;
+  const calculatePenalty = (record: AttendanceRecord): number => {
+    const status = (record.status || '').toLowerCase().trim();
 
-    const schedule = getWorkSchedule(dateString);
-    const [checkInHour, checkInMinute] = checkIn.split(':').map(Number);
-    const [workHour, workMinute] = schedule.start.split(':').map(Number);
+    // --- Absence Deduction Formula (P+M+G)/26 ---
+    if (['absent', 'tidak hadir', 'alpha', 'alpa'].includes(status)) {
+      if (!payrollSettings) return 0;
+      const workingDays = 26;
+      const totalAllowances = (payrollSettings.payroll_allowance_position || 0) +
+        (payrollSettings.payroll_allowance_meal || 0) +
+        (payrollSettings.payroll_allowance_gasoline || 0);
+      return Math.round(totalAllowances / workingDays);
+    }
 
-    const checkInTotalMinutes = checkInHour * 60 + checkInMinute;
-    const workStartTotalMinutes = workHour * 60 + workMinute;
-    const lateThreshold = workStartTotalMinutes + LATE_TOLERANCE_MINUTES;
+    // --- Late Penalty ---
+    if (status === 'late' && record.check_in && penaltyRate > 0) {
+      const schedule = getWorkSchedule(record.date);
+      const [checkInHour, checkInMinute] = record.check_in.split(':').map(Number);
+      const [workHour, workMinute] = schedule.start.split(':').map(Number);
 
-    if (checkInTotalMinutes > lateThreshold) {
-      const minutesLate = checkInTotalMinutes - lateThreshold;
-      return minutesLate * penaltyRate;
+      const checkInTotalMinutes = checkInHour * 60 + checkInMinute;
+      const workStartTotalMinutes = workHour * 60 + workMinute;
+      const lateThreshold = workStartTotalMinutes + LATE_TOLERANCE_MINUTES;
+
+      if (checkInTotalMinutes > lateThreshold) {
+        const minutesLate = checkInTotalMinutes - lateThreshold;
+        return minutesLate * penaltyRate;
+      }
     }
 
     return 0;
@@ -1023,11 +1041,14 @@ export function AttendanceManagement() {
                             </Badge>
                           </TableCell>
                           <TableCell className="font-mono text-sm">
-                            {attendance.status === 'late' ? (
-                              <span className="text-red-600 font-bold">
-                                Rp {calculatePenalty(attendance.check_in, attendance.date).toLocaleString('id-ID')}
-                              </span>
-                            ) : '-'}
+                            {(() => {
+                              const penalty = calculatePenalty(attendance);
+                              return penalty > 0 ? (
+                                <span className="text-red-600 font-bold">
+                                  Rp {penalty.toLocaleString('id-ID')}
+                                </span>
+                              ) : '-';
+                            })()}
                           </TableCell>
                           {user?.role !== 'staff' && (
                             <TableCell className="text-right">
@@ -1161,7 +1182,7 @@ export function AttendanceManagement() {
                                 Terlambat
                               </Badge>
                               <p className="text-[10px] text-red-600 font-bold">
-                                - Rp {calculatePenalty(attendance.check_in, attendance.date).toLocaleString('id-ID')}
+                                - Rp {calculatePenalty(attendance).toLocaleString('id-ID')}
                               </p>
                             </div>
                           </div>
