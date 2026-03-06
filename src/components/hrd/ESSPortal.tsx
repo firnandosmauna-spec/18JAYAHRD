@@ -234,15 +234,17 @@ export function ESSPortal() {
             />
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList className="flex w-full overflow-x-auto lg:w-auto lg:inline-flex bg-gray-100/50 p-1 no-scrollbar">
-                    <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Overview</TabsTrigger>
-                    <TabsTrigger value="attendance" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Absensi</TabsTrigger>
-                    <TabsTrigger value="leave" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Cuti</TabsTrigger>
-                    <TabsTrigger value="payroll" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Gaji</TabsTrigger>
-                    <TabsTrigger value="pipeline" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Pipeline</TabsTrigger>
-                    <TabsTrigger value="loan" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Kasbon</TabsTrigger>
-                    <TabsTrigger value="reward" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Reward</TabsTrigger>
-                </TabsList>
+                <div className="relative">
+                    <TabsList className="flex w-full overflow-x-auto lg:w-auto justify-start bg-gray-100/50 p-1 no-scrollbar flex-nowrap min-w-full">
+                        <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Overview</TabsTrigger>
+                        <TabsTrigger value="attendance" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Absensi</TabsTrigger>
+                        <TabsTrigger value="leave" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Cuti</TabsTrigger>
+                        <TabsTrigger value="payroll" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Gaji</TabsTrigger>
+                        <TabsTrigger value="pipeline" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Pipeline</TabsTrigger>
+                        <TabsTrigger value="loan" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Kasbon</TabsTrigger>
+                        <TabsTrigger value="reward" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Reward</TabsTrigger>
+                    </TabsList>
+                </div>
 
                 <TabsContent value="overview">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
