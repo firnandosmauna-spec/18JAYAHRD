@@ -173,13 +173,6 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                                 )}
                             </div>
                             <div className="flex-1 space-y-2">
-                                <Input
-                                    id="avatar"
-                                    value={avatar}
-                                    onChange={(e) => setAvatar(e.target.value)}
-                                    placeholder="https://example.com/avatar.jpg"
-                                    className="text-xs"
-                                />
                                 <div className="flex gap-2">
                                     <Button
                                         type="button"

@@ -45,7 +45,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -911,6 +911,12 @@ function EmployeeListSupabase() {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Avatar className="w-9 h-9 border border-gray-100">
+                          {(() => {
+                            const avatarUrl = Array.isArray(employee.profiles)
+                              ? employee.profiles[0]?.avatar
+                              : employee.profiles?.avatar;
+                            return avatarUrl ? <AvatarImage src={avatarUrl} alt={employee.name} className="object-cover" /> : null;
+                          })()}
                           <AvatarFallback className="bg-hrd/10 text-hrd text-xs font-body font-bold">
                             {employee.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                           </AvatarFallback>
@@ -1579,6 +1585,12 @@ function EmployeeListSupabase() {
               <TabsContent value="general" className="space-y-4">
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                   <Avatar className="w-16 h-16">
+                    {(() => {
+                      const avatarUrl = Array.isArray(selectedEmployee.profiles)
+                        ? selectedEmployee.profiles[0]?.avatar
+                        : (selectedEmployee.profiles as any)?.avatar;
+                      return avatarUrl ? <AvatarImage src={avatarUrl} alt={selectedEmployee.name} className="object-cover" /> : null;
+                    })()}
                     <AvatarFallback className="bg-hrd/20 text-hrd font-body text-lg">
                       {selectedEmployee.name.split(' ').map(n => n[0]).join('')}
                     </AvatarFallback>
@@ -1746,6 +1758,12 @@ function EmployeeListSupabase() {
             <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-center gap-3">
                 <Avatar className="w-10 h-10">
+                  {(() => {
+                    const avatarUrl = Array.isArray(selectedEmployee.profiles)
+                      ? selectedEmployee.profiles[0]?.avatar
+                      : (selectedEmployee.profiles as any)?.avatar;
+                    return avatarUrl ? <AvatarImage src={avatarUrl} alt={selectedEmployee.name} className="object-cover" /> : null;
+                  })()}
                   <AvatarFallback className="bg-red-100 text-red-600 font-body">
                     {selectedEmployee.name.split(' ').map(n => n[0]).join('')}
                   </AvatarFallback>

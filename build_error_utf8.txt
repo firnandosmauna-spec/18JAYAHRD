@@ -1,0 +1,5 @@
+﻿
+> starter@0.0.0 build
+> tsc && vite build
+
+src/components/hrd/AttendanceManagement.tsx(1529,83): error TS2554: Expected 1 arguments, but got 2.

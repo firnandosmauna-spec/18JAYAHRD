@@ -235,6 +235,7 @@ export interface Employee {
   allowances?: { title: string; amount: number }[];
   deductions?: { title: string; amount: number }[];
   contract_file_url?: string | null;
+  profiles?: { avatar: string | null } | { avatar: string | null }[];
   created_at: string
   updated_at: string
 }

@@ -1,0 +1,86 @@
+﻿
+> starter@0.0.0 build
+> tsc && vite build
+
+[36mvite v7.2.2 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32mΓ£ô[39m 3228 modules transformed.
+rendering chunks...
+node.exe : 
+[33m[plugin 
+vite:reporter] 
+At line:1 char:1
++ & "C:\Program Files\
+nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo 
+...
++ ~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: ([33m[plug   
+ in vite:reporter]    
+ :String) [], Rem    
+oteException
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
+(!) C:/Users/USER/Down
+loads/kejaan ayah/HRD1
+8JAYATEMPO-main/src/pa
+ges/hrd/PositionsPage.
+tsx is dynamically 
+imported by C:/Users/U
+SER/Downloads/kejaan a
+yah/HRD18JAYATEMPO-mai
+n/src/App.tsx but 
+also statically 
+imported by C:/Users/U
+SER/Downloads/kejaan a
+yah/HRD18JAYATEMPO-mai
+n/src/pages/modules/HR
+DModuleSupabase.tsx, 
+dynamic import will 
+not move module into 
+another chunk.
+[39m
+computing gzip size...
+[2mdist/[22m[32mindex.html                           [39m[1m[2m    0.48 kB[22m[1m[22m[2m Γöé gzip:   0.32 kB[22m
+[2mdist/[22m[35massets/index-D41DZvna.css            [39m[1m[2m   94.95 kB[22m[1m[22m[2m Γöé gzip:  15.91 kB[22m
+[2mdist/[22m[36massets/useSales-CyivEOz6.js          [39m[1m[2m    7.87 kB[22m[1m[22m[2m Γöé gzip:   1.53 kB[22m
+[2mdist/[22m[36massets/SupabaseTestPage-BZrJdnm6.js  [39m[1m[2m    7.91 kB[22m[1m[22m[2m Γöé gzip:   2.78 kB[22m
+[2mdist/[22m[36massets/SalesModule-txCDG7S8.js       [39m[1m[2m   18.40 kB[22m[1m[22m[2m Γöé gzip:   3.79 kB[22m
+[2mdist/[22m[36massets/MCPSupabasePage-BxBD1N7S.js   [39m[1m[2m   21.19 kB[22m[1m[22m[2m Γöé gzip:   4.93 kB[22m
+[2mdist/[22m[36massets/purify.es-Bzr520pe.js         [39m[1m[2m   22.45 kB[22m[1m[22m[2m Γöé gzip:   8.63 kB[22m
+[2mdist/[22m[36massets/ProjectModule-DWKU8Dcn.js     [39m[1m[2m   23.13 kB[22m[1m[22m[2m Γöé gzip:   5.64 kB[22m
+[2mdist/[22m[36massets/PurchaseModule-CCFiAO7B.js    [39m[1m[2m   23.60 kB[22m[1m[22m[2m Γöé gzip:   4.93 kB[22m
+[2mdist/[22m[36massets/MarketingModule-Cvwk2oof.js   [39m[1m[2m   56.67 kB[22m[1m[22m[2m Γöé gzip:  13.38 kB[22m
+[2mdist/[22m[36massets/index.es-DuBYNDDx.js          [39m[1m[2m  158.50 kB[22m[1m[22m[2m Γöé gzip:  52.89 kB[22m
+[2mdist/[22m[36massets/html2canvas.esm-Qnh7jv0Z.js   [39m[1m[2m  201.32 kB[22m[1m[22m[2m Γöé gzip:  47.47 kB[22m
+[2mdist/[22m[36massets/index-jGUuM-SM.js             [39m[1m[33m2,003.73 kB[39m[22m[2m Γöé gzip: 577.21 kB[22m
+[33m
+(!) Some chunks are 
+larger than 500 kB 
+after minification. 
+Consider:
+- Using dynamic 
+import() to 
+code-split the 
+application
+- Use build.rollupOpti
+ons.output.manualChunk
+s to improve 
+chunking: https://roll
+upjs.org/configuration
+-options/#output-manua
+lchunks
+- Adjust chunk size 
+limit for this 
+warning via build.chun
+kSizeWarningLimit.[39
+m
+[32mΓ£ô built in 19.45s[39m

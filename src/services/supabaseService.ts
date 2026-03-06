@@ -27,6 +27,9 @@ export const employeeService = {
         departments!employees_department_id_fkey (
           id,
           name
+        ),
+        profiles!fk_profiles_employee (
+          avatar
         )
       `)
       .order('created_at', { ascending: false })
@@ -51,6 +54,9 @@ export const employeeService = {
         departments!employees_department_id_fkey (
           id,
           name
+        ),
+        profiles!fk_profiles_employee (
+          avatar
         )
       `)
       .eq('id', id)
@@ -104,6 +110,9 @@ export const employeeService = {
         departments!employees_department_id_fkey (
           id,
           name
+        ),
+        profiles!fk_profiles_employee (
+          avatar
         )
       `)
       .or(`name.ilike.%${query}%,position.ilike.%${query}%,email.ilike.%${query}%`)

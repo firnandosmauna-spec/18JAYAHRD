@@ -1,0 +1,7 @@
+﻿
+> starter@0.0.0 build
+> tsc && vite build
+
+src/pages/modules/HRDModuleSupabase.tsx(918,49): error TS2304: Cannot find name 'AvatarImage'.
+src/pages/modules/HRDModuleSupabase.tsx(1592,43): error TS2304: Cannot find name 'AvatarImage'.
+src/pages/modules/HRDModuleSupabase.tsx(1765,41): error TS2304: Cannot find name 'AvatarImage'.
