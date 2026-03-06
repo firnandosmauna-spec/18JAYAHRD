@@ -1526,7 +1526,7 @@ export function AttendanceManagement() {
                       <div className="space-y-2 col-span-2 p-3 bg-red-50 rounded-lg border border-red-100">
                         <Label className="font-body text-red-600 font-bold">Potongan Keterlambatan</Label>
                         <p className="font-mono text-lg font-bold text-red-600">
-                          Rp {calculatePenalty(selectedAttendance.check_in || '', selectedAttendance.date).toLocaleString('id-ID')}
+                          Rp {calculatePenalty(selectedAttendance).toLocaleString('id-ID')}
                         </p>
                       </div>
                     )}
