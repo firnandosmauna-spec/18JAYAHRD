@@ -192,10 +192,10 @@ export function ESSPortal() {
                 variants={itemVariants}
                 className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-hrd to-hrd-dark p-6 text-white shadow-lg"
             >
-                <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
-                    <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-white/20 shadow-xl">
+                <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
+                    <Avatar className="h-48 w-48 md:h-64 md:w-64 border-8 border-white/20 shadow-2xl">
                         {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} className="object-cover" />}
-                        <AvatarFallback className="bg-white/10 text-4xl font-bold">
+                        <AvatarFallback className="bg-white/10 text-6xl font-bold">
                             {user?.name?.split(' ').map(n => n[0]).join('')}
                         </AvatarFallback>
                     </Avatar>
