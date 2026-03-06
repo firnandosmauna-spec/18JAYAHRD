@@ -192,21 +192,21 @@ export function ESSPortal() {
                 variants={itemVariants}
                 className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-hrd to-hrd-dark p-6 text-white shadow-lg"
             >
-                <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
-                    <Avatar className="h-24 w-24 border-4 border-white/20">
+                <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+                    <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-white/20 shadow-xl">
                         {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} className="object-cover" />}
-                        <AvatarFallback className="bg-white/10 text-2xl font-bold">
+                        <AvatarFallback className="bg-white/10 text-4xl font-bold">
                             {user?.name?.split(' ').map(n => n[0]).join('')}
                         </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 text-center md:text-left">
-                        <h1 className="text-3xl font-bold font-display">{user?.name}</h1>
-                        <p className="text-white/80 font-body text-lg">{employee?.position || 'Karyawan'}</p>
-                        <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-3">
-                            <Badge variant="secondary" className="bg-white/20 text-white border-none hover:bg-white/30">
+                        <h1 className="text-2xl font-bold font-display">{user?.name}</h1>
+                        <p className="text-white/80 font-body text-sm md:text-base">{employee?.position || 'Karyawan'}</p>
+                        <div className="mt-3 flex flex-wrap justify-center md:justify-start gap-2">
+                            <Badge variant="secondary" className="bg-white/10 text-white/90 border-none hover:bg-white/20 text-[10px] py-0 h-5">
                                 NIK: {employee?.nik || user?.id.slice(0, 8).toUpperCase()}
                             </Badge>
-                            <Badge variant="secondary" className="bg-white/20 text-white border-none hover:bg-white/30">
+                            <Badge variant="secondary" className="bg-white/10 text-white/90 border-none hover:bg-white/20 text-[10px] py-0 h-5">
                                 {employee?.status === 'active' ? 'Aktif' : 'On Leave'}
                             </Badge>
                         </div>
