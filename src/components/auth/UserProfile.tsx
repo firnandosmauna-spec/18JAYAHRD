@@ -180,18 +180,6 @@ export function UserProfile() {
                   className="col-span-3"
                 />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="avatar" className="text-right">
-                  Avatar URL
-                </Label>
-                <Input
-                  id="avatar"
-                  value={editForm.avatar}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, avatar: e.target.value }))}
-                  className="col-span-3"
-                  placeholder="https://example.com/avatar.jpg"
-                />
-              </div>
 
               <div className="border-t pt-4 mt-2">
                 <Button
