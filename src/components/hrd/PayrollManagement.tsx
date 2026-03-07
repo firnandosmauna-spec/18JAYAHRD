@@ -98,28 +98,32 @@ interface PayrollFormData {
 
   bpjs_deduction: string;
   absent_deduction: string;
+  late_deduction: string;
   manual_allowance_details: { title: string, amount: number }[];
   manual_deduction_details: { title: string, amount: number }[];
   bank_account_details: string;
   is_perfect_attendance: boolean;
 }
 
-const statusLabels: Record<PayrollStatus, string> = {
+const statusLabels: Record<PayrollStatus | 'unprocessed', string> = {
   pending: 'Menunggu',
   paid: 'Dibayar',
-  cancelled: 'Dibatalkan'
+  cancelled: 'Dibatalkan',
+  unprocessed: 'Belum Diproses'
 };
 
 const statusColors = {
   pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   paid: 'bg-green-100 text-green-800 border-green-200',
-  cancelled: 'bg-red-100 text-red-800 border-red-200'
+  cancelled: 'bg-red-100 text-red-800 border-red-200',
+  unprocessed: 'bg-gray-100 text-gray-800 border-gray-200'
 };
 
 const statusIcons = {
   pending: AlertCircle,
   paid: CheckCircle,
-  cancelled: XCircle
+  cancelled: XCircle,
+  unprocessed: Loader2
 };
 
 const months = [
@@ -163,6 +167,8 @@ export function PayrollManagement() {
   const [deductionDetails, setDeductionDetails] = useState<string[]>([]);
   const [allowanceDetails, setAllowanceDetails] = useState<string[]>([]);
   const [linkedEmployeeIds, setLinkedEmployeeIds] = useState<string[]>([]);
+  const [allAttendance, setAllAttendance] = useState<any[]>([]);
+  const [allLeaves, setAllLeaves] = useState<any[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<{
@@ -250,6 +256,116 @@ export function PayrollManagement() {
     };
     fetchLinkedUsers();
   }, []);
+
+  // Fetch bulk data for the period to support real-time preview
+  const fetchAllPeriodData = async () => {
+    try {
+      const startDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
+      const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+      const endDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
+
+      const [attendance, leaves] = await Promise.all([
+        attendanceService.getByDateRange(startDate, endDate),
+        leaveService.getAll() // Unfortunately no getByDateRange for leaves in service, so we get all
+      ]);
+
+      setAllAttendance(attendance);
+      setAllLeaves(leaves);
+    } catch (err) {
+      console.error("Failed to fetch bulk period data", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllPeriodData();
+  }, [selectedMonth, selectedYear]);
+
+  // Unified calculation logic for preview
+  const calculateDraftValues = (employee: any) => {
+    const empAttendance = allAttendance.filter(a => a.employee_id === employee.id);
+    const empLeaves = allLeaves.filter(l => l.employee_id === employee.id && l.status === 'approved');
+
+    let baseSalary = employee.salary;
+    let totalAllowances = 0;
+    let totalDeductions = 0;
+
+    // Attendance count
+    const absentCount = empAttendance.filter((a: any) => {
+      const status = (a.status || '').toLowerCase().trim();
+      return status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa';
+    }).length || 0;
+
+    const presentCount = empAttendance.filter((a: any) => ['present', 'late', 'business_trip', 'wfh'].includes(a.status)).length || 0;
+
+    let totalLateMinutes = 0;
+    empAttendance.forEach((record: any) => {
+      if (record.status === 'late' && record.check_in) {
+        const [h, m] = record.check_in.split(':').map(Number);
+        const checkInMinutes = h * 60 + m;
+        const workStartMinutes = 8 * 60;
+        if (checkInMinutes > workStartMinutes) {
+          totalLateMinutes += (checkInMinutes - workStartMinutes);
+        }
+      }
+    });
+
+    const workingDays = 26;
+    const dailyAbsentPenalty = Math.round((
+      (payrollSettings?.payroll_allowance_position || 0) +
+      (payrollSettings?.payroll_allowance_meal || 0) +
+      (payrollSettings?.payroll_allowance_gasoline || 0)
+    ) / workingDays);
+
+    // Draft Calculations
+    const proratedBase = Math.round((baseSalary / workingDays) * presentCount);
+    const mealAllowance = payrollSettings?.payroll_allowance_meal || 0;
+    const gasolineAllowance = payrollSettings?.payroll_allowance_gasoline || 0;
+    const positionAllowance = payrollSettings?.payroll_allowance_position || 0;
+    const thrAllowance = payrollSettings?.payroll_allowance_thr || 0;
+    const bpjsDeduction = payrollSettings?.payroll_bpjs_rate || 0;
+
+    // Perfect Attendance Reward
+    const isPerfect = absentCount === 0 && totalLateMinutes === 0 && empAttendance.length > 0;
+    const rewardAllowance = isPerfect ? (payrollSettings?.payroll_reward_perfect_attendance || 0) : 0;
+
+    let absentDeduction = 0;
+    if (absentCount > 0) {
+      absentDeduction = absentCount * (payrollSettings?.payroll_deduction_absent || 0);
+      absentDeduction += absentCount * dailyAbsentPenalty;
+    }
+
+    const lateDeduction = totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
+
+    const manualAllowancesTotal = employee.allowances?.reduce((sum: number, i: any) => sum + (i.amount || 0), 0) || 0;
+    const manualDeductionsTotal = employee.deductions?.reduce((sum: number, i: any) => sum + (i.amount || 0), 0) || 0;
+
+    // Loan Deductions
+    const activeLoans = loans.filter(l =>
+      l.employee_id === employee.id &&
+      l.status === 'approved' &&
+      l.remaining_amount > 0 &&
+      new Date(l.start_date) <= new Date(`${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`)
+    );
+    const totalLoanDeduction = activeLoans.reduce((sum, loan) => sum + loan.installment_amount, 0);
+
+    const draftAllowances = mealAllowance + gasolineAllowance + positionAllowance + thrAllowance + manualAllowancesTotal;
+    const draftDeductions = bpjsDeduction + absentDeduction + lateDeduction + manualDeductionsTotal + totalLoanDeduction;
+    const draftNet = proratedBase + draftAllowances + rewardAllowance - draftDeductions;
+
+    return {
+      base_salary: proratedBase,
+      allowances: draftAllowances,
+      deductions: draftDeductions,
+      net_salary: draftNet,
+      absent_deduction: absentDeduction,
+      late_deduction: lateDeduction,
+      meal_allowance: mealAllowance,
+      gasoline_allowance: gasolineAllowance,
+      position_allowance: positionAllowance,
+      bpjs_deduction: bpjsDeduction,
+      reward_allowance: rewardAllowance
+    };
+  };
 
   // Automatic payroll suggestion
   useEffect(() => {
@@ -500,27 +616,55 @@ export function PayrollManagement() {
     }
   }, [formData.employee_id, employees, loans, formData.period_month, formData.period_year, payrollSettings]);
 
-  // Filter payroll based on search and role
-  const filteredPayroll = payroll.filter(pay => {
+  // Create a unified list of employees and their payroll status
+  const unifiedPayroll = employees
+    .filter(emp => emp.status === 'active') // Only active employees
+    .map(emp => {
+      const existingPay = payroll.find(p => p.employee_id === emp.id);
+      const draft = !existingPay ? calculateDraftValues(emp) : null;
+
+      return {
+        id: existingPay?.id || `draft-${emp.id}`,
+        employee_id: emp.id,
+        employee_name: emp.name,
+        employee_position: emp.position,
+        period_month: selectedMonth,
+        period_year: selectedYear,
+        base_salary: existingPay?.base_salary || draft?.base_salary || 0,
+        allowances: existingPay?.allowances || draft?.allowances || 0,
+        deductions: existingPay?.deductions || draft?.deductions || 0,
+        net_salary: existingPay?.net_salary || draft?.net_salary || 0,
+        status: existingPay?.status || 'unprocessed',
+        pay_date: existingPay?.pay_date,
+        gasoline_allowance: existingPay?.gasoline_allowance || draft?.gasoline_allowance || 0,
+        meal_allowance: existingPay?.meal_allowance || draft?.meal_allowance || 0,
+        position_allowance: existingPay?.position_allowance || draft?.position_allowance || 0,
+        late_deduction: existingPay?.late_deduction || draft?.late_deduction || 0,
+        absent_deduction: existingPay?.absent_deduction || draft?.absent_deduction || 0,
+        reward_allowance: existingPay?.reward_allowance || 0,
+        is_payroll_exists: !!existingPay,
+        raw_pay: existingPay // Keep reference for details
+      };
+    });
+
+  // Filter based on search and role
+  const filteredPayroll = unifiedPayroll.filter(item => {
     // If staff, only show their own
     if (user?.role === 'staff') {
-      if (user.employee_id) {
-        return pay.employee_id === user.employee_id;
-      }
-      return false;
+      return item.employee_id === user.employee_id;
     }
 
-    const employee = employees.find(emp => emp.id === pay.employee_id);
-    const employeeName = employee?.name || '';
-    return employeeName.toLowerCase().includes(searchQuery.toLowerCase());
+    return item.employee_name.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
   // Calculate statistics
   const stats = {
     totalPayroll: payroll.reduce((sum, pay) => sum + pay.net_salary, 0),
+    potentialTotalPayroll: unifiedPayroll.reduce((sum, item) => sum + item.net_salary, 0),
     pendingPayroll: payroll.filter(pay => pay.status === 'pending').length,
     paidPayroll: payroll.filter(pay => pay.status === 'paid').length,
-    totalEmployees: payroll.length,
+    unprocessedEmployees: unifiedPayroll.filter(p => !p.is_payroll_exists).length,
+    totalEmployees: unifiedPayroll.length,
     averageSalary: payroll.length > 0 ? payroll.reduce((sum, pay) => sum + pay.net_salary, 0) / payroll.length : 0
   };
 
@@ -542,6 +686,7 @@ export function PayrollManagement() {
       thr_allowance: '0',
       bpjs_deduction: '0',
       absent_deduction: '0',
+      late_deduction: '0',
       manual_allowance_details: [],
       manual_deduction_details: [],
       bank_account_details: '',
@@ -568,12 +713,13 @@ export function PayrollManagement() {
     const thr = parseFloat(formData.thr_allowance) || 0;
     const bpjs = parseFloat(formData.bpjs_deduction) || 0;
     const absent = parseFloat(formData.absent_deduction) || 0;
+    const late = parseFloat(formData.late_deduction) || 0;
 
     const manualAllowancesTotal = formData.manual_allowance_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
     const manualDeductionsTotal = formData.manual_deduction_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
 
     const totalAllowances = allowances + gasoline + meal + position + discretionary + thr + manualAllowancesTotal;
-    const totalDeductions = deductions + bpjs + absent; // 'deductions' already includes loans + manual deductions now
+    const totalDeductions = deductions + bpjs + absent + late + manualDeductionsTotal;
     const overtimePay = overtimeHours * overtimeRate;
 
     return baseSalary + totalAllowances + overtimePay - totalDeductions;
@@ -589,7 +735,7 @@ export function PayrollManagement() {
       period_year: p.period_year,
       base_salary: p.base_salary.toString(),
       allowances: (p.allowances - (p.gasoline_allowance || 0) - (p.meal_allowance || 0) - (p.position_allowance || 0) - (p.discretionary_allowance || 0) - (p.thr_allowance || 0)).toString(),
-      deductions: (p.deductions - (p.bpjs_deduction || 0) - (p.absent_deduction || 0)).toString(),
+      deductions: (p.deductions - (p.bpjs_deduction || 0) - (p.absent_deduction || 0) - (p.late_deduction || 0)).toString(),
       overtime_hours: '0',
       overtime_rate: '0',
       gasoline_allowance: (p.gasoline_allowance || 0).toString(),
@@ -599,10 +745,11 @@ export function PayrollManagement() {
       thr_allowance: (p.thr_allowance || 0).toString(),
       bpjs_deduction: (p.bpjs_deduction || 0).toString(),
       absent_deduction: (p.absent_deduction || 0).toString(),
-      manual_allowance_details: [],
-      manual_deduction_details: [],
+      late_deduction: (p.late_deduction || 0).toString(),
+      manual_allowance_details: p.manual_allowance_details || [],
+      manual_deduction_details: p.manual_deduction_details || [],
       bank_account_details: p.bank_account_details || '',
-      is_perfect_attendance: false,
+      is_perfect_attendance: p.is_perfect_attendance || false,
     });
     setShowAddDialog(true);
   };
@@ -638,10 +785,11 @@ export function PayrollManagement() {
       const thr = parseFloat(formData.thr_allowance) || 0;
       const bpjs = parseFloat(formData.bpjs_deduction) || 0;
       const absent = parseFloat(formData.absent_deduction) || 0;
+      const late = parseFloat(formData.late_deduction) || 0;
       const manualAllowancesTotal = formData.manual_allowance_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
 
       const totalAllowances = allowances + gasoline + meal + position + discretionary + thr + manualAllowancesTotal;
-      const totalDeductions = deductions + bpjs + absent;
+      const totalDeductions = deductions + bpjs + absent + late;
       const netSalary = calculateNetSalary();
 
       const payrollPayload: any = {
@@ -659,6 +807,7 @@ export function PayrollManagement() {
         thr_allowance: thr,
         bpjs_deduction: bpjs,
         absent_deduction: absent,
+        late_deduction: late,
         reward_allowance: 0,
         reward_details: [],
         bank_account_details: formData.bank_account_details,
@@ -733,6 +882,7 @@ export function PayrollManagement() {
         let gasolineAllowance = 0;
         let totalRewardAllowance = 0;
         let absentDeductionAmount = 0;
+        let lateDeductionAmount = 0;
         let newAllowanceDetails: string[] = [];
 
         // --- Special Case: Maternity Leave ---
@@ -814,7 +964,7 @@ export function PayrollManagement() {
         });
 
         if (totalLateMinutes > 0) {
-          absentDeductionAmount += totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
+          lateDeductionAmount = totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
         }
 
         const presentCount = attendance?.filter((a: any) => ['present', 'late', 'business_trip', 'wfh'].includes(a.status)).length || 0;
@@ -854,7 +1004,7 @@ export function PayrollManagement() {
         const thr = payrollSettings?.payroll_allowance_thr || 0;
 
         const totalOtherAllowances = mealAllowance + gasolineAllowance + position + discretionary + thr + totalManualAllowances;
-        const combinedDeductions = totalDeductions + bpjs + absentDeductionAmount + totalManualDeductions;
+        const combinedDeductions = totalDeductions + bpjs + absentDeductionAmount + lateDeductionAmount + totalManualDeductions;
         const netSalary = baseSalary + totalOtherAllowances + totalRewardAllowance - combinedDeductions;
 
         await addPayroll({
@@ -873,6 +1023,7 @@ export function PayrollManagement() {
           thr_allowance: thr,
           bpjs_deduction: bpjs,
           absent_deduction: absentDeductionAmount,
+          late_deduction: lateDeductionAmount,
           reward_allowance: totalRewardAllowance,
           reward_details: rewardDetailsItems,
           manual_allowance_details: manualAllowanceItems,
@@ -984,6 +1135,9 @@ export function PayrollManagement() {
               <div>
                 <p className="text-sm font-body text-blue-600">Total Pengeluaran</p>
                 <p className="text-xl font-mono font-bold text-blue-900">{formatCurrency(stats.totalPayroll)}</p>
+                {stats.potentialTotalPayroll > stats.totalPayroll && (
+                  <p className="text-[10px] font-body text-blue-400 mt-1">Potensi: {formatCurrency(stats.potentialTotalPayroll)}</p>
+                )}
               </div>
               <div className="p-2 bg-blue-100 rounded-lg">
                 <DollarSign className="w-5 h-5 text-blue-600" />
@@ -1087,75 +1241,112 @@ export function PayrollManagement() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="font-body">Karyawan</TableHead>
-                    <TableHead className="font-body">Status</TableHead>
-                    <TableHead className="font-body">Total Gaji</TableHead>
+                    <TableHead className="font-body text-center">Status</TableHead>
+                    <TableHead className="font-body text-right">Penerimaan</TableHead>
+                    <TableHead className="font-body text-right">Tunjangan</TableHead>
+                    <TableHead className="font-body text-right">Pot. Absen</TableHead>
+                    <TableHead className="font-body text-right">Pot. Telat</TableHead>
+                    <TableHead className="font-body text-right">Total Gaji</TableHead>
                     <TableHead className="font-body text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPayroll.map((pay) => {
-                    const employee = employees.find(e => e.id === pay.employee_id);
-                    const StatusIcon = statusIcons[pay.status as PayrollStatus];
+                  {filteredPayroll.map((item) => {
+                    const StatusIcon = statusIcons[item.status as keyof typeof statusIcons];
                     return (
-                      <TableRow key={pay.id}>
+                      <TableRow key={item.id} className={!item.is_payroll_exists ? 'bg-gray-50/50' : ''}>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Avatar>
                               <AvatarFallback className="bg-hrd/10 text-hrd">
-                                {employee?.name.substring(0, 2).toUpperCase()}
+                                {item.employee_name.substring(0, 2).toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <p className="font-body font-medium">{employee?.name}</p>
-                              <p className="text-xs text-gray-500 font-body">{employee?.position}</p>
+                              <p className="font-body font-medium">{item.employee_name}</p>
+                              <p className="text-xs text-gray-500 font-body">{item.employee_position}</p>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge className={`${statusColors[pay.status as PayrollStatus]} font-body flex items-center w-fit gap-1`}>
-                            <StatusIcon className="w-3 h-3" />
-                            {statusLabels[pay.status as PayrollStatus]}
+                          <Badge className={`${statusColors[item.status as keyof typeof statusColors]} font-body flex items-center w-fit gap-1 mx-auto`}>
+                            {item.status === 'unprocessed' && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {item.status !== 'unprocessed' && <StatusIcon className="w-3 h-3" />}
+                            {statusLabels[item.status as keyof typeof statusLabels]}
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-mono font-semibold">
-                          {formatCurrency(pay.net_salary)}
+                        <TableCell className={`font-mono text-right ${item.is_payroll_exists ? 'text-blue-600' : 'text-blue-400 italic'}`}>
+                          {formatCurrency(item.base_salary + item.allowances + (item.reward_allowance || 0))}
+                        </TableCell>
+                        <TableCell className={`font-mono text-right ${item.is_payroll_exists ? 'text-green-600' : 'text-green-400 italic'}`}>
+                          {formatCurrency(item.allowances + (item.reward_allowance || 0))}
+                        </TableCell>
+                        <TableCell className={`font-mono text-right ${item.is_payroll_exists ? 'text-red-500' : 'text-red-300 italic'}`}>
+                          {formatCurrency(item.absent_deduction || 0)}
+                        </TableCell>
+                        <TableCell className={`font-mono text-right ${item.is_payroll_exists ? 'text-red-500' : 'text-red-300 italic'}`}>
+                          {formatCurrency(item.late_deduction || 0)}
+                        </TableCell>
+                        <TableCell className={`font-mono font-bold text-right ${item.is_payroll_exists ? 'text-gray-900' : 'text-gray-400 italic'}`}>
+                          {formatCurrency(item.net_salary)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => { setSelectedPayroll(pay); setShowViewDialog(true); }}>
-                              <Eye className="w-4 h-4 text-gray-500" />
-                            </Button>
-                            {user?.role !== 'staff' && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon">
-                                    <MoreVertical className="w-4 h-4 text-gray-500" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {pay.status === 'pending' && (
-                                    <>
-                                      <DropdownMenuItem onClick={() => handleMarkAsPaid(pay.id)} className="text-green-600 font-body">
-                                        <CheckCircle className="w-4 h-4 mr-2" />
-                                        Tandai Dibayar
+                            {item.is_payroll_exists ? (
+                              <>
+                                <Button variant="ghost" size="icon" onClick={() => { setSelectedPayroll(item.raw_pay); setShowViewDialog(true); }}>
+                                  <Eye className="w-4 h-4 text-gray-500" />
+                                </Button>
+                                {user?.role !== 'staff' && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon">
+                                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      {item.status === 'pending' && (
+                                        <>
+                                          <DropdownMenuItem onClick={() => handleMarkAsPaid(item.id)} className="text-green-600 font-body">
+                                            <CheckCircle className="w-4 h-4 mr-2" />
+                                            Tandai Dibayar
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => handleEditPayroll(item.raw_pay)} className="font-body">
+                                            <Edit className="w-4 h-4 mr-2" />
+                                            Edit
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
+                                      <DropdownMenuItem onClick={() => handlePrintSlip(item.raw_pay)} className="font-body">
+                                        <Printer className="w-4 h-4 mr-2" />
+                                        Cetak Slip
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => handleEditPayroll(pay)} className="font-body">
-                                        <Edit className="w-4 h-4 mr-2" />
-                                        Edit
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => handleDeletePayroll(item.id)} className="text-red-600 font-body">
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Hapus
                                       </DropdownMenuItem>
-                                    </>
-                                  )}
-                                  <DropdownMenuItem onClick={() => handlePrintSlip(pay)} className="font-body">
-                                    <Printer className="w-4 h-4 mr-2" />
-                                    Cetak Slip
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => handleDeletePayroll(pay.id)} className="text-red-600 font-body">
-                                    <Trash2 className="w-4 h-4 mr-2" />
-                                    Hapus
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                              </>
+                            ) : (
+                              user?.role !== 'staff' && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-hrd hover:bg-hrd/5 font-body flex items-center gap-1"
+                                  onClick={() => {
+                                    setIsEditing(false);
+                                    resetForm();
+                                    setFormData(prev => ({ ...prev, employee_id: item.employee_id }));
+                                    setShowAddDialog(true);
+                                  }}
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  Proses
+                                </Button>
+                              )
                             )}
                           </div>
                         </TableCell>
@@ -1332,6 +1523,16 @@ export function PayrollManagement() {
                     onChange={(e) => setFormData({ ...formData, absent_deduction: e.target.value })}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label className="font-body text-xs">Potongan Telat</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    className="font-mono text-sm"
+                    value={formData.late_deduction}
+                    onChange={(e) => setFormData({ ...formData, late_deduction: e.target.value })}
+                  />
+                </div>
                 {formData.manual_deduction_details?.length > 0 && (
                   <div className="mt-1 space-y-0.5">
                     <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Potongan Manual:</p>
@@ -1368,6 +1569,7 @@ export function PayrollManagement() {
                   {formatCurrency(
                     Number(formData.bpjs_deduction || 0) +
                     Number(formData.absent_deduction || 0) +
+                    Number(formData.late_deduction || 0) +
                     Number(formData.deductions || 0)
                   )}
                 </p>
@@ -1415,14 +1617,101 @@ export function PayrollManagement() {
           </DialogHeader>
           <div className="space-y-4">
             {selectedPayroll && (
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="space-y-1">
-                  <span className="text-gray-500">Bulan</span>
-                  <p className="font-body font-medium">{months[selectedPayroll.period_month - 1]}</p>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm bg-gray-50 p-3 rounded-lg border">
+                  <div className="space-y-1">
+                    <span className="text-gray-500 font-body">Bulan</span>
+                    <p className="font-body font-medium">{months[selectedPayroll.period_month - 1]}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-gray-500 font-body">Tahun</span>
+                    <p className="font-mono font-medium">{selectedPayroll.period_year}</p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <span className="text-gray-500">Tahun</span>
-                  <p className="font-mono font-medium">{selectedPayroll.period_year}</p>
+
+                <div className="space-y-2">
+                  <h4 className="font-body font-bold text-blue-700 text-xs uppercase tracking-wider">Penerimaan</h4>
+                  <div className="space-y-1 border rounded-lg p-3 bg-blue-50/30">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600 font-body">Gaji Pokok</span>
+                      <span className="font-mono">{formatCurrency(selectedPayroll.base_salary)}</span>
+                    </div>
+                    {selectedPayroll.position_allowance ? (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 font-body">Tunjangan Jabatan</span>
+                        <span className="font-mono">{formatCurrency(selectedPayroll.position_allowance)}</span>
+                      </div>
+                    ) : null}
+                    {selectedPayroll.meal_allowance ? (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 font-body">Uang Makan</span>
+                        <span className="font-mono">{formatCurrency(selectedPayroll.meal_allowance)}</span>
+                      </div>
+                    ) : null}
+                    {selectedPayroll.gasoline_allowance ? (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 font-body">Uang Bensin</span>
+                        <span className="font-mono">{formatCurrency(selectedPayroll.gasoline_allowance)}</span>
+                      </div>
+                    ) : null}
+                    {selectedPayroll.reward_allowance ? (
+                      <div className="flex justify-between text-sm text-green-600 font-medium">
+                        <span className="font-body">Bonus/Reward</span>
+                        <span className="font-mono">{formatCurrency(selectedPayroll.reward_allowance)}</span>
+                      </div>
+                    ) : null}
+                    {selectedPayroll.thr_allowance ? (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 font-body">THR</span>
+                        <span className="font-mono">{formatCurrency(selectedPayroll.thr_allowance)}</span>
+                      </div>
+                    ) : null}
+                    {selectedPayroll.manual_allowance_details?.map((ma, i) => (
+                      <div key={i} className="flex justify-between text-sm">
+                        <span className="text-gray-600 font-body">{ma.title}</span>
+                        <span className="font-mono">{formatCurrency(ma.amount)}</span>
+                      </div>
+                    ))}
+                    <div className="pt-2 mt-1 border-t flex justify-between text-sm font-bold text-blue-800">
+                      <span className="font-body">Total Penerimaan</span>
+                      <span className="font-mono">{formatCurrency(selectedPayroll.base_salary + selectedPayroll.allowances + (selectedPayroll.reward_allowance || 0))}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-body font-bold text-red-700 text-xs uppercase tracking-wider">Potongan</h4>
+                  <div className="space-y-1 border rounded-lg p-3 bg-red-50/30">
+                    <div className="flex justify-between text-sm text-red-600">
+                      <span className="font-body">Potongan Absen</span>
+                      <span className="font-mono">({formatCurrency(selectedPayroll.absent_deduction || 0)})</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-red-600">
+                      <span className="font-body">Potongan Telat</span>
+                      <span className="font-mono">({formatCurrency(selectedPayroll.late_deduction || 0)})</span>
+                    </div>
+                    {selectedPayroll.bpjs_deduction ? (
+                      <div className="flex justify-between text-sm text-red-600">
+                        <span className="font-body">BPJS</span>
+                        <span className="font-mono">({formatCurrency(selectedPayroll.bpjs_deduction)})</span>
+                      </div>
+                    ) : null}
+                    {selectedPayroll.manual_deduction_details?.map((md, i) => (
+                      <div key={i} className="flex justify-between text-sm text-red-600">
+                        <span className="font-body">{md.title}</span>
+                        <span className="font-mono">({formatCurrency(md.amount)})</span>
+                      </div>
+                    ))}
+                    <div className="pt-2 mt-1 border-t flex justify-between text-sm font-bold text-red-800">
+                      <span className="font-body">Total Potongan</span>
+                      <span className="font-mono">{formatCurrency(selectedPayroll.deductions)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t flex justify-between items-center">
+                  <span className="text-base font-body font-bold text-gray-900">Total Gaji Bersih</span>
+                  <span className="text-xl font-mono font-bold text-hrd">{formatCurrency(selectedPayroll.net_salary)}</span>
                 </div>
               </div>
             )}

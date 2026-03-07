@@ -32,7 +32,31 @@ export interface AttendanceRecord {
     created_at?: string;
     updated_at?: string;
 }
-export interface PayrollRecord { }
+export interface PayrollRecord {
+    id: string;
+    employee_id: string;
+    period_month: number;
+    period_year: number;
+    base_salary: number;
+    allowances: number;
+    deductions: number;
+    net_salary: number;
+    status: 'pending' | 'paid';
+    pay_date?: string;
+    late_deduction?: number;
+    absent_deduction?: number;
+    bpjs_deduction?: number;
+    gasoline_allowance?: number;
+    meal_allowance?: number;
+    position_allowance?: number;
+    discretionary_allowance?: number;
+    thr_allowance?: number;
+    reward_allowance?: number;
+    reward_details?: any;
+    manual_allowance_details?: any[];
+    manual_deduction_details?: any[];
+    bank_account_details?: string;
+}
 export interface RewardRecord { }
 export interface Pipeline {
     id: string;

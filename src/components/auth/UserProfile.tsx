@@ -31,10 +31,21 @@ export function UserProfile() {
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [editForm, setEditForm] = useState({
     name: user?.name || '',
-    avatar: user?.avatar || '',
     newPassword: '',
     confirmPassword: '',
   });
+
+  // Sync state when dialog opens to prevent stale data
+  React.useEffect(() => {
+    if (isEditDialogOpen && user) {
+      setEditForm({
+        name: user.name || '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setShowPasswordSection(false);
+    }
+  }, [isEditDialogOpen, user]);
 
   if (!user) return null;
 
@@ -53,10 +64,9 @@ export function UserProfile() {
   const handleUpdateProfile = async () => {
     try {
       // 1. Update basic info if changed
-      if (editForm.name !== user?.name || editForm.avatar !== user?.avatar) {
+      if (editForm.name !== user?.name) {
         const success = await updateProfile({
           name: editForm.name,
-          avatar: editForm.avatar,
         });
         if (!success) {
           console.error('Failed to update basic profile');

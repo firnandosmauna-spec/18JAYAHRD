@@ -302,6 +302,7 @@ export interface PayrollRecord {
   reward_details?: { title: string, amount: number }[]
   bpjs_deduction?: number
   absent_deduction?: number
+  late_deduction?: number
   manual_allowance_details?: { title: string, amount: number }[]
   manual_deduction_details?: { title: string, amount: number }[]
   bank_account_details?: string
