@@ -698,6 +698,7 @@ export function PayrollManagement() {
       absent_deduction: '0',
       late_deduction: '0',
       manual_allowance_details: [],
+      reward_allowance: '0',
       manual_deduction_details: [],
       bank_account_details: '',
       is_perfect_attendance: false,
@@ -1071,7 +1072,7 @@ export function PayrollManagement() {
   };
 
   const handleExportExcel = () => {
-    exportPayrollToExcel(filteredPayroll, employees, { month: selectedMonth, year: selectedYear });
+    exportPayrollToExcel(filteredPayroll as any, employees, { month: selectedMonth, year: selectedYear });
   };
 
   return (
@@ -1084,7 +1085,7 @@ export function PayrollManagement() {
         <div className="flex items-center gap-2">
           <PayrollPrintSettingsDialog
             onSettingsChange={setPrintSettings}
-            payroll={filteredPayroll[0]}
+            payroll={filteredPayroll[0] as any}
             employee={employees.find(e => e.id === filteredPayroll[0]?.employee_id)}
           />
           {user?.role !== 'staff' && (
