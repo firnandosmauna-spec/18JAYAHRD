@@ -41,6 +41,7 @@ const attendanceSchema = z.object({
     office_radius: z.coerce.number().min(1, "Radius minimal 1 meter"),
     office_wifi_ssid: z.string().optional(),
     is_auto_nik: z.boolean(),
+    restrict_off_hours_access: z.boolean(),
 });
 
 const leaveSchema = z.object({
@@ -167,7 +168,8 @@ export default function SettingsPage() {
                 { key: 'office_longitude', value: data.office_longitude, description: 'Longitude lokasi kantor' },
                 { key: 'office_radius', value: data.office_radius, description: 'Radius batas absensi (meter)' },
                 { key: 'office_wifi_ssid', value: data.office_wifi_ssid || '', description: 'SSID WiFi Kantor' },
-                { key: 'is_auto_nik', value: data.is_auto_nik, description: 'Gunakan NIK Otomatis untuk Karyawan Baru' }
+                { key: 'is_auto_nik', value: data.is_auto_nik, description: 'Gunakan NIK Otomatis untuk Karyawan Baru' },
+                { key: 'restrict_off_hours_access', value: data.restrict_off_hours_access, description: 'Batasi akses aplikasi di luar jam kerja (Non-Admin)' }
             ];
 
             await settingsService.updateSettings(updates);
@@ -438,6 +440,16 @@ export default function SettingsPage() {
                                                 <Switch
                                                     checked={attendanceForm.watch("admin_attendance_required")}
                                                     onCheckedChange={(val) => attendanceForm.setValue("admin_attendance_required", val)}
+                                                />
+                                            </div>
+                                            <div className="p-4 rounded-2xl bg-red-50/50 border border-red-100 flex items-center justify-between">
+                                                <div className="space-y-0.5">
+                                                    <Label className="font-body text-red-900 text-sm">Batasi Akses Jam Kantor</Label>
+                                                    <p className="text-[10px] text-red-700">Non-Admin tidak bisa akses di luar jam kerja.</p>
+                                                </div>
+                                                <Switch
+                                                    checked={attendanceForm.watch("restrict_off_hours_access")}
+                                                    onCheckedChange={(val) => attendanceForm.setValue("restrict_off_hours_access", val)}
                                                 />
                                             </div>
                                         </div>
