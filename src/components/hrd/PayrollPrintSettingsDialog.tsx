@@ -39,7 +39,7 @@ const STORAGE_KEY = 'hris_payroll_print_settings';
 
 const defaultSettings: PrintSettings = {
     showLogo: true,
-    companyName: 'PT. HRD 18 JAYA',
+    companyName: 'PT. DELAPAN BELAS JAYA',
     companyAddress: 'Jl. Contoh Alamat No. 123, Jakarta Selatan',
     companyContact: 'Telp: (021) 12345678 | Email: hrd@jayatempo.com',
     showSignature: true,

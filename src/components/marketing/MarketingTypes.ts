@@ -115,16 +115,27 @@ export interface ConsumerPemberkasan {
     id: string;
     consumer_id: string;
     booking: boolean;
+    booking_date?: string;
     slik_ojk: boolean;
+    slik_ojk_date?: string;
     proses_berkas: boolean;
+    proses_berkas_date?: string;
     ots: boolean;
+    ots_date?: string;
     penginputan: boolean;
+    penginputan_date?: string;
     analis_data: boolean;
+    analis_data_date?: string;
     lpa_aprasial: boolean;
+    lpa_aprasial_date?: string;
     pip: boolean;
+    pip_date?: string;
     pk: boolean;
+    pk_date?: string;
     akad: boolean;
+    akad_date?: string;
     pencairan_akad: boolean;
+    pencairan_akad_date?: string;
     updated_at: string;
     updated_by?: string;
 }

@@ -77,14 +77,22 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
 
         try {
             setSaving(true);
+
+            const updates: any = { [key]: value };
+            if (value) {
+                updates[`${key}_date`] = new Date().toISOString();
+            } else {
+                updates[`${key}_date`] = null;
+            }
+
             const { error } = await supabase
                 .from('consumer_pemberkasan')
-                .update({ [key]: value })
+                .update(updates)
                 .eq('consumer_id', consumerId);
 
             if (error) throw error;
 
-            setData(prev => prev ? { ...prev, [key]: value } : null);
+            setData(prev => prev ? { ...prev, ...updates } : null);
 
             toast({
                 title: "Tersimpan",

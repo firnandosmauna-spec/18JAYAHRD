@@ -28,10 +28,14 @@ import {
   Shield,
   Calendar,
   Lock,
-  X
+  X,
+  CreditCard,
+  Briefcase
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { supabase } from '@/lib/supabase';
+
 import { UserProfile } from '@/components/auth/UserProfile';
 import { EditProfileDialog } from '@/components/auth/EditProfileDialog';
 import { NotificationBell } from '@/components/hrd/NotificationBell';
@@ -237,6 +241,115 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+
+  useEffect(() => {
+    const performSearch = async () => {
+      if (searchQuery.length < 2) {
+        setSearchResults([]);
+        setShowSearchDropdown(false);
+        return;
+      }
+
+      setIsSearching(true);
+      setShowSearchDropdown(true);
+
+      try {
+        const results = [];
+
+        // Search Employees
+        if (hasModuleAccess('hrd')) {
+          const { data: employees } = await supabase
+            .from('employees')
+            .select('id, name, position, department')
+            .ilike('name', `%${searchQuery}%`)
+            .limit(5);
+
+          if (employees) {
+            results.push(...employees.map(e => ({
+              id: e.id,
+              type: 'Karyawan',
+              title: e.name,
+              subtitle: `${e.position} - ${e.department || ''}`,
+              icon: Users,
+              route: '/hrd/employees'
+            })));
+          }
+        }
+
+        // Search Products
+        if (hasModuleAccess('inventory')) {
+          const { data: products } = await supabase
+            .from('products')
+            .select('id, name, sku, stock')
+            .or(`name.ilike.%${searchQuery}%,sku.ilike.%${searchQuery}%`)
+            .limit(5);
+
+          if (products) {
+            results.push(...products.map(p => ({
+              id: p.id,
+              type: 'Produk',
+              title: p.name,
+              subtitle: `SKU: ${p.sku} | Stok: ${p.stock}`,
+              icon: Package,
+              route: '/inventory/products'
+            })));
+          }
+        }
+
+        // Search Sales Orders
+        if (hasModuleAccess('sales')) {
+          const { data: sales } = await supabase
+            .from('sales_orders')
+            .select('id, order_number, status')
+            .ilike('order_number', `%${searchQuery}%`)
+            .limit(5);
+
+          if (sales) {
+            results.push(...sales.map(s => ({
+              id: s.id,
+              type: 'Sales Order',
+              title: s.order_number,
+              subtitle: `Status: ${s.status}`,
+              icon: ShoppingCart,
+              route: '/sales/orders'
+            })));
+          }
+        }
+
+        // Search Purchase Orders
+        if (hasModuleAccess('purchase')) {
+          const { data: purchases } = await supabase
+            .from('purchase_orders')
+            .select('id, order_number, status')
+            .ilike('order_number', `%${searchQuery}%`)
+            .limit(5);
+
+          if (purchases) {
+            results.push(...purchases.map(p => ({
+              id: p.id,
+              type: 'Purchase Order',
+              title: p.order_number,
+              subtitle: `Status: ${p.status}`,
+              icon: ShoppingBag,
+              route: '/purchase/orders'
+            })));
+          }
+        }
+
+        setSearchResults(results);
+      } catch (error) {
+        console.error('Search error:', error);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const timeoutId = setTimeout(performSearch, 500);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, hasModuleAccess]);
 
   const handleModuleClick = (module: ModuleConfig) => {
     if (hasModuleAccess(module.id)) {
@@ -265,23 +378,98 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#1A2332] rounded-xl flex items-center justify-center">
-                <Building2 className="w-6 h-6 text-white" />
+              <div className="w-12 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-gray-100 shadow-sm">
+                <img src="/assets/18jaya.jpg" alt="Logo" className="max-w-[150%] max-h-[150%] object-cover mix-blend-multiply contrast-150 brightness-110" />
               </div>
-              <span className="font-display text-xl font-bold text-[#1C1C1E]">HRD 18 JAYA</span>
+              <span className="font-display text-lg font-bold text-[#1C1C1E] hidden sm:block">PT. DELAPAN BELAS JAYA</span>
             </div>
 
             {/* Search */}
-            <div className="hidden md:flex flex-1 max-w-md mx-8">
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <div className="hidden md:flex flex-1 max-w-md mx-8 relative">
+              <div className="relative w-full group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-blue-500" />
                 <Input
                   placeholder="Cari karyawan, transaksi, produk..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 bg-gray-50 border-gray-200 font-body"
+                  onFocus={() => {
+                    if (searchQuery.length > 2) setShowSearchDropdown(true);
+                  }}
+                  onBlur={() => {
+                    // Small delay to allow clicking on results
+                    setTimeout(() => setShowSearchDropdown(false), 200);
+                  }}
+                  className="pl-10 bg-gray-50 border-gray-200 font-body transition-all focus:bg-white focus:ring-2 focus:ring-blue-100"
                 />
+
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setShowSearchDropdown(false);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
+
+              {/* Search Dropdown Results */}
+              <AnimatePresence>
+                {showSearchDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50 max-h-[400px] flex flex-col"
+                  >
+                    <div className="p-3 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/80 border-b border-gray-100 backdrop-blur-sm">
+                      Hasil Pencarian
+                    </div>
+
+                    <ScrollArea className="flex-1">
+                      {isSearching ? (
+                        <div className="p-8 text-center text-gray-500 flex flex-col items-center">
+                          <div className="w-6 h-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-3"></div>
+                          <span className="text-sm">Mencari data...</span>
+                        </div>
+                      ) : searchResults.length > 0 ? (
+                        <div className="py-2">
+                          {searchResults.map((result, idx) => (
+                            <div
+                              key={`${result.type}-${result.id}-${idx}`}
+                              onClick={() => navigate(result.route)}
+                              className="px-4 py-3 hover:bg-blue-50/50 cursor-pointer flex items-center gap-4 transition-colors group"
+                            >
+                              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 text-gray-500 group-hover:text-blue-600 transition-colors">
+                                <result.icon className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-center mb-0.5">
+                                  <h4 className="text-sm font-semibold text-gray-900 truncate">{result.title}</h4>
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium whitespace-nowrap">
+                                    {result.type}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-500 truncate">{result.subtitle}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-8 text-center text-gray-500">
+                          <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                            <Search className="w-6 h-6 text-gray-400" />
+                          </div>
+                          <p className="text-sm text-gray-600 font-medium">Tidak ada hasil ditemukan</p>
+                          <p className="text-xs text-gray-400 mt-1">Coba gunakan kata kunci lain</p>
+                        </div>
+                      )}
+                    </ScrollArea>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Right Actions */}

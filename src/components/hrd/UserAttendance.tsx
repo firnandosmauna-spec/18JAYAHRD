@@ -234,8 +234,8 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             const status = isLate ? 'late' : 'present';
 
             if (distance > officeRadius) {
-                setPendingCheckInData({ loc, status, distance });
-                setShowReasonDialog(true);
+                // Bypass dialog as requested, but still log the reason automatically
+                await processCheckIn(loc, status, distance, 'Akurasi GPS/Luar Jangkauan (Auto-Accept)');
                 return;
             }
 
