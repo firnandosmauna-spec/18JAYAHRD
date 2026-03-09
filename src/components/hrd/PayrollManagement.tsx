@@ -73,7 +73,7 @@ import { usePayroll, useEmployees, useLoans } from '@/hooks/useSupabase';
 import { attendanceService, rewardService, leaveService } from '@/services/supabaseService';
 import { userService } from '@/services/userService';
 import { settingsService } from '@/services/settingsService';
-import { DEFAULT_PAYROLL_SETTINGS, PayrollSettings } from '@/types/settings';
+import { DEFAULT_PAYROLL_SETTINGS, PayrollSettings, DEFAULT_ATTENDANCE_SETTINGS, AttendanceSettings } from '@/types/settings';
 import { useAuth } from '@/contexts/AuthContext';
 import type { PayrollRecord } from '@/lib/supabase';
 
@@ -99,6 +99,7 @@ interface PayrollFormData {
   bpjs_deduction: string;
   absent_deduction: string;
   late_deduction: string;
+  reward_allowance: string;
   manual_allowance_details: { title: string, amount: number }[];
   manual_deduction_details: { title: string, amount: number }[];
   bank_account_details: string;
@@ -163,6 +164,7 @@ export function PayrollManagement() {
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [selectedPayroll, setSelectedPayroll] = useState<PayrollRecord | null>(null);
   const [payrollSettings, setPayrollSettings] = useState<PayrollSettings>(DEFAULT_PAYROLL_SETTINGS);
+  const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings>(DEFAULT_ATTENDANCE_SETTINGS);
   const [printSettings, setPrintSettings] = useState<any>(undefined);
   const [deductionDetails, setDeductionDetails] = useState<string[]>([]);
   const [allowanceDetails, setAllowanceDetails] = useState<string[]>([]);
@@ -199,6 +201,8 @@ export function PayrollManagement() {
     thr_allowance: '0',
     bpjs_deduction: '0',
     absent_deduction: '0',
+    late_deduction: '0',
+    reward_allowance: '0',
     manual_allowance_details: [],
     manual_deduction_details: [],
     bank_account_details: '',
@@ -226,10 +230,14 @@ export function PayrollManagement() {
 
   const fetchPayrollSettings = async () => {
     try {
-      const settings = await settingsService.getPayrollSettings();
-      setPayrollSettings(settings);
+      const [pSettings, aSettings] = await Promise.all([
+        settingsService.getPayrollSettings(),
+        settingsService.getAttendanceSettings()
+      ]);
+      setPayrollSettings(pSettings);
+      setAttendanceSettings(aSettings);
     } catch (error: any) {
-      console.error("Failed to fetch payroll settings", error);
+      console.error("Failed to fetch settings", error);
       setDebugInfo(prev => ({
         ...prev,
         foundSettings: false,
@@ -280,12 +288,32 @@ export function PayrollManagement() {
     fetchAllPeriodData();
   }, [selectedMonth, selectedYear]);
 
+  // Helper to get work schedule (mirrors AttendanceManagement)
+  const getWorkSchedule = (dateString: string) => {
+    const date = new Date(dateString);
+    const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
+    if (day === 6) { // Saturday
+      return {
+        start: attendanceSettings?.work_start_time_saturday || '08:00',
+        end: attendanceSettings?.work_end_time_saturday || '13:00'
+      };
+    }
+    return {
+      start: attendanceSettings?.work_start_time_weekday || '08:00',
+      end: attendanceSettings?.work_end_time_weekday || '17:00'
+    };
+  };
+
   // Unified calculation logic for preview
   const calculateDraftValues = (employee: any) => {
     const empAttendance = allAttendance.filter(a => a.employee_id === employee.id);
     const empLeaves = allLeaves.filter(l => l.employee_id === employee.id && l.status === 'approved');
 
+    // Base salary strictly follows employee data (fixed as per revision)
     let baseSalary = employee.salary;
+    let maternityInfo = '';
+
     let totalAllowances = 0;
     let totalDeductions = 0;
 
@@ -295,16 +323,25 @@ export function PayrollManagement() {
       return status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa';
     }).length || 0;
 
-    const presentCount = empAttendance.filter((a: any) => ['present', 'late', 'business_trip', 'wfh'].includes(a.status)).length || 0;
+    const presentCount = empAttendance.filter((a: any) => {
+      const status = (a.status || '').toLowerCase().trim();
+      return ['present', 'late', 'business_trip', 'wfh'].includes(status);
+    }).length || 0;
 
     let totalLateMinutes = 0;
     empAttendance.forEach((record: any) => {
-      if (record.status === 'late' && record.check_in) {
+      const status = (record.status || '').toLowerCase().trim();
+      if (status === 'late' && record.check_in) {
+        const schedule = getWorkSchedule(record.date);
         const [h, m] = record.check_in.split(':').map(Number);
+        const [sh, sm] = schedule.start.split(':').map(Number);
+
         const checkInMinutes = h * 60 + m;
-        const workStartMinutes = 8 * 60;
-        if (checkInMinutes > workStartMinutes) {
-          totalLateMinutes += (checkInMinutes - workStartMinutes);
+        const workStartMinutes = sh * 60 + sm;
+        const lateThreshold = workStartMinutes + (attendanceSettings?.attendance_late_tolerance || 0);
+
+        if (checkInMinutes > lateThreshold) {
+          totalLateMinutes += (checkInMinutes - lateThreshold);
         }
       }
     });
@@ -316,8 +353,8 @@ export function PayrollManagement() {
       (payrollSettings?.payroll_allowance_gasoline || 0)
     ) / workingDays);
 
-    // Draft Calculations
-    const proratedBase = Math.round((baseSalary / workingDays) * presentCount);
+    // Fixed Base Salary as per revision (not prorated by attendance)
+    const proratedBase = baseSalary;
     const mealAllowance = payrollSettings?.payroll_allowance_meal || 0;
     const gasolineAllowance = payrollSettings?.payroll_allowance_gasoline || 0;
     const positionAllowance = payrollSettings?.payroll_allowance_position || 0;
@@ -400,45 +437,9 @@ export function PayrollManagement() {
         // 1. Base Salary
         let baseSalaryValue = employee.salary;
         let maternityInfo = '';
+        let latePenalty = 0;
 
-        // --- 1.1 Maternity Leave Check ---
-        try {
-          const employeeLeaves = await leaveService.getByEmployee(formData.employee_id);
-          const maternityLeaves = employeeLeaves.filter(l =>
-            l.leave_type === 'maternity' &&
-            l.status === 'approved'
-          );
-
-          if (maternityLeaves.length > 0) {
-            const periodStart = new Date(formData.period_year, formData.period_month - 1, 1);
-            const periodEnd = new Date(formData.period_year, formData.period_month, 0);
-
-            const activeMaternity = maternityLeaves.find(l => {
-              const start = new Date(l.start_date);
-              const end = new Date(l.end_date);
-              return (start <= periodEnd && end >= periodStart);
-            });
-
-            if (activeMaternity) {
-              const leaveStart = new Date(activeMaternity.start_date);
-              const monthDiff = (formData.period_year * 12 + formData.period_month) - (leaveStart.getFullYear() * 12 + (leaveStart.getMonth() + 1));
-              const monthIndex = monthDiff + 1;
-
-              if (monthIndex >= 1 && monthIndex <= 3) {
-                let multiplier = 1.0;
-                if (monthIndex === 2) multiplier = 0.75;
-                else if (monthIndex === 3) multiplier = 0.5;
-
-                baseSalaryValue = Math.round(baseSalaryValue * multiplier);
-                maternityInfo = `Cuti Hamil Bulan ke-${monthIndex} (${multiplier * 100}% Gaji)`;
-                newAllowanceDetails.push(maternityInfo);
-              }
-            }
-          }
-        } catch (err) {
-          console.error("Maternity check error:", err);
-        }
-
+        // Base Salary remains fixed as per revision (No maternity adjustments)
         const salary = baseSalaryValue.toString();
 
         // 2. Loan Deductions
@@ -491,16 +492,20 @@ export function PayrollManagement() {
 
           // Keterlambatan (Late)
           totalLateMinutes = 0;
-          let latePenalty = 0;
+          latePenalty = 0;
           attendance?.forEach((record: any) => {
-            if (record.status === 'late' && record.check_in) {
+            const status = (record.status || '').toLowerCase().trim();
+            if (status === 'late' && record.check_in) {
+              const schedule = getWorkSchedule(record.date);
               const [h, m] = record.check_in.split(':').map(Number);
-              const checkInMinutes = h * 60 + m;
-              const workStartMinutes = 8 * 60; // 08:00 standard masuk
+              const [sh, sm] = schedule.start.split(':').map(Number);
 
-              if (checkInMinutes > workStartMinutes) {
-                const diff = (checkInMinutes - workStartMinutes);
-                totalLateMinutes += diff;
+              const checkInMinutes = h * 60 + m;
+              const workStartMinutes = sh * 60 + sm;
+              const lateThreshold = workStartMinutes + (attendanceSettings?.attendance_late_tolerance || 0);
+
+              if (checkInMinutes > lateThreshold) {
+                totalLateMinutes += (checkInMinutes - lateThreshold);
               }
             }
           });
@@ -508,12 +513,14 @@ export function PayrollManagement() {
           if (totalLateMinutes > 0) {
             const multiplier = payrollSettings?.attendance_late_penalty || 1000;
             latePenalty = totalLateMinutes * multiplier;
-            // The User wants Late Penalty (min * 1000) to be part of "Potongan Absen"
-            absentDeductionAmount += latePenalty;
+            // Removed adding to absentDeductionAmount - keeping them separate now
             newDeductionDetails.push(`Keterlambatan: ${totalLateMinutes} menit (Rp ${latePenalty.toLocaleString('id-ID')})`);
           }
 
-          const presentCount = attendance?.filter((a: any) => ['present', 'late', 'business_trip', 'wfh'].includes(a.status)).length || 0;
+          const presentCount = attendance?.filter((a: any) => {
+            const status = (a.status || '').toLowerCase().trim();
+            return ['present', 'late', 'business_trip', 'wfh'].includes(status);
+          }).length || 0;
 
           setDebugInfo({
             attendanceCount: attendance?.length || 0,
@@ -534,9 +541,8 @@ export function PayrollManagement() {
               (payrollSettings.payroll_allowance_gasoline || 0)
             ) / workingDays);
 
-            // Base salary proration (keep existing logic or adjust if needed)
-            // The user specifically mentioned allowances, usually base salary is also prorated
-            baseSalaryValue = Math.round((baseSalaryValue / workingDays) * presentCount);
+            // Base salary fixed as per revision (not prorated by attendance)
+            // baseSalaryValue = Math.round((baseSalaryValue / workingDays) * presentCount);
 
             // Allowances are now recorded at full monthly value (no more proration here)
             // Deduction will be handled separately in absentDeductionAmount
@@ -604,6 +610,10 @@ export function PayrollManagement() {
           gasoline_allowance: gasolineAllowance.toString(),
           bpjs_deduction: bpjsDeduction.toString(),
           absent_deduction: absentDeductionAmount.toString(),
+          late_deduction: latePenalty.toString(),
+          reward_allowance: (absentCount === 0 && totalLateMinutes === 0 && (attendance?.length || 0) > 0)
+            ? (payrollSettings?.payroll_reward_perfect_attendance || 0).toString()
+            : '0',
           manual_allowance_details: manualAllowanceItems,
           manual_deduction_details: manualDeductionItems,
           position_allowance: positionAllowance.toString(),
@@ -718,7 +728,7 @@ export function PayrollManagement() {
     const manualAllowancesTotal = formData.manual_allowance_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
     const manualDeductionsTotal = formData.manual_deduction_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
 
-    const totalAllowances = allowances + gasoline + meal + position + discretionary + thr + manualAllowancesTotal;
+    const totalAllowances = allowances + gasoline + meal + position + discretionary + thr + manualAllowancesTotal + Number(formData.reward_allowance || 0);
     const totalDeductions = deductions + bpjs + absent + late + manualDeductionsTotal;
     const overtimePay = overtimeHours * overtimeRate;
 
@@ -746,6 +756,7 @@ export function PayrollManagement() {
       bpjs_deduction: (p.bpjs_deduction || 0).toString(),
       absent_deduction: (p.absent_deduction || 0).toString(),
       late_deduction: (p.late_deduction || 0).toString(),
+      reward_allowance: (p.reward_allowance || 0).toString(),
       manual_allowance_details: p.manual_allowance_details || [],
       manual_deduction_details: p.manual_deduction_details || [],
       bank_account_details: p.bank_account_details || '',
@@ -808,8 +819,8 @@ export function PayrollManagement() {
         bpjs_deduction: bpjs,
         absent_deduction: absent,
         late_deduction: late,
-        reward_allowance: 0,
-        reward_details: [],
+        reward_allowance: parseFloat(formData.reward_allowance) || 0,
+        reward_details: formData.is_perfect_attendance ? [{ title: 'Kehadiran Sempurna', amount: parseFloat(formData.reward_allowance) || 0 }] : [],
         bank_account_details: formData.bank_account_details,
       };
 
@@ -885,34 +896,6 @@ export function PayrollManagement() {
         let lateDeductionAmount = 0;
         let newAllowanceDetails: string[] = [];
 
-        // --- Special Case: Maternity Leave ---
-        try {
-          const leaveRequests = await leaveService.getByEmployee(employee.id);
-          const maternityLeave = leaveRequests?.find(l =>
-            l.leave_type === 'maternity' &&
-            l.status === 'approved' &&
-            new Date(l.start_date) <= new Date(selectedYear, selectedMonth - 1, 1) &&
-            new Date(l.end_date) >= new Date(selectedYear, selectedMonth - 1, 1)
-          );
-
-          if (maternityLeave) {
-            const start = new Date(maternityLeave.start_date);
-            const current = new Date(selectedYear, selectedMonth - 1, 1);
-            const diffMonths = (current.getFullYear() - start.getFullYear()) * 12 + (current.getMonth() - start.getMonth());
-
-            let tierPercentage = 100;
-            if (diffMonths === 1) tierPercentage = 75;
-            else if (diffMonths >= 2) tierPercentage = 50;
-
-            const originalSalary = baseSalary;
-            baseSalary = (originalSalary * tierPercentage) / 100;
-            newAllowanceDetails.push(`Maternity Leave (${tierPercentage}% Gaji): ${formatCurrency(originalSalary)} -> ${formatCurrency(baseSalary)}`);
-          }
-        } catch (err) {
-          console.error("Error checking maternity leave in batch:", err);
-        }
-
-        // Loans
         const activeLoans = loans.filter(l =>
           l.employee_id === employee.id &&
           l.status === 'approved' &&
@@ -953,12 +936,18 @@ export function PayrollManagement() {
         const totalManualDeductions = manualDeductionItems.reduce((sum, i) => sum + (i.amount || 0), 0);
 
         attendance?.forEach((record: any) => {
-          if (record.status === 'late' && record.check_in) {
+          const status = (record.status || '').toLowerCase().trim();
+          if (status === 'late' && record.check_in) {
+            const schedule = getWorkSchedule(record.date);
             const [h, m] = record.check_in.split(':').map(Number);
+            const [sh, sm] = schedule.start.split(':').map(Number);
+
             const checkInMinutes = h * 60 + m;
-            const workStartMinutes = 8 * 60;
-            if (checkInMinutes > workStartMinutes) {
-              totalLateMinutes += (checkInMinutes - workStartMinutes);
+            const workStartMinutes = sh * 60 + sm;
+            const lateThreshold = workStartMinutes + (attendanceSettings?.attendance_late_tolerance || 0);
+
+            if (checkInMinutes > lateThreshold) {
+              totalLateMinutes += (checkInMinutes - lateThreshold);
             }
           }
         });
@@ -967,7 +956,10 @@ export function PayrollManagement() {
           lateDeductionAmount = totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
         }
 
-        const presentCount = attendance?.filter((a: any) => ['present', 'late', 'business_trip', 'wfh'].includes(a.status)).length || 0;
+        const presentCount = attendance?.filter((a: any) => {
+          const status = (a.status || '').toLowerCase().trim();
+          return ['present', 'late', 'business_trip', 'wfh'].includes(status);
+        }).length || 0;
         const workingDays = 26; // Fixed 26 days divisor
         const dailyAbsentPenalty = Math.round((
           (payrollSettings?.payroll_allowance_position || 0) +
@@ -975,8 +967,8 @@ export function PayrollManagement() {
           (payrollSettings?.payroll_allowance_gasoline || 0)
         ) / workingDays);
 
-        // Prorate base salary based on attendance
-        baseSalary = Math.round((baseSalary / workingDays) * presentCount);
+        // Fixed Base Salary as per revision (no proration)
+        // baseSalary = Math.round((baseSalary / workingDays) * presentCount);
 
         // Allowances at full value
         mealAllowance = payrollSettings?.payroll_allowance_meal || 0;
@@ -1242,7 +1234,7 @@ export function PayrollManagement() {
                   <TableRow>
                     <TableHead className="font-body">Karyawan</TableHead>
                     <TableHead className="font-body text-center">Status</TableHead>
-                    <TableHead className="font-body text-right">Penerimaan</TableHead>
+                    <TableHead className="font-body text-right">Gaji Pokok</TableHead>
                     <TableHead className="font-body text-right">Tunjangan</TableHead>
                     <TableHead className="font-body text-right">Pot. Absen</TableHead>
                     <TableHead className="font-body text-right">Pot. Telat</TableHead>
@@ -1276,7 +1268,7 @@ export function PayrollManagement() {
                           </Badge>
                         </TableCell>
                         <TableCell className={`font-mono text-right ${item.is_payroll_exists ? 'text-blue-600' : 'text-blue-400 italic'}`}>
-                          {formatCurrency(item.base_salary + item.allowances + (item.reward_allowance || 0))}
+                          {formatCurrency(item.base_salary)}
                         </TableCell>
                         <TableCell className={`font-mono text-right ${item.is_payroll_exists ? 'text-green-600' : 'text-green-400 italic'}`}>
                           {formatCurrency(item.allowances + (item.reward_allowance || 0))}

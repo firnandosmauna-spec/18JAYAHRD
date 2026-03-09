@@ -8,14 +8,7 @@ import {
     Trash2,
     Search,
     List,
-    Image as ImageIcon,
-    Calendar,
     DollarSign,
-    User,
-    Building,
-    MapPin,
-    ArrowUpRight,
-    Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Table,
     TableBody,
@@ -33,41 +27,31 @@ import {
 } from "@/components/ui/table";
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { ConsumerProfile, Stage, Pipeline, STAGES } from '@/components/marketing/MarketingTypes';
+import { ConsumerPemberkasan } from '@/components/marketing/ConsumerPemberkasan';
+import { Check, ChevronsUpDown, User as UserIcon, Building, MapPin, ArrowUpRight, Loader2, Info, Bell, RefreshCw, Clock, History, Send, ChevronDown, ImageIcon, Calendar, Phone, MessageSquare, CheckCircle2 } from "lucide-react"
+import { cn } from "@/lib/utils"
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "@/components/ui/command"
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover"
 
-// Types
-type Stage = 'lead' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost';
+// Stages are now imported from MarketingTypes
 
-interface Pipeline {
-    id: string;
-    title: string;
-    contact_name: string;
-    company: string;
-    value: number;
-    stage: Stage;
-    survey_date?: string;
-    booking_date?: string;
-    booking_fee?: number;
-    akad_date?: string;
-    source?: string;
-    notes?: string;
-    created_by?: string;
-    created_at: string;
-    attachment_url?: string;
-    survey_attachment_url?: string;
-    booking_attachment_url?: string;
-    akad_attachment_url?: string;
+export interface UserPipelineProps {
+    initialTab?: 'deals' | 'consumers' | 'pemberkasan';
 }
 
-const STAGES: { id: Stage; label: string; color: string }[] = [
-    { id: 'lead', label: 'Lead Masuk', color: 'bg-slate-100 text-slate-700' },
-    { id: 'qualified', label: 'Qualified', color: 'bg-blue-100 text-blue-700' },
-    { id: 'proposal', label: 'Proposal', color: 'bg-purple-100 text-purple-700' },
-    { id: 'negotiation', label: 'Negosiasi', color: 'bg-orange-100 text-orange-700' },
-    { id: 'won', label: 'Deal Won', color: 'bg-green-100 text-green-700' },
-    { id: 'lost', label: 'Lost', color: 'bg-red-100 text-red-700' },
-];
-
-export function UserPipeline() {
+export function UserPipeline({ initialTab = 'deals' }: UserPipelineProps) {
     const { user } = useAuth();
     const [pipelines, setPipelines] = useState<Pipeline[]>([]);
     const [loading, setLoading] = useState(true);
@@ -96,8 +80,20 @@ export function UserPipeline() {
         attachment_url: '',
         survey_attachment_url: '',
         booking_attachment_url: '',
-        akad_attachment_url: ''
+        akad_attachment_url: '',
+        consumer_id: ''
     });
+
+    const [consumers, setConsumers] = useState<ConsumerProfile[]>([]);
+    const [activeTab, setLocalActiveTab] = useState<'deals' | 'consumers' | 'pemberkasan'>(initialTab);
+    const [isConsumerSelectorOpen, setIsConsumerSelectorOpen] = useState(false);
+    const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
+    const [selectedConsumer, setSelectedConsumer] = useState<ConsumerProfile | null>(null);
+    const [followUpData, setFollowUpData] = useState({
+        notes: '',
+        status: 'Follow Up'
+    });
+    const [projectList, setProjectList] = useState<string[]>([]);
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('id-ID', {
@@ -136,8 +132,41 @@ export function UserPipeline() {
         }
     };
 
+    const fetchConsumers = async () => {
+        if (!user) return;
+        try {
+            const { data, error } = await supabase
+                .from('consumer_profiles')
+                .select('*')
+                .or(`sales_person_id.eq.${user.id},sales_person.eq.${user.name}`) // Fallback to name if ID not set
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setConsumers(data || []);
+        } catch (err) {
+            console.error('Error fetching consumers:', err);
+        }
+    };
+
+    const fetchProjects = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('projects')
+                .select('name')
+                .eq('status', 'in-progress');
+
+            if (data) {
+                setProjectList(data.map(p => p.name));
+            }
+        } catch (error) {
+            console.error('Error fetching projects:', error);
+        }
+    };
+
     useEffect(() => {
         fetchPipelines();
+        fetchConsumers();
+        fetchProjects();
     }, [user]);
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField: string = 'attachment_url') => {
@@ -255,7 +284,8 @@ export function UserPipeline() {
             attachment_url: '',
             survey_attachment_url: '',
             booking_attachment_url: '',
-            akad_attachment_url: ''
+            akad_attachment_url: '',
+            consumer_id: ''
         });
     };
 
@@ -276,7 +306,8 @@ export function UserPipeline() {
             attachment_url: item.attachment_url || '',
             survey_attachment_url: item.survey_attachment_url || '',
             booking_attachment_url: item.booking_attachment_url || '',
-            akad_attachment_url: item.akad_attachment_url || ''
+            akad_attachment_url: item.akad_attachment_url || '',
+            consumer_id: (item as any).consumer_id || ''
         });
         setIsAddOpen(true);
     };
@@ -289,222 +320,463 @@ export function UserPipeline() {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <div className="relative w-full md:w-[280px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input
-                        placeholder="Cari deal saya..."
-                        className="pl-9 bg-slate-50 border-slate-200 focus:bg-white transition-all"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </div>
-                <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
-                    <Button onClick={() => { resetForm(); setEditingItem(null); setIsAddOpen(true); }} className="bg-blue-600 hover:bg-blue-700 shadow-md">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Deal Baru
-                    </Button>
-                </div>
+            {/* Custom Tabs Navigation */}
+            <div className="flex bg-slate-100/50 p-1 rounded-xl w-fit border border-slate-200">
+                <Button
+                    variant={activeTab === 'deals' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className={`rounded-lg px-4 ${activeTab === 'deals' ? 'bg-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    onClick={() => setLocalActiveTab('deals')}
+                >
+                    <List className="h-4 w-4 mr-2" />
+                    Deals Saya
+                </Button>
+                <Button
+                    variant={activeTab === 'consumers' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className={`rounded-lg px-4 ${activeTab === 'consumers' ? 'bg-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    onClick={() => setLocalActiveTab('consumers')}
+                >
+                    <UserIcon className="h-4 w-4 mr-2" />
+                    Database Konsumen
+                </Button>
+                <Button
+                    variant={activeTab === 'pemberkasan' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className={`rounded-lg px-4 ${activeTab === 'pemberkasan' ? 'bg-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    onClick={() => { setLocalActiveTab('pemberkasan'); setSelectedConsumer(null); }}
+                >
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Pemberkasan Konsumen
+                </Button>
             </div>
 
-            {/* Data Grid Table */}
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <Table>
-                    <TableHeader className="bg-slate-50">
-                        <TableRow>
-                            <TableHead className="w-[20%]">Rencana Penjualan</TableHead>
-                            <TableHead className="w-[10%]">Asal Konsumen</TableHead>
-                            <TableHead className="w-[25%]">Data Konsumen</TableHead>
-                            <TableHead className="w-[15%]">Survey / Waktu</TableHead>
-                            <TableHead className="w-[15%]">Booking</TableHead>
-                            <TableHead className="w-[10%]">Akad</TableHead>
-                            <TableHead className="w-[5%]">Aksi</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow>
-                                <TableCell colSpan={7} className="h-24 text-center">
-                                    <div className="flex justify-center items-center gap-2 text-slate-500">
-                                        <Loader2 className="h-4 w-4 animate-spin" /> Loading...
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ) : filteredPipelines.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={7} className="h-24 text-center text-slate-500">
-                                    Belum ada data deal.
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            filteredPipelines.map((item) => (
-                                <TableRow key={item.id} className="hover:bg-slate-50">
-                                    {/* 1. Rencana Penjualan */}
-                                    <TableCell className="align-top">
-                                        <div className="font-semibold text-slate-900">{item.title}</div>
-                                        <div className="text-emerald-600 font-medium text-xs mt-1">
-                                            {formatCurrency(item.value)}
-                                        </div>
-                                        <Badge
-                                            variant="secondary"
-                                            className={`mt-2 ${STAGES.find(s => s.id === item.stage)?.color} border-0`}
-                                        >
-                                            {STAGES.find(s => s.id === item.stage)?.label}
-                                        </Badge>
-                                    </TableCell>
+            {activeTab === 'deals' ? (
+                <>
+                    {/* Search and Action Bar */}
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
+                        <div className="relative w-full lg:w-[400px]">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input
+                                placeholder="Cari deal, client, atau perusahaan..."
+                                className="pl-9 bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+                            <Button onClick={() => { resetForm(); setEditingItem(null); setIsAddOpen(true); }} className="bg-blue-600 hover:bg-blue-700 shadow-md">
+                                <Plus className="w-4 h-4 mr-2" />
+                                Deal Baru
+                            </Button>
+                        </div>
+                    </div>
 
-                                    {/* 2. Asal Konsumen */}
-                                    <TableCell className="align-top">
-                                        {item.source ? (
-                                            <Badge variant="outline" className="font-normal text-slate-600">
-                                                {item.source}
-                                            </Badge>
-                                        ) : (
-                                            <span className="text-slate-400 text-xs">-</span>
-                                        )}
-                                    </TableCell>
-
-                                    {/* 3. Data Konsumen */}
-                                    <TableCell className="align-top">
-                                        <div className="flex gap-3">
-                                            {item.attachment_url && (
-                                                <div className="flex-shrink-0">
-                                                    <img
-                                                        src={item.attachment_url}
-                                                        alt="Thumbnail"
-                                                        className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
-                                                        onClick={() => window.open(item.attachment_url, '_blank')}
-                                                    />
-                                                </div>
-                                            )}
-                                            <div>
-                                                <div className="font-medium text-slate-900 flex items-center gap-1">
-                                                    <User className="h-3 w-3 text-slate-400" /> {item.contact_name}
-                                                </div>
-                                                {item.company && (
-                                                    <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                                                        <Building className="h-3 w-3 text-slate-400" /> {item.company}
-                                                    </div>
-                                                )}
-                                                {item.notes && (
-                                                    <div className="text-[10px] text-slate-400 mt-1 line-clamp-2 italic">
-                                                        "{item.notes}"
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </TableCell>
-
-                                    {/* 4. Survey / Waktu */}
-                                    <TableCell className="align-top">
-                                        {item.survey_date ? (
-                                            <div className="flex flex-col gap-2">
-                                                <div className="flex items-center gap-1.5 text-sm text-slate-700 bg-slate-50 px-2 py-1 rounded border border-slate-100 w-fit">
-                                                    <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                                                    {formatDate(item.survey_date)}
-                                                </div>
-                                                {item.survey_attachment_url && (
-                                                    <div className="mt-1">
-                                                        <img
-                                                            src={item.survey_attachment_url}
-                                                            alt="Bukti Survey"
-                                                            className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
-                                                            onClick={() => window.open(item.survey_attachment_url, '_blank')}
-                                                            title="Bukti Survey"
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <span className="text-slate-400 text-xs">-</span>
-                                        )}
-                                    </TableCell>
-
-                                    {/* 5. Booking */}
-                                    <TableCell className="align-top">
-                                        <div className="space-y-1">
-                                            {item.booking_date ? (
-                                                <div className="flex items-center gap-1.5 text-sm text-slate-700">
-                                                    <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                                                    {formatDate(item.booking_date)}
-                                                </div>
-                                            ) : (
-                                                <div className="text-slate-400 text-xs">-</div>
-                                            )}
-
-                                            {item.booking_fee ? (
-                                                <div className="flex items-center gap-1.5 text-xs text-blue-600 font-medium">
-                                                    <DollarSign className="h-3 w-3" />
-                                                    {formatCurrency(item.booking_fee)}
-                                                </div>
-                                            ) : null}
-
-                                            {item.booking_attachment_url && (
-                                                <div className="mt-1">
-                                                    <img
-                                                        src={item.booking_attachment_url}
-                                                        alt="Bukti Booking"
-                                                        className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
-                                                        onClick={() => window.open(item.booking_attachment_url, '_blank')}
-                                                        title="Bukti Booking"
-                                                    />
-                                                </div>
-                                            )}
-                                        </div>
-                                    </TableCell>
-
-                                    {/* 6. Akad */}
-                                    <TableCell className="align-top">
-                                        <div className="space-y-2">
-                                            {item.akad_date ? (
-                                                <div className="flex items-center gap-1.5 text-sm font-medium text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-100 w-fit">
-                                                    <FileText className="h-3.5 w-3.5" />
-                                                    {formatDate(item.akad_date)}
-                                                </div>
-                                            ) : (
-                                                <span className="text-slate-400 text-xs">Belum dijadwalkan</span>
-                                            )}
-                                            {item.akad_attachment_url && (
-                                                <div className="mt-1">
-                                                    <img
-                                                        src={item.akad_attachment_url}
-                                                        alt="Bukti Akad"
-                                                        className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
-                                                        onClick={() => window.open(item.akad_attachment_url, '_blank')}
-                                                        title="Bukti Akad"
-                                                    />
-                                                </div>
-                                            )}
-                                        </div>
-                                    </TableCell>
-
-                                    {/* Actions */}
-                                    <TableCell className="align-top">
-                                        <div className="flex items-center gap-1">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                                                onClick={() => openEdit(item)}
-                                            >
-                                                <ArrowUpRight className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-red-600 hover:bg-red-50"
-                                                onClick={() => handleDelete(item.id)}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
+                    {/* Data Grid Table */}
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        <Table>
+                            <TableHeader className="bg-slate-50">
+                                <TableRow>
+                                    <TableHead className="w-[20%]">Rencana Penjualan</TableHead>
+                                    <TableHead className="w-[10%]">Asal Konsumen</TableHead>
+                                    <TableHead className="w-[25%]">Data Konsumen</TableHead>
+                                    <TableHead className="w-[15%]">Survey / Waktu</TableHead>
+                                    <TableHead className="w-[15%]">Booking</TableHead>
+                                    <TableHead className="w-[10%]">Akad</TableHead>
+                                    <TableHead className="w-[5%]">Aksi</TableHead>
                                 </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
+                            </TableHeader>
+                            <TableBody>
+                                {loading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="h-24 text-center">
+                                            <div className="flex justify-center items-center gap-2 text-slate-500">
+                                                <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ) : filteredPipelines.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="h-24 text-center text-slate-500">
+                                            Belum ada data deal.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    filteredPipelines.map((item) => (
+                                        <TableRow key={item.id} className="hover:bg-slate-50">
+                                            {/* 1. Rencana Penjualan */}
+                                            <TableCell className="align-top">
+                                                <div className="font-semibold text-slate-900">{item.title}</div>
+                                                <div className="text-emerald-600 font-medium text-xs mt-1">
+                                                    {formatCurrency(item.value)}
+                                                </div>
+                                                <Badge
+                                                    variant="secondary"
+                                                    className={`mt-2 ${STAGES.find(s => s.id === item.stage)?.color} border-0`}
+                                                >
+                                                    {STAGES.find(s => s.id === item.stage)?.label}
+                                                </Badge>
+                                            </TableCell>
+
+                                            {/* 2. Asal Konsumen */}
+                                            <TableCell className="align-top">
+                                                {item.source ? (
+                                                    <Badge variant="outline" className="font-normal text-slate-600">
+                                                        {item.source}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs">-</span>
+                                                )}
+                                            </TableCell>
+
+                                            {/* 3. Data Konsumen */}
+                                            <TableCell className="align-top">
+                                                <div className="flex gap-3">
+                                                    {item.attachment_url && (
+                                                        <div className="flex-shrink-0">
+                                                            <img
+                                                                src={item.attachment_url}
+                                                                alt="Thumbnail"
+                                                                className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
+                                                                onClick={() => window.open(item.attachment_url, '_blank')}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <div className="font-medium text-slate-900 flex items-center gap-1">
+                                                            <UserIcon className="h-4 w-4 text-slate-400 mt-0.5" /> {item.contact_name}
+                                                        </div>
+                                                        {item.company && (
+                                                            <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                                                                <Building className="h-3 w-3 text-slate-400" /> {item.company}
+                                                            </div>
+                                                        )}
+                                                        {item.notes && (
+                                                            <div className="text-[10px] text-slate-400 mt-1 line-clamp-2 italic">
+                                                                "{item.notes}"
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+
+                                            {/* 4. Survey / Waktu */}
+                                            <TableCell className="align-top">
+                                                {item.survey_date ? (
+                                                    <div className="flex flex-col gap-2">
+                                                        <div className="flex items-center gap-1.5 text-sm text-slate-700 bg-slate-50 px-2 py-1 rounded border border-slate-100 w-fit">
+                                                            <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                                                            {formatDate(item.survey_date)}
+                                                        </div>
+                                                        {item.survey_attachment_url && (
+                                                            <div className="mt-1">
+                                                                <img
+                                                                    src={item.survey_attachment_url}
+                                                                    alt="Bukti Survey"
+                                                                    className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
+                                                                    onClick={() => window.open(item.survey_attachment_url, '_blank')}
+                                                                    title="Bukti Survey"
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs">-</span>
+                                                )}
+                                            </TableCell>
+
+                                            {/* 5. Booking */}
+                                            <TableCell className="align-top">
+                                                <div className="space-y-1">
+                                                    {item.booking_date ? (
+                                                        <div className="flex items-center gap-1.5 text-sm text-slate-700">
+                                                            <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                                                            {formatDate(item.booking_date)}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-slate-400 text-xs">-</div>
+                                                    )}
+
+                                                    {item.booking_fee ? (
+                                                        <div className="flex items-center gap-1.5 text-xs text-blue-600 font-medium">
+                                                            <DollarSign className="h-3 w-3" />
+                                                            {formatCurrency(item.booking_fee)}
+                                                        </div>
+                                                    ) : null}
+
+                                                    {item.booking_attachment_url && (
+                                                        <div className="mt-1">
+                                                            <img
+                                                                src={item.booking_attachment_url}
+                                                                alt="Bukti Booking"
+                                                                className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
+                                                                onClick={() => window.open(item.booking_attachment_url, '_blank')}
+                                                                title="Bukti Booking"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+
+                                            {/* 6. Akad */}
+                                            <TableCell className="align-top">
+                                                <div className="space-y-2">
+                                                    {item.akad_date ? (
+                                                        <div className="flex items-center gap-1.5 text-sm font-medium text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-100 w-fit">
+                                                            <FileText className="h-3.5 w-3.5" />
+                                                            {formatDate(item.akad_date)}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-400 text-xs">Belum dijadwalkan</span>
+                                                    )}
+                                                    {item.akad_attachment_url && (
+                                                        <div className="mt-1">
+                                                            <img
+                                                                src={item.akad_attachment_url}
+                                                                alt="Bukti Akad"
+                                                                className="h-10 w-10 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80"
+                                                                onClick={() => window.open(item.akad_attachment_url, '_blank')}
+                                                                title="Bukti Akad"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+
+                                            {/* Actions */}
+                                            <TableCell className="align-top">
+                                                <div className="flex items-center gap-1">
+                                                    {item.consumer_id && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+                                                            title="Proses Pemberkasan"
+                                                            onClick={() => {
+                                                                const consumer = consumers.find(c => c.id === item.consumer_id);
+                                                                if (consumer) {
+                                                                    setSelectedConsumer(consumer);
+                                                                    setLocalActiveTab('pemberkasan');
+                                                                }
+                                                            }}
+                                                        >
+                                                            <CheckCircle2 className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                                                        onClick={() => openEdit(item)}
+                                                    >
+                                                        <ArrowUpRight className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-red-600 hover:bg-red-50"
+                                                        onClick={() => handleDelete(item.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </>
+            ) : activeTab === 'consumers' ? (
+                <div className="space-y-4">
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
+                        <div className="relative w-full lg:w-[400px]">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input
+                                placeholder="Cari nama, kode, atau telepon konsumen..."
+                                className="pl-9 bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        <Table>
+                            <TableHeader className="bg-slate-50">
+                                <TableRow>
+                                    <TableHead>Nama Konsumen</TableHead>
+                                    <TableHead>Kontak</TableHead>
+                                    <TableHead>Proyek</TableHead>
+                                    <TableHead>Pekerjaan</TableHead>
+                                    <TableHead>Proses Bank</TableHead>
+                                    <TableHead>Status Booking</TableHead>
+                                    <TableHead>Catatan Terakhir</TableHead>
+                                    <TableHead>Aksi</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {consumers.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="h-24 text-center text-slate-500">
+                                            Belum ada data konsumen yang ditugaskan ke Anda.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    consumers.filter(c =>
+                                        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                        c.phone.includes(searchQuery) ||
+                                        (c.code && c.code.toLowerCase().includes(searchQuery.toLowerCase()))
+                                    ).map((consumer) => (
+                                        <TableRow key={consumer.id}>
+                                            <TableCell className="font-medium">
+                                                <div>{consumer.name}</div>
+                                                <div className="text-[10px] text-slate-500">{consumer.code}</div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex items-center gap-1 text-sm">
+                                                    <Phone className="h-3 w-3 text-slate-400" />
+                                                    {consumer.phone}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline" className="text-blue-600 bg-blue-50">
+                                                    {consumer.housing_project || '-'}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-sm">{consumer.occupation || '-'}</TableCell>
+                                            <TableCell>
+                                                {consumer.bank_process ? (
+                                                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                                                        {consumer.bank_process}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs">-</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant={consumer.booking_fee_status === 'paid' ? 'default' : 'secondary'}>
+                                                    {consumer.booking_fee_status === 'paid' ? 'Paid' : 'Unpaid'}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-xs text-slate-500 max-w-[200px] truncate">
+                                                {consumer.booking_remarks || '-'}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-blue-600 hover:bg-blue-50 h-8"
+                                                    onClick={() => {
+                                                        setSelectedConsumer(consumer);
+                                                        setIsFollowUpOpen(true);
+                                                    }}
+                                                >
+                                                    <MessageSquare className="h-4 w-4 mr-1" />
+                                                    Follow Up
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </div>
+            ) : (
+                /* PEMBERKASAN TAB */
+                <div className="space-y-4">
+                    {selectedConsumer ? (
+                        <div className="animate-in fade-in slide-in-from-left-4 duration-300">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="mb-6 bg-white shadow-sm border-slate-200 text-slate-600 hover:text-slate-900"
+                                onClick={() => setSelectedConsumer(null)}
+                            >
+                                <ArrowUpRight className="h-4 w-4 mr-2 rotate-180" />
+                                Kembali ke Daftar
+                            </Button>
+                            <ConsumerPemberkasan
+                                consumerId={selectedConsumer.id}
+                                consumerName={selectedConsumer.name}
+                            />
+                        </div>
+                    ) : (
+                        <>
+                            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
+                                <div className="relative w-full lg:w-[400px]">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <Input
+                                        placeholder="Cari konsumen untuk pemberkasan..."
+                                        className="pl-9 bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                                <Table>
+                                    <TableHeader className="bg-slate-50">
+                                        <TableRow>
+                                            <TableHead>Nama Konsumen</TableHead>
+                                            <TableHead>Proyek</TableHead>
+                                            <TableHead>Pekerjaan</TableHead>
+                                            <TableHead>Proses Bank</TableHead>
+                                            <TableHead className="text-right">Aksi</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {consumers.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="h-24 text-center text-slate-500">
+                                                    Belum ada data konsumen yang ditugaskan ke Anda.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            consumers.filter(c =>
+                                                c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                                (c.code && c.code.toLowerCase().includes(searchQuery.toLowerCase()))
+                                            ).map((consumer) => (
+                                                <TableRow key={consumer.id}>
+                                                    <TableCell className="font-medium">
+                                                        <div>{consumer.name}</div>
+                                                        <div className="text-[10px] text-slate-500">{consumer.code}</div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className="text-blue-600 bg-blue-50">
+                                                            {consumer.housing_project || '-'}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-sm">{consumer.occupation || '-'}</TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                                                            {consumer.bank_process || '-'}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-100"
+                                                            onClick={() => setSelectedConsumer(consumer)}
+                                                        >
+                                                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                                                            Proses Pemberkasan
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Add/Edit Dialog */}
             <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
@@ -513,23 +785,109 @@ export function UserPipeline() {
                         <DialogTitle>{editingItem ? 'Edit Deal' : 'Tambah Deal Baru'}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleSubmit} className="space-y-4">
-                        {/* Section 1: Data Utama */}
+                        {/* Section 1: Data Utama & Consumer Link */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Pilih Konsumen (Optional)</Label>
+                                <Popover open={isConsumerSelectorOpen} onOpenChange={setIsConsumerSelectorOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={isConsumerSelectorOpen}
+                                            className="w-full justify-between bg-white"
+                                        >
+                                            {formData.consumer_id
+                                                ? consumers.find((c) => c.id === formData.consumer_id)?.name
+                                                : "Cari konsumen..."}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[400px] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Cari konsumen..." />
+                                            <CommandList>
+                                                <CommandEmpty>Konsumen tidak ditemukan.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {consumers.map((consumer) => (
+                                                        <CommandItem
+                                                            key={consumer.id}
+                                                            value={consumer.name}
+                                                            onSelect={() => {
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    consumer_id: consumer.id,
+                                                                    contact_name: consumer.name,
+                                                                    company: consumer.housing_project || ''
+                                                                })
+                                                                setIsConsumerSelectorOpen(false)
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    formData.consumer_id === consumer.id ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            <div className="flex flex-col">
+                                                                <span>{consumer.name}</span>
+                                                                <span className="text-[10px] text-slate-500">{consumer.code} - {consumer.phone}</span>
+                                                            </div>
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
                             <div className="space-y-2">
                                 <Label>Nama Deal / Proyek</Label>
                                 <Input required placeholder="Contoh: Unit A5 Cluster X" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} />
                             </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Nama Perusahaan (Optional)</Label>
-                                <Input placeholder="PT..." value={formData.company} onChange={e => setFormData({ ...formData, company: e.target.value })} />
+                                <Label>Nama Client (Manual)</Label>
+                                <Input required placeholder="Nama lengkap" value={formData.contact_name} onChange={e => setFormData({ ...formData, contact_name: e.target.value })} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Pilih Proyek (Unit/Lokasi)</Label>
+                                <Select value={formData.company} onValueChange={(v) => setFormData({ ...formData, company: v })}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih proyek..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {projectList.length > 0 ? (
+                                            projectList.map((proj) => (
+                                                <SelectItem key={proj} value={proj}>{proj}</SelectItem>
+                                            ))
+                                        ) : (
+                                            <SelectItem value="manual" disabled>Memuat proyek...</SelectItem>
+                                        )}
+                                        <div className="border-t my-1" />
+                                        <div className="p-2 text-[10px] text-slate-400 italic">
+                                            Proyek diambil dari database pusat
+                                        </div>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
 
-                        {/* Section 2: Kontak & Source */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Nama Client (PIC)</Label>
-                                <Input required placeholder="Nama lengkap" value={formData.contact_name} onChange={e => setFormData({ ...formData, contact_name: e.target.value })} />
+                                <Label>Tahap Deal (Stage)</Label>
+                                <Select value={formData.stage} onValueChange={(v) => setFormData({ ...formData, stage: v as Stage })}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih tahap..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {STAGES.map((s) => (
+                                            <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label>Sumber (Source)</Label>
@@ -730,6 +1088,87 @@ export function UserPipeline() {
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+            {/* Follow Up Dialog */}
+            <Dialog open={isFollowUpOpen} onOpenChange={setIsFollowUpOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Log Follow Up - {selectedConsumer?.name}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Catatan Follow Up</Label>
+                            <Textarea
+                                placeholder="Tuliskan hasil follow up hari ini..."
+                                value={followUpData.notes}
+                                onChange={(e) => setFollowUpData({ ...followUpData, notes: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Status Lanjutan</Label>
+                            <Select
+                                value={followUpData.status}
+                                onValueChange={(v) => setFollowUpData({ ...followUpData, status: v })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Pilih status..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Follow Up">Sedang di Follow Up</SelectItem>
+                                    <SelectItem value="Hot Prospect">Hot Prospect (Sangat Potensial)</SelectItem>
+                                    <SelectItem value="Booking">Siap Booking</SelectItem>
+                                    <SelectItem value="Not Interested">Kurang Berminat</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsFollowUpOpen(false)}>Batal</Button>
+                        <Button
+                            className="bg-blue-600 hover:bg-blue-700"
+                            onClick={async () => {
+                                if (!selectedConsumer || !followUpData.notes) return;
+                                try {
+                                    // 1. Add to consumer_follow_ups
+                                    const { error: fuError } = await supabase
+                                        .from('consumer_follow_ups')
+                                        .insert([{
+                                            consumer_id: selectedConsumer.id,
+                                            notes: followUpData.notes,
+                                            status: followUpData.status,
+                                            follow_up_date: new Date().toISOString(),
+                                            sales_person: user?.name
+                                        }]);
+
+                                    if (fuError) throw fuError;
+
+                                    // 2. Update consumer_profiles booking_remarks
+                                    const { error: profileError } = await supabase
+                                        .from('consumer_profiles')
+                                        .update({
+                                            booking_remarks: followUpData.notes,
+                                        })
+                                        .eq('id', selectedConsumer.id);
+
+                                    if (profileError) throw profileError;
+
+                                    toast({
+                                        title: "Berhasil",
+                                        description: "Follow up telah dicatat.",
+                                    });
+                                    setIsFollowUpOpen(false);
+                                    setFollowUpData({ notes: '', status: 'Follow Up' });
+                                    fetchConsumers();
+                                } catch (err) {
+                                    console.error('Error follow up:', err);
+                                    toast({ title: "Gagal", description: "Terjadi kesalahan.", variant: "destructive" });
+                                }
+                            }}
+                        >
+                            Simpan Follow Up
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

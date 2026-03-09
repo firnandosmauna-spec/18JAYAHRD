@@ -1,16 +1,7 @@
 
 export type Stage = 'lead' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost';
 
-export const HOUSING_PROJECTS = [
-    "Grand City",
-    "River Valley",
-    "Green View",
-    "Sky Garden",
-    "Lake Side",
-    "Palm Springs",
-    "Bukit Golf",
-    "Permata Hijau"
-];
+export const HOUSING_PROJECTS: string[] = [];
 
 export interface Pipeline {
     id: string;
@@ -32,6 +23,7 @@ export interface Pipeline {
     survey_attachment_url?: string;
     booking_attachment_url?: string;
     akad_attachment_url?: string;
+    consumer_id?: string; // Link to consumer_profiles
 }
 
 export interface Attachment {
@@ -70,6 +62,7 @@ export interface ConsumerProfile {
     phone: string;
     email?: string;
     sales_person?: string;
+    sales_person_id?: string; // Link to auth.users
     housing_project?: string; // New field
     booking_fee_status?: 'paid' | 'unpaid'; // Added field
     created_at: string;
@@ -103,6 +96,7 @@ export interface ConsumerProfile {
 
     // Data Sumber
     source?: string; // Sumber Konsumen
+    bank_process?: string; // Proses Bank
 }
 
 export interface ConsumerFollowUp {
@@ -115,4 +109,22 @@ export interface ConsumerFollowUp {
     status: 'pending' | 'approved' | 'rejected';
     photo_url?: string;
     created_at: string;
+}
+
+export interface ConsumerPemberkasan {
+    id: string;
+    consumer_id: string;
+    booking: boolean;
+    slik_ojk: boolean;
+    proses_berkas: boolean;
+    ots: boolean;
+    penginputan: boolean;
+    analis_data: boolean;
+    lpa_aprasial: boolean;
+    pip: boolean;
+    pk: boolean;
+    akad: boolean;
+    pencairan_akad: boolean;
+    updated_at: string;
+    updated_by?: string;
 }

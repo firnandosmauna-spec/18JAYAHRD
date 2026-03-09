@@ -340,10 +340,12 @@ export interface NotificationRecord {
   id: string
   title: string
   message: string
-  type: 'info' | 'success' | 'warning' | 'error'
+  type: 'info' | 'success' | 'warning' | 'error' | 'announcement' | 'mandatory_announcement'
   module: string
   user_id?: string
   read: boolean
+  is_mandatory?: boolean
+  is_popup?: boolean
   created_at: string
   updated_at: string
 }

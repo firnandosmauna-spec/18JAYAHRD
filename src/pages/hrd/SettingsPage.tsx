@@ -17,7 +17,8 @@ import { GeneralSettings, DEFAULT_GENERAL_SETTINGS, AttendanceSettings, DEFAULT_
 import { UserManagement } from "@/components/hrd/UserManagement";
 import { RewardTypeManagement } from "@/components/hrd/RewardTypeManagement";
 import { Textarea } from "@/components/ui/textarea";
-import { Award } from "lucide-react";
+import { Award, Megaphone } from "lucide-react";
+import { AnnouncementManagement } from "@/components/hrd/AnnouncementManagement";
 
 const generalSchema = z.object({
     company_name: z.string().min(1, "Nama perusahaan wajib diisi"),
@@ -290,6 +291,10 @@ export default function SettingsPage() {
                     <TabsTrigger value="payroll">Payroll</TabsTrigger>
                     <TabsTrigger value="reward">Reward</TabsTrigger>
                     <TabsTrigger value="sop">SOP</TabsTrigger>
+                    <TabsTrigger value="announcement" className="flex items-center gap-1.5">
+                        <Megaphone className="w-3.5 h-3.5" />
+                        Pengumuman
+                    </TabsTrigger>
                     <TabsTrigger value="accounting">Akunting</TabsTrigger>
                 </TabsList>
 
@@ -793,6 +798,10 @@ export default function SettingsPage() {
                             </form>
                         </CardContent>
                     </Card>
+                </TabsContent>
+
+                <TabsContent value="announcement">
+                    <AnnouncementManagement />
                 </TabsContent>
 
                 <TabsContent value="sop">

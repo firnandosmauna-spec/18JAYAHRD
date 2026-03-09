@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Filter, Phone, Mail, User, MapPin, Plus, Loader2, Briefcase, Heart, Users, LayoutGrid, List, Pencil, Trash } from 'lucide-react';
+import { Search, Filter, Phone, Mail, User, MapPin, Plus, Loader2, Briefcase, Heart, Users, LayoutGrid, List, Pencil, Trash, CheckCircle2 } from 'lucide-react';
+import { ConsumerPemberkasan } from './ConsumerPemberkasan';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -49,10 +50,13 @@ export default function ConsumerDatabaseView() {
         family_relationship: '',
         family_phone: '',
         family_address: '',
-        source: ''
+        source: '',
+        bank_process: ''
     });
     const [submitting, setSubmitting] = useState(false);
     const [activeTab, setActiveTab] = useState('data-diri');
+    const [marketingStaff, setMarketingStaff] = useState<any[]>([]);
+    const [projectList, setProjectList] = useState<string[]>([]);
 
     const fetchConsumers = async () => {
         setLoading(true);
@@ -76,19 +80,34 @@ export default function ConsumerDatabaseView() {
         }
     };
 
-    useEffect(() => {
-        fetchConsumers();
-        fetchProjects();
-    }, []);
+    const fetchMarketingStaff = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select(`
+                    id, 
+                    name, 
+                    role,
+                    employees:employee_id (
+                        position,
+                        department
+                    )
+                `)
+                .in('role', ['staff', 'manager', 'Administrator'])
+                .order('name');
 
-    const [projectList, setProjectList] = useState<string[]>([]);
+            if (data) setMarketingStaff(data);
+        } catch (error) {
+            console.error('Error fetching staff:', error);
+        }
+    };
 
     const fetchProjects = async () => {
         try {
             const { data, error } = await supabase
                 .from('projects')
                 .select('name')
-                .eq('status', 'in-progress'); // Optional: filter active projects only?
+                .eq('status', 'in-progress');
 
             if (data) {
                 setProjectList(data.map(p => p.name));
@@ -98,9 +117,16 @@ export default function ConsumerDatabaseView() {
         }
     };
 
+    useEffect(() => {
+        fetchConsumers();
+        fetchMarketingStaff();
+        fetchProjects();
+    }, []);
+
     const [editingId, setEditingId] = useState<string | null>(null);
 
     const [selectedConsumer, setSelectedConsumer] = useState<ConsumerProfile | null>(null);
+    const [pemberkasanConsumer, setPemberkasanConsumer] = useState<ConsumerProfile | null>(null);
 
     const handleEdit = (consumer: ConsumerProfile) => {
         setFormData({
@@ -111,6 +137,7 @@ export default function ConsumerDatabaseView() {
             phone: consumer.phone,
             email: consumer.email,
             sales_person: consumer.sales_person,
+            sales_person_id: consumer.sales_person_id,
             housing_project: consumer.housing_project,
             npwp: consumer.npwp,
             company_id_number: consumer.company_id_number,
@@ -131,7 +158,8 @@ export default function ConsumerDatabaseView() {
             family_relationship: consumer.family_relationship || '',
             family_phone: consumer.family_phone,
             family_address: consumer.family_address,
-            source: consumer.source || ''
+            source: consumer.source || '',
+            bank_process: consumer.bank_process || ''
         });
         setEditingId(consumer.id);
         setIsAddDialogOpen(true);
@@ -221,6 +249,7 @@ export default function ConsumerDatabaseView() {
                 phone: '',
                 email: '',
                 sales_person: '',
+                sales_person_id: '',
                 npwp: '',
                 company_id_number: '',
                 booking_remarks: '',
@@ -240,7 +269,8 @@ export default function ConsumerDatabaseView() {
                 family_relationship: '',
                 family_phone: '',
                 family_address: '',
-                source: ''
+                source: '',
+                bank_process: ''
             });
             setActiveTab('data-diri');
             fetchConsumers();
@@ -267,6 +297,7 @@ export default function ConsumerDatabaseView() {
                 phone: '',
                 email: '',
                 sales_person: '',
+                sales_person_id: '',
                 npwp: '',
                 company_id_number: '',
                 booking_remarks: '',
@@ -287,7 +318,8 @@ export default function ConsumerDatabaseView() {
                 family_phone: '',
 
                 family_address: '',
-                source: ''
+                source: '',
+                bank_process: ''
             });
             setEditingId(null);
         }
@@ -464,11 +496,7 @@ export default function ConsumerDatabaseView() {
                                                                             </SelectItem>
                                                                         ))
                                                                     ) : (
-                                                                        HOUSING_PROJECTS.map((project) => (
-                                                                            <SelectItem key={project} value={project}>
-                                                                                {project}
-                                                                            </SelectItem>
-                                                                        ))
+                                                                        <SelectItem value="none" disabled>Tidak ada proyek aktif</SelectItem>
                                                                     )}
                                                                 </SelectContent>
                                                             </Select>
@@ -476,29 +504,68 @@ export default function ConsumerDatabaseView() {
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label htmlFor="sales_person">Nama Sales / Marketing</Label>
-                                                        <Input id="sales_person" name="sales_person" value={formData.sales_person} onChange={handleInputChange} placeholder="Nama sales yang menangani" />
+                                                        <Select
+                                                            value={formData.sales_person_id || ''}
+                                                            onValueChange={(val) => {
+                                                                const staff = marketingStaff.find(s => s.id === val);
+                                                                setFormData(prev => ({
+                                                                    ...prev,
+                                                                    sales_person_id: val,
+                                                                    sales_person: staff?.name || ''
+                                                                }));
+                                                            }}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Pilih Sales/Marketing" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {marketingStaff.map((staff) => (
+                                                                    <SelectItem key={staff.id} value={staff.id}>
+                                                                        <div className="flex flex-col py-1">
+                                                                            <span className="font-medium">{staff.name}</span>
+                                                                            <span className="text-[10px] text-slate-500">
+                                                                                {staff.employees?.position || staff.role}
+                                                                                {staff.employees?.department ? ` - ${staff.employees.department}` : ''}
+                                                                            </span>
+                                                                        </div>
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
                                                     </div>
                                                 </div>
-                                                <div className="md:col-span-2 space-y-2 mt-4">
-                                                    <Label htmlFor="source">Sumber Konsumen</Label>
-                                                    <Select
-                                                        value={formData.source}
-                                                        onValueChange={(val) => handleSelectChange('source', val)}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Pilih Sumber" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="Medsos">Medsos (FB/IG/Tiktok)</SelectItem>
-                                                            <SelectItem value="Iklan Online">Iklan Online</SelectItem>
-                                                            <SelectItem value="Iklan Offline">Iklan Offline (Spanduk/Brosur)</SelectItem>
-                                                            <SelectItem value="Teman/Keluarga">Dikenalkan Teman/Keluarga</SelectItem>
-                                                            <SelectItem value="Pameran">Pameran / Event</SelectItem>
-                                                            <SelectItem value="Walk-in">Walk-in / Datang Langsung</SelectItem>
-                                                            <SelectItem value="Website">Website</SelectItem>
-                                                            <SelectItem value="Lainnya">Lainnya</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                                                <div className="md:col-span-2 grid grid-cols-2 gap-4 mt-4">
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="source">Sumber Konsumen</Label>
+                                                        <Select
+                                                            value={formData.source}
+                                                            onValueChange={(val) => handleSelectChange('source', val)}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Pilih Sumber" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="Medsos">Medsos (FB/IG/Tiktok)</SelectItem>
+                                                                <SelectItem value="Iklan Online">Iklan Online</SelectItem>
+                                                                <SelectItem value="Iklan Offline">Iklan Offline (Spanduk/Brosur)</SelectItem>
+                                                                <SelectItem value="Teman/Keluarga">Dikenalkan Teman/Keluarga</SelectItem>
+                                                                <SelectItem value="Pameran">Pameran / Event</SelectItem>
+                                                                <SelectItem value="Walk-in">Walk-in / Datang Langsung</SelectItem>
+                                                                <SelectItem value="Website">Website</SelectItem>
+                                                                <SelectItem value="Lainnya">Lainnya</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="bank_process">Proses Bank</Label>
+                                                        <Input
+                                                            id="bank_process"
+                                                            name="bank_process"
+                                                            value={formData.bank_process || ''}
+                                                            onChange={handleInputChange}
+                                                            placeholder=""
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         </TabsContent>
@@ -696,6 +763,12 @@ export default function ConsumerDatabaseView() {
                                                     <p className="font-medium">{selectedConsumer.source || '-'}</p>
                                                 </div>
                                                 <div>
+                                                    <Label className="text-slate-500 text-xs">Proses Bank</Label>
+                                                    <Badge variant="outline" className="font-medium bg-orange-50 text-orange-700 border-orange-200">
+                                                        {selectedConsumer.bank_process || '-'}
+                                                    </Badge>
+                                                </div>
+                                                <div>
                                                     <Label className="text-slate-500 text-xs">Gaji / Penghasilan</Label>
                                                     <p className="font-medium">
                                                         {selectedConsumer.salary ? `Rp ${selectedConsumer.salary.toLocaleString()}` : '-'}
@@ -812,6 +885,29 @@ export default function ConsumerDatabaseView() {
                 </div>
             </div >
 
+            {/* Pemberkasan Dialog */}
+            <Dialog open={!!pemberkasanConsumer} onOpenChange={(open) => !open && setPemberkasanConsumer(null)}>
+                <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden border-none shadow-2xl">
+                    <DialogHeader className="p-6 bg-slate-900 text-white">
+                        <DialogTitle className="text-xl">Progres Pemberkasan</DialogTitle>
+                        <DialogDescription className="text-slate-400">
+                            Kelola checklist dokumen untuk {pemberkasanConsumer?.name}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="p-6 max-h-[70vh] overflow-y-auto bg-slate-50">
+                        {pemberkasanConsumer && (
+                            <ConsumerPemberkasan
+                                consumerId={pemberkasanConsumer.id}
+                                consumerName={pemberkasanConsumer.name}
+                            />
+                        )}
+                    </div>
+                    <DialogFooter className="p-4 bg-white border-t">
+                        <Button onClick={() => setPemberkasanConsumer(null)}>Tutup</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {
                 loading ? (
                     <div className="flex justify-center items-center h-40" >
@@ -859,6 +955,13 @@ export default function ConsumerDatabaseView() {
                                                 <Briefcase className="w-3.5 h-3.5 text-slate-400" />
                                                 <span className="text-xs text-slate-600 truncate">{consumer.occupation || 'Belum diisi'}</span>
                                             </div>
+                                            {consumer.bank_process && (
+                                                <div className="mt-1">
+                                                    <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200">
+                                                        {consumer.bank_process}
+                                                    </Badge>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -870,6 +973,15 @@ export default function ConsumerDatabaseView() {
                                             onClick={() => setSelectedConsumer(consumer)}
                                         >
                                             Detail
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 w-8 p-0 text-emerald-600 border-emerald-100 hover:bg-emerald-50"
+                                            title="Pemberkasan"
+                                            onClick={() => setPemberkasanConsumer(consumer)}
+                                        >
+                                            <CheckCircle2 className="w-3.5 h-3.5" />
                                         </Button>
                                         <Button
                                             size="sm"
@@ -908,6 +1020,7 @@ export default function ConsumerDatabaseView() {
                                     <th className="px-4 py-3 font-medium whitespace-nowrap">Nama Pasangan</th>
                                     <th className="px-4 py-3 font-medium whitespace-nowrap">Kontak Darurat</th>
                                     <th className="px-4 py-3 font-medium whitespace-nowrap">Proyek</th>
+                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Proses Bank</th>
                                     <th className="px-4 py-3 font-medium whitespace-nowrap">Sales</th>
                                     <th className="px-4 py-3 font-medium whitespace-nowrap text-right">Aksi</th>
                                 </tr>
@@ -932,9 +1045,25 @@ export default function ConsumerDatabaseView() {
                                             ) : '-'}
                                         </td>
                                         <td className="px-4 py-3">{consumer.housing_project || '-'}</td>
+                                        <td className="px-4 py-3">
+                                            {consumer.bank_process ? (
+                                                <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200">
+                                                    {consumer.bank_process}
+                                                </Badge>
+                                            ) : '-'}
+                                        </td>
                                         <td className="px-4 py-3">{consumer.sales_person || '-'}</td>
                                         <td className="px-4 py-3 text-right">
                                             <div className="flex justify-end gap-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+                                                    title="Pemberkasan"
+                                                    onClick={() => setPemberkasanConsumer(consumer)}
+                                                >
+                                                    <CheckCircle2 className="h-4 w-4" />
+                                                </Button>
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"

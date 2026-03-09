@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ModuleLayout from '@/components/layout/ModuleLayout';
-import { Trello, Users, FileText, MessageSquare } from 'lucide-react'; // Added MessageSquare
+import { Trello, Users, FileText, MessageSquare, CheckCircle2 } from 'lucide-react'; // Added MessageSquare
 import { supabase } from '@/lib/supabase';
 import { Pipeline } from '@/components/marketing/MarketingTypes';
 
 // import PipelineView from '@/components/marketing/PipelineView'; // Removed
 import ConsumerDatabaseView from '@/components/marketing/ConsumerDatabaseView';
 import FollowUpView from '@/components/marketing/FollowUpView'; // Added FollowUpView import
+import PemberkasanView from '@/components/marketing/PemberkasanView';
 import AkadProcessView from '@/components/marketing/AkadProcessView';
 
 export default function MarketingModule() {
@@ -54,7 +55,7 @@ export default function MarketingModule() {
             navItems={[
                 { label: 'Master Konsumen', href: '/marketing/master', icon: Users },
                 { label: 'Follow Up', href: '/marketing/followup', icon: MessageSquare }, // Added
-                // { label: 'Progres Konsumen', href: '/marketing/progress', icon: Trello }, // Removed
+                { label: 'Pengerjaan Pemberkasan', href: '/marketing/pemberkasan', icon: CheckCircle2 },
                 { label: 'Final Laporan Konsumen', href: '/marketing/final', icon: FileText },
             ]}
         >
@@ -62,7 +63,7 @@ export default function MarketingModule() {
                 <Route path="/" element={<Navigate to="master" replace />} />
                 <Route path="master" element={<ConsumerDatabaseView />} />
                 <Route path="followup" element={<FollowUpView />} /> {/* Added */}
-                {/* <Route path="progress" element={<PipelineView pipelines={pipelines} loading={loading} onRefresh={fetchPipelines} />} /> Removed */}
+                <Route path="pemberkasan" element={<PemberkasanView />} />
                 <Route path="final" element={<AkadProcessView pipelines={pipelines} onUpdate={fetchPipelines} />} />
             </Routes>
         </ModuleLayout>

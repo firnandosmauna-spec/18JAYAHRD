@@ -21,7 +21,17 @@ import {
     Award,
     Loader2,
     RefreshCw,
+    Megaphone,
+    X,
 } from 'lucide-react';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -50,6 +60,8 @@ export function ESSPortal() {
     const [activeTab, setActiveTab] = useState('overview');
     const [isLinking, setIsLinking] = useState(false);
     const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
+    const [currentAnnouncement, setCurrentAnnouncement] = useState<any | null>(null);
+    const { markAsRead } = useNotificationsContext();
 
     // Load attendance settings
     useEffect(() => {
@@ -93,6 +105,34 @@ export function ESSPortal() {
         };
         attemptAutoLink();
     }, [user, updateProfile, toast, attendanceSettings]);
+
+    // Check for unread announcements or mandatory messages
+    useEffect(() => {
+        if (!loading && notifications.length > 0 && !currentAnnouncement) {
+            const announcement = notifications.find(n =>
+                !n.read &&
+                (n.type === 'announcement' || n.type === 'mandatory_announcement' || n.is_popup)
+            );
+            if (announcement) {
+                setCurrentAnnouncement(announcement);
+            }
+        }
+    }, [notifications, loading, currentAnnouncement]);
+
+    const handleAcknowledgeAnnouncement = async () => {
+        if (currentAnnouncement) {
+            try {
+                await markAsRead(currentAnnouncement.id);
+                setCurrentAnnouncement(null);
+                toast({
+                    title: "Berhasil",
+                    description: "Pengumuman telah dibaca.",
+                });
+            } catch (error) {
+                console.error("Failed to mark announcement as read:", error);
+            }
+        }
+    };
 
     // Calculate employee duration from join_date to now
     function calculateEmployeeDuration(joinDate: string): string {
@@ -187,6 +227,59 @@ export function ESSPortal() {
             animate="visible"
             className="space-y-6"
         >
+            {/* Announcement Popup */}
+            <Dialog
+                open={!!currentAnnouncement}
+                onOpenChange={(open) => {
+                    if (!open && currentAnnouncement?.type !== 'mandatory_announcement' && !currentAnnouncement?.is_mandatory) {
+                        setCurrentAnnouncement(null);
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-md border-none p-0 overflow-hidden rounded-2xl shadow-2xl">
+                    <div className={`p-6 ${currentAnnouncement?.type === 'mandatory_announcement' || currentAnnouncement?.is_mandatory
+                        ? 'bg-gradient-to-br from-orange-500 to-red-600 text-white'
+                        : 'bg-gradient-to-br from-hrd to-hrd-dark text-white'
+                        }`}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                                <Megaphone className="w-6 h-6" />
+                            </div>
+                            <h2 className="text-xl font-bold font-display">Pengumuman Penting</h2>
+                        </div>
+                        <h3 className="text-lg font-semibold leading-tight">{currentAnnouncement?.title}</h3>
+                    </div>
+
+                    <div className="p-6 bg-white">
+                        <div className="text-gray-700 font-body leading-relaxed whitespace-pre-wrap max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
+                            {currentAnnouncement?.message}
+                        </div>
+
+                        <div className="mt-8 flex flex-col gap-3">
+                            <Button
+                                onClick={handleAcknowledgeAnnouncement}
+                                className={`w-full h-12 rounded-xl font-bold text-base shadow-lg transition-all active:scale-95 ${currentAnnouncement?.type === 'mandatory_announcement' || currentAnnouncement?.is_mandatory
+                                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                                    : 'bg-hrd hover:bg-hrd-dark text-white'
+                                    }`}
+                            >
+                                Saya Mengerti & Setuju
+                            </Button>
+
+                            {(!currentAnnouncement?.is_mandatory && currentAnnouncement?.type !== 'mandatory_announcement') && (
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => setCurrentAnnouncement(null)}
+                                    className="w-full text-gray-500 hover:text-gray-700 font-body text-sm"
+                                >
+                                    Lewati Sementara
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* Header Profile */}
             <motion.div
                 variants={itemVariants}
