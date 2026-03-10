@@ -75,7 +75,7 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                 volume: existingProduct.volume || '',
                 project_location: existingProduct.project_location || '',
                 purchase_payment_method: existingProduct.purchase_payment_method || 'CASH',
-                supplier_id: existingProduct.supplier_id || '',
+                supplier_id: existingProduct.supplier_id || existingProduct.suppliers?.id || '',
             });
         } else {
             resetForm();
@@ -130,6 +130,7 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                 volume: formData.volume || null,
                 project_location: formData.project_location || null,
                 purchase_payment_method: formData.purchase_payment_method,
+                supplier_id: formData.supplier_id || null,
                 status: 'active'
             };
 

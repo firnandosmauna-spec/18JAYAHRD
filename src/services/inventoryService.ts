@@ -109,160 +109,267 @@ export const warehouseService = {
 // Product Services
 export const productService = {
   async getAll() {
-    const { data, error } = await supabase
-      .from('products')
-      .select(`
-        *,
-        product_categories (
-          id,
-          name
-        ),
-        warehouses (
-          id,
-          name
-        )
-      `)
-      .order('created_at', { ascending: false })
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          product_categories (id, name),
+          warehouses (id, name),
+          suppliers (id, name)
+        `)
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      // If table doesn't exist, return empty array instead of throwing
-      if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
-        console.warn('Products table does not exist yet. Please run the schema.sql in Supabase.');
-        return [];
+      if (error) {
+        // If error is related to suppliers table/join, fallback to query without suppliers
+        if (error.message?.toLowerCase().includes('suppliers') || error.code === 'PGRST116') {
+          console.warn('Falling back to basic product fetch due to supplier join error:', error.message);
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('products')
+            .select('*, product_categories (id, name), warehouses (id, name)')
+            .order('created_at', { ascending: false });
+
+          if (fallbackError) throw fallbackError;
+          return fallbackData || [];
+        }
+        throw error;
       }
-      throw error;
+      return data || [];
+    } catch (err: any) {
+      console.error('Error fetching products:', err);
+      // Final fallback to just products if everything else fails
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+          return [];
+        }
+        throw error;
+      }
+      return data || [];
     }
-    return data || []
   },
 
   async getById(id: string) {
-    const { data, error } = await supabase
-      .from('products')
-      .select(`
-        *,
-        product_categories (
-          id,
-          name
-        ),
-        warehouses (
-          id,
-          name
-        )
-      `)
-      .eq('id', id)
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          product_categories (id, name),
+          warehouses (id, name),
+          suppliers (id, name)
+        `)
+        .eq('id', id)
+        .single();
 
-    if (error) throw error
-    return data
+      if (error) {
+        if (error.message?.toLowerCase().includes('suppliers') || error.code === 'PGRST116') {
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('products')
+            .select('*, product_categories (id, name), warehouses (id, name)')
+            .eq('id', id)
+            .single();
+          if (fallbackError) throw fallbackError;
+          return fallbackData;
+        }
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return data;
+    }
   },
 
   async getByCategory(categoryId: string) {
-    const { data, error } = await supabase
-      .from('products')
-      .select(`
-        *,
-        product_categories (
-          id,
-          name
-        ),
-        warehouses (
-          id,
-          name
-        )
-      `)
-      .eq('category_id', categoryId)
-      .order('name', { ascending: true })
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          product_categories (id, name),
+          warehouses (id, name),
+          suppliers (id, name)
+        `)
+        .eq('category_id', categoryId)
+        .order('name', { ascending: true });
 
-    if (error) throw error
-    return data
+      if (error) {
+        if (error.message?.toLowerCase().includes('suppliers') || error.code === 'PGRST116') {
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('products')
+            .select('*, product_categories (id, name), warehouses (id, name)')
+            .eq('category_id', categoryId)
+            .order('name', { ascending: true });
+          if (fallbackError) throw fallbackError;
+          return fallbackData || [];
+        }
+        throw error;
+      }
+      return data || [];
+    } catch (err) {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('category_id', categoryId)
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    }
   },
 
   async getLowStock() {
-    // Get all products and filter in JavaScript since Supabase doesn't support column comparison in filter
-    const { data, error } = await supabase
-      .from('products')
-      .select(`
-        *,
-        product_categories (
-          id,
-          name
-        ),
-        warehouses (
-          id,
-          name
-        )
-      `)
-      .eq('status', 'active')
-      .order('stock', { ascending: true })
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          product_categories (id, name),
+          warehouses (id, name),
+          suppliers (id, name)
+        `)
+        .eq('status', 'active')
+        .order('stock', { ascending: true });
 
-    if (error) {
-      // If table doesn't exist, return empty array instead of throwing
-      if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
-        console.warn('Products table does not exist yet. Please run the schema.sql in Supabase.');
-        return [];
+      if (error) {
+        if (error.message?.toLowerCase().includes('suppliers') || error.code === 'PGRST116') {
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('products')
+            .select('*, product_categories (id, name), warehouses (id, name)')
+            .eq('status', 'active')
+            .order('stock', { ascending: true });
+
+          if (fallbackError) throw fallbackError;
+          return (fallbackData || []).filter(product => product.stock <= product.min_stock);
+        }
+        throw error;
       }
-      throw error;
+      return (data || []).filter(product => product.stock <= product.min_stock);
+    } catch (err) {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('status', 'active')
+        .order('stock', { ascending: true });
+      if (error) return [];
+      return (data || []).filter(product => product.stock <= product.min_stock);
     }
-
-    if (!data) return [];
-
-    // Filter products where stock <= min_stock
-    return data.filter(product => product.stock <= product.min_stock)
   },
 
   async create(product: Omit<Product, 'id' | 'created_at' | 'updated_at'>) {
-    const { data, error } = await supabase
-      .from('products')
-      .insert(product)
-      .select(`
-        *,
-        product_categories (
-          id,
-          name
-        ),
-        warehouses (
-          id,
-          name
-        )
-      `)
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .insert(product)
+        .select(`
+          *,
+          product_categories (
+            id,
+            name
+          ),
+          warehouses (
+            id,
+            name
+          ),
+          suppliers (
+            id,
+            name
+          )
+        `)
+        .single()
 
-    if (error) {
-      // Better error handling
-      if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
-        throw new Error('Products table does not exist. Please run the schema.sql in Supabase SQL Editor.');
+      if (error) {
+        // If error is related to suppliers table/join (PGRST200), fallback to selection without suppliers
+        if (error.message?.toLowerCase().includes('suppliers') || error.code === 'PGRST200') {
+          console.warn('Falling back to basic product create return due to join error:', error.message);
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('products')
+            .insert(product)
+            .select(`
+              *,
+              product_categories (id, name),
+              warehouses (id, name)
+            `)
+            .single();
+          if (fallbackError) throw fallbackError;
+          return fallbackData;
+        }
+
+        // Better error handling for other codes
+        if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+          throw new Error('Products table does not exist. Please run the schema.sql in Supabase SQL Editor.');
+        }
+        if (error.code === '23505' || error.message?.includes('duplicate')) {
+          throw new Error('SKU sudah digunakan. Silakan gunakan SKU lain.');
+        }
+        if (error.code === '23503' || error.message?.includes('foreign key')) {
+          throw new Error('Kategori atau gudang yang dipilih tidak valid.');
+        }
+        throw error;
       }
-      if (error.code === '23505' || error.message?.includes('duplicate')) {
-        throw new Error('SKU sudah digunakan. Silakan gunakan SKU lain.');
-      }
-      if (error.code === '23503' || error.message?.includes('foreign key')) {
-        throw new Error('Kategori atau gudang yang dipilih tidak valid.');
-      }
-      throw error;
+      return data
+    } catch (err) {
+      console.error('Save product error (catch):', err);
+      throw err;
     }
-    return data
   },
 
   async update(id: string, updates: Partial<Omit<Product, 'id' | 'created_at'>>) {
-    const { data, error } = await supabase
-      .from('products')
-      .update(updates)
-      .eq('id', id)
-      .select(`
-        *,
-        product_categories (
-          id,
-          name
-        ),
-        warehouses (
-          id,
-          name
-        )
-      `)
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .update(updates)
+        .eq('id', id)
+        .select(`
+          *,
+          product_categories (
+            id,
+            name
+          ),
+          warehouses (
+            id,
+            name
+          ),
+          suppliers (
+            id,
+            name
+          )
+        `)
+        .single()
 
-    if (error) throw error
-    return data
+      if (error) {
+        // If error is related to suppliers table/join (PGRST200), fallback to selection without suppliers
+        if (error.message?.toLowerCase().includes('suppliers') || error.code === 'PGRST200') {
+          console.warn('Falling back to basic product update return due to join error:', error.message);
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('products')
+            .update(updates)
+            .eq('id', id)
+            .select(`
+              *,
+              product_categories (id, name),
+              warehouses (id, name)
+            `)
+            .single();
+          if (fallbackError) throw fallbackError;
+          return fallbackData;
+        }
+        throw error;
+      }
+      return data
+    } catch (err) {
+      console.error('Update product error (catch):', err);
+      throw err;
+    }
   },
 
   async delete(id: string) {
@@ -371,7 +478,11 @@ export const stockMovementService = {
     const { data: movementData, error: movementError } = await supabase
       .from('stock_movements')
       .insert(movement)
-      .select()
+      .select(`
+        *,
+        products (id, name, sku, price),
+        warehouses (id, name)
+      `)
       .single()
 
     if (movementError) throw movementError
@@ -418,7 +529,11 @@ export const stockMovementService = {
       .from('stock_movements')
       .update(updates)
       .eq('id', id)
-      .select()
+      .select(`
+        *,
+        products (id, name, sku, price),
+        warehouses (id, name)
+      `)
       .single()
 
     if (updateError) throw updateError

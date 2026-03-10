@@ -184,6 +184,11 @@ export interface Database {
         Insert: Omit<CompanySOP, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<CompanySOP, 'id' | 'created_at'>>
       }
+      consumer_profiles: {
+        Row: ConsumerProfile
+        Insert: Omit<ConsumerProfile, 'id' | 'created_at'>
+        Update: Partial<Omit<ConsumerProfile, 'id' | 'created_at'>>
+      }
     }
   }
 }
@@ -475,6 +480,18 @@ export interface Product {
   project_location?: string
   purchase_payment_method?: 'CASH' | 'Hutang'
   supplier_id?: string
+  suppliers?: {
+    id: string
+    name: string
+  }
+  product_categories?: {
+    id: string
+    name: string
+  }
+  warehouses?: {
+    id: string
+    name: string
+  }
   created_at: string
   updated_at: string
 }
@@ -569,4 +586,40 @@ export interface ProjectWorker {
     name: string
     position: string
   }
+}
+
+export interface ConsumerProfile {
+  id: string
+  code: string
+  name: string
+  id_card_number?: string
+  address?: string
+  phone?: string
+  email?: string
+  sales_person?: string
+  sales_person_id?: string
+  housing_project?: string
+  booking_fee_status?: 'paid' | 'unpaid'
+  npwp?: string
+  company_id_number?: string
+  booking_remarks?: string
+  salary?: number
+  occupation?: string
+  employer_name?: string
+  employer_address?: string
+  employer_phone?: string
+  employer_remarks?: string
+  marital_status?: string
+  spouse_name?: string
+  spouse_phone?: string
+  spouse_occupation?: string
+  spouse_office_address?: string
+  spouse_remarks?: string
+  family_name?: string
+  family_relationship?: string
+  family_phone?: string
+  family_address?: string
+  source?: string
+  bank_process?: string
+  created_at: string
 }

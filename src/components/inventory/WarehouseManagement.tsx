@@ -5,8 +5,7 @@ import {
     Search,
     Edit,
     Trash2,
-    MapPin,
-    Capacity
+    MapPin
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -286,7 +285,7 @@ export function WarehouseManagement() {
                                 <MapPin className="w-4 h-4 mt-0.5 text-gray-400 shrink-0" />
                                 <span>{wh.location || 'Lokasi tidak diatur.'}</span>
                             </div>
-                            {wh.capacity > 0 && (
+                            {(wh.capacity ?? 0) > 0 && (
                                 <div className="flex items-center gap-2 text-sm text-gray-600 font-body">
                                     <span className="text-gray-400 font-bold shrink-0">📦</span>
                                     <span>Kapasitas: {wh.capacity.toLocaleString()} unit</span>

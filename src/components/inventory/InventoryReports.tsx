@@ -271,8 +271,8 @@ export function InventoryReports() {
                                 <TableHead className="font-body">Produk</TableHead>
                                 <TableHead className="font-body">Tipe</TableHead>
                                 <TableHead className="font-body text-right">Jumlah</TableHead>
-                                <TableHead className="font-body text-right">Harga Satuan</TableHead>
-                                <TableHead className="font-body text-right">Total Harga</TableHead>
+                                <TableHead className="font-body text-right">Harga Satuan (IDR)</TableHead>
+                                <TableHead className="font-body text-right">Total Harga (IDR)</TableHead>
                                 <TableHead className="font-body">Referensi</TableHead>
                                 <TableHead className="font-body">Keterangan</TableHead>
                             </TableRow>

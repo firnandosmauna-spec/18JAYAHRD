@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/lib/supabase';
 import { ConsumerProfile, HOUSING_PROJECTS } from './MarketingTypes';
 import { useToast } from '@/components/ui/use-toast';
+import { useProjectLocations } from '@/hooks/useInventory';
 
 export default function ConsumerDatabaseView() {
     const [consumers, setConsumers] = useState<ConsumerProfile[]>([]);
@@ -30,6 +31,7 @@ export default function ConsumerDatabaseView() {
         phone: '',
         email: '',
         sales_person: '',
+        sales_person_id: null,
         housing_project: '',
         npwp: '',
         company_id_number: '',
@@ -56,6 +58,7 @@ export default function ConsumerDatabaseView() {
     const [submitting, setSubmitting] = useState(false);
     const [activeTab, setActiveTab] = useState('data-diri');
     const [marketingStaff, setMarketingStaff] = useState<any[]>([]);
+    const { locations: projectLocations, loading: loadingProjects } = useProjectLocations();
     const [projectList, setProjectList] = useState<string[]>([]);
 
     const fetchConsumers = async () => {
@@ -88,40 +91,31 @@ export default function ConsumerDatabaseView() {
                     id, 
                     name, 
                     role,
-                    employees:employee_id (
+                    employees!fk_profiles_employee(
                         position,
                         department
                     )
                 `)
-                .in('role', ['staff', 'manager', 'Administrator'])
                 .order('name');
-
+            if (error) throw error;
             if (data) setMarketingStaff(data);
         } catch (error) {
             console.error('Error fetching staff:', error);
         }
     };
 
-    const fetchProjects = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('projects')
-                .select('name')
-                .eq('status', 'in-progress');
-
-            if (data) {
-                setProjectList(data.map(p => p.name));
-            }
-        } catch (error) {
-            console.error('Error fetching projects:', error);
-        }
-    };
+    // Projects are now sourced from inventory project locations via useProjectLocations hook
+    // Removed legacy fetchProjects logic; project list is synced via useProjectLocations hook
 
     useEffect(() => {
         fetchConsumers();
         fetchMarketingStaff();
-        fetchProjects();
     }, []);
+
+    // Sync project list with locations from hook
+    useEffect(() => {
+        if (projectLocations) setProjectList(projectLocations);
+    }, [projectLocations]);
 
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -211,12 +205,61 @@ export default function ConsumerDatabaseView() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
+
         try {
+            // Prepare Payload
+            const payload: any = {
+                code: formData.code,
+                name: formData.name
+            };
+
+            const safeAdd = (key: string, value: any) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    payload[key] = value;
+                }
+            };
+
+            // Add all optional fields safely
+            safeAdd('address', formData.address);
+            safeAdd('phone', formData.phone);
+            safeAdd('email', formData.email);
+            safeAdd('id_card_number', formData.id_card_number); // Missing field!
+            safeAdd('sales_person', formData.sales_person);
+            safeAdd('sales_person_id', formData.sales_person_id);
+            safeAdd('housing_project', formData.housing_project);
+            safeAdd('npwp', formData.npwp);
+            safeAdd('company_id_number', formData.company_id_number);
+            safeAdd('booking_remarks', formData.booking_remarks);
+
+            // Explicit conversion for numeric fields
+            if (formData.salary !== undefined && formData.salary !== null && (formData.salary as any) !== '') {
+                const numSalary = Number(formData.salary);
+                payload.salary = isNaN(numSalary) ? null : numSalary;
+            }
+
+            safeAdd('occupation', formData.occupation);
+            safeAdd('employer_name', formData.employer_name);
+            safeAdd('employer_address', formData.employer_address);
+            safeAdd('employer_phone', formData.employer_phone);
+            safeAdd('employer_remarks', formData.employer_remarks);
+            safeAdd('marital_status', formData.marital_status);
+            safeAdd('spouse_name', formData.spouse_name);
+            safeAdd('spouse_phone', formData.spouse_phone);
+            safeAdd('spouse_occupation', formData.spouse_occupation);
+            safeAdd('spouse_office_address', formData.spouse_office_address);
+            safeAdd('spouse_remarks', formData.spouse_remarks);
+            safeAdd('family_name', formData.family_name);
+            safeAdd('family_relationship', formData.family_relationship);
+            safeAdd('family_phone', formData.family_phone);
+            safeAdd('family_address', formData.family_address);
+            safeAdd('source', formData.source);
+            safeAdd('bank_process', formData.bank_process);
+
+            // 2. Database Operation
             if (editingId) {
-                // Update existing consumer
                 const { error } = await supabase
                     .from('consumer_profiles')
-                    .update(formData)
+                    .update(payload)
                     .eq('id', editingId);
 
                 if (error) throw error;
@@ -226,10 +269,9 @@ export default function ConsumerDatabaseView() {
                     description: "Data konsumen berhasil diperbarui",
                 });
             } else {
-                // Insert new consumer
                 const { error } = await supabase
                     .from('consumer_profiles')
-                    .insert([formData]);
+                    .insert([payload]);
 
                 if (error) throw error;
 
@@ -249,7 +291,7 @@ export default function ConsumerDatabaseView() {
                 phone: '',
                 email: '',
                 sales_person: '',
-                sales_person_id: '',
+                sales_person_id: null,
                 npwp: '',
                 company_id_number: '',
                 booking_remarks: '',
@@ -275,10 +317,16 @@ export default function ConsumerDatabaseView() {
             setActiveTab('data-diri');
             fetchConsumers();
         } catch (error: any) {
-            console.error('Error saving consumer:', error);
+            let errorMessage = error.message || "Gagal menyimpan data konsumen";
+
+            // Helpful message for missing columns
+            if (error.code === 'PGRST204' || (error.message && error.message.includes('column'))) {
+                errorMessage = "Error database: Kolom baru mungkin belum terdaftar atau ada ketidaksesuaian tipe data.";
+            }
+
             toast({
                 title: "Error",
-                description: error.message || "Gagal menyimpan data konsumen",
+                description: `${errorMessage}. ${error.details || ''}`,
                 variant: "destructive"
             });
         } finally {
@@ -297,7 +345,7 @@ export default function ConsumerDatabaseView() {
                 phone: '',
                 email: '',
                 sales_person: '',
-                sales_person_id: '',
+                sales_person_id: null,
                 npwp: '',
                 company_id_number: '',
                 booking_remarks: '',
@@ -426,7 +474,7 @@ export default function ConsumerDatabaseView() {
 
                                     <div className="max-h-[60vh] overflow-y-auto pr-2">
                                         {/* DATA DIRI */}
-                                        <TabsContent value="data-diri" className="space-y-4">
+                                        <TabsContent value="data-diri">
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div className="space-y-2">
                                                     <Label htmlFor="code">Kode Konsumen <span className="text-red-500">*</span></Label>
@@ -521,8 +569,8 @@ export default function ConsumerDatabaseView() {
                                                             <SelectContent>
                                                                 {marketingStaff.map((staff) => (
                                                                     <SelectItem key={staff.id} value={staff.id}>
-                                                                        <div className="flex flex-col py-1">
-                                                                            <span className="font-medium">{staff.name}</span>
+                                                                        <div className="flex flex-col">
+                                                                            <span>{staff.name}</span>
                                                                             <span className="text-[10px] text-slate-500">
                                                                                 {staff.employees?.position || staff.role}
                                                                                 {staff.employees?.department ? ` - ${staff.employees.department}` : ''}
@@ -534,38 +582,38 @@ export default function ConsumerDatabaseView() {
                                                         </Select>
                                                     </div>
                                                 </div>
-                                                <div className="md:col-span-2 grid grid-cols-2 gap-4 mt-4">
-                                                    <div className="space-y-2">
-                                                        <Label htmlFor="source">Sumber Konsumen</Label>
-                                                        <Select
-                                                            value={formData.source}
-                                                            onValueChange={(val) => handleSelectChange('source', val)}
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Pilih Sumber" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="Medsos">Medsos (FB/IG/Tiktok)</SelectItem>
-                                                                <SelectItem value="Iklan Online">Iklan Online</SelectItem>
-                                                                <SelectItem value="Iklan Offline">Iklan Offline (Spanduk/Brosur)</SelectItem>
-                                                                <SelectItem value="Teman/Keluarga">Dikenalkan Teman/Keluarga</SelectItem>
-                                                                <SelectItem value="Pameran">Pameran / Event</SelectItem>
-                                                                <SelectItem value="Walk-in">Walk-in / Datang Langsung</SelectItem>
-                                                                <SelectItem value="Website">Website</SelectItem>
-                                                                <SelectItem value="Lainnya">Lainnya</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <Label htmlFor="bank_process">Proses Bank</Label>
-                                                        <Input
-                                                            id="bank_process"
-                                                            name="bank_process"
-                                                            value={formData.bank_process || ''}
-                                                            onChange={handleInputChange}
-                                                            placeholder=""
-                                                        />
-                                                    </div>
+                                            </div>
+                                            <div className="md:col-span-2 grid grid-cols-2 gap-4 mt-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="source">Sumber Konsumen</Label>
+                                                    <Select
+                                                        value={formData.source}
+                                                        onValueChange={(val) => handleSelectChange('source', val)}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Pilih Sumber" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="Medsos">Medsos (FB/IG/Tiktok)</SelectItem>
+                                                            <SelectItem value="Iklan Online">Iklan Online</SelectItem>
+                                                            <SelectItem value="Iklan Offline">Iklan Offline (Spanduk/Brosur)</SelectItem>
+                                                            <SelectItem value="Teman/Keluarga">Dikenalkan Teman/Keluarga</SelectItem>
+                                                            <SelectItem value="Pameran">Pameran / Event</SelectItem>
+                                                            <SelectItem value="Walk-in">Walk-in / Datang Langsung</SelectItem>
+                                                            <SelectItem value="Website">Website</SelectItem>
+                                                            <SelectItem value="Lainnya">Lainnya</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="bank_process">Proses Bank</Label>
+                                                    <Input
+                                                        id="bank_process"
+                                                        name="bank_process"
+                                                        value={formData.bank_process || ''}
+                                                        onChange={handleInputChange}
+                                                        placeholder=""
+                                                    />
                                                 </div>
                                             </div>
                                         </TabsContent>
@@ -696,194 +744,195 @@ export default function ConsumerDatabaseView() {
                             </form>
                         </DialogContent>
                     </Dialog>
-
-                    {/* DETAIL DIALOG WITH ACTIONS */}
-                    <Dialog open={!!selectedConsumer} onOpenChange={(open) => !open && setSelectedConsumer(null)}>
-                        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
-                            <DialogHeader>
-                                <DialogTitle>Detail Data Konsumen</DialogTitle>
-                                <DialogDescription>
-                                    Informasi lengkap profil, pekerjaan, dan keluarga konsumen.
-                                </DialogDescription>
-                            </DialogHeader>
-                            {selectedConsumer && (
-                                <>
-                                    <Tabs defaultValue="data-diri" className="w-full mt-4">
-                                        <TabsList className="grid w-full grid-cols-4 mb-4">
-                                            <TabsTrigger value="data-diri">Data Diri</TabsTrigger>
-                                            <TabsTrigger value="pekerjaan">Pekerjaan</TabsTrigger>
-                                            <TabsTrigger value="pasangan">Pasangan</TabsTrigger>
-                                            <TabsTrigger value="keluarga">Keluarga</TabsTrigger>
-                                        </TabsList>
-
-                                        <TabsContent value="data-diri" className="space-y-4">
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <Label className="text-slate-500 text-xs">Kode Konsumen</Label>
-                                                    <p className="font-medium">{selectedConsumer.code || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <Label className="text-slate-500 text-xs">NPWP</Label>
-                                                    <p className="font-medium">{selectedConsumer.npwp || '-'}</p>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Nama Lengkap</Label>
-                                                <p className="font-medium text-lg">{selectedConsumer.name}</p>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <Label className="text-slate-500 text-xs">HP / WA</Label>
-                                                    <p className="font-medium">{selectedConsumer.phone || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <Label className="text-slate-500 text-xs">ID Perusahaan</Label>
-                                                    <p className="font-medium">{selectedConsumer.company_id_number || '-'}</p>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Nomor KTP (NIK)</Label>
-                                                <p className="font-medium">{selectedConsumer.id_card_number || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Alamat Lengkap</Label>
-                                                <p className="font-medium">{selectedConsumer.address || '-'}</p>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <Label className="text-slate-500 text-xs">Email</Label>
-                                                    <p className="font-medium">{selectedConsumer.email || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <Label className="text-slate-500 text-xs">Proyek Perumahan</Label>
-                                                    <p className="font-medium text-blue-600">{selectedConsumer.housing_project || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <Label className="text-slate-500 text-xs">Sumber Konsumen</Label>
-                                                    <p className="font-medium">{selectedConsumer.source || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <Label className="text-slate-500 text-xs">Proses Bank</Label>
-                                                    <Badge variant="outline" className="font-medium bg-orange-50 text-orange-700 border-orange-200">
-                                                        {selectedConsumer.bank_process || '-'}
-                                                    </Badge>
-                                                </div>
-                                                <div>
-                                                    <Label className="text-slate-500 text-xs">Gaji / Penghasilan</Label>
-                                                    <p className="font-medium">
-                                                        {selectedConsumer.salary ? `Rp ${selectedConsumer.salary.toLocaleString()}` : '-'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Keterangan / Booking</Label>
-                                                <p className="font-medium">{selectedConsumer.booking_remarks || '-'}</p>
-                                            </div>
-                                        </TabsContent>
-
-                                        <TabsContent value="pekerjaan" className="space-y-4">
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Pekerjaan</Label>
-                                                <p className="font-medium">{selectedConsumer.occupation || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Nama Perusahaan / Usaha</Label>
-                                                <p className="font-medium">{selectedConsumer.employer_name || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Alamat Perusahaan / Usaha</Label>
-                                                <p className="font-medium">{selectedConsumer.employer_address || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">No. Telp Perusahaan</Label>
-                                                <p className="font-medium">{selectedConsumer.employer_phone || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Keterangan Pekerjaan</Label>
-                                                <p className="font-medium">{selectedConsumer.employer_remarks || '-'}</p>
-                                            </div>
-                                        </TabsContent>
-
-                                        <TabsContent value="pasangan" className="space-y-4">
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Status Pernikahan</Label>
-                                                <p className="font-medium capitalize">{selectedConsumer.marital_status?.replace('_', ' ') || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Nama Pasangan</Label>
-                                                <p className="font-medium">{selectedConsumer.spouse_name || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">HP / WA Pasangan</Label>
-                                                <p className="font-medium">{selectedConsumer.spouse_phone || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Pekerjaan Pasangan</Label>
-                                                <p className="font-medium">{selectedConsumer.spouse_occupation || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Alamat Kantor Pasangan</Label>
-                                                <p className="font-medium">{selectedConsumer.spouse_office_address || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Keterangan Tambahan</Label>
-                                                <p className="font-medium">{selectedConsumer.spouse_remarks || '-'}</p>
-                                            </div>
-                                        </TabsContent>
-
-                                        <TabsContent value="keluarga" className="space-y-4">
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Nama Keluarga (Kontak Darurat)</Label>
-                                                <p className="font-medium">{selectedConsumer.family_name || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Hubungan</Label>
-                                                <p className="font-medium capitalize">{selectedConsumer.family_relationship?.replace('_', ' ') || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">HP / WA Keluarga</Label>
-                                                <p className="font-medium">{selectedConsumer.family_phone || '-'}</p>
-                                            </div>
-                                            <div>
-                                                <Label className="text-slate-500 text-xs">Alamat Keluarga</Label>
-                                                <p className="font-medium">{selectedConsumer.family_address || '-'}</p>
-                                            </div>
-                                            <div className="pt-4 border-t">
-                                                <Label className="text-slate-500 text-xs">Sales / Marketing</Label>
-                                                <p className="font-medium">{selectedConsumer.sales_person || '-'}</p>
-                                            </div>
-                                        </TabsContent>
-                                    </Tabs>
-
-                                    <div className="flex justify-between mt-6 pt-4 border-t">
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                                                onClick={() => {
-                                                    handleEdit(selectedConsumer);
-                                                    setSelectedConsumer(null);
-                                                }}
-                                            >
-                                                Edit Data
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                className="text-red-600 border-red-200 hover:bg-red-50"
-                                                onClick={() => handleDelete(selectedConsumer.id, selectedConsumer.name)}
-                                            >
-                                                Hapus
-                                            </Button>
-                                        </div>
-                                        <Button onClick={() => setSelectedConsumer(null)}>Tutup</Button>
-                                    </div>
-                                </>
-                            )}
-                        </DialogContent>
-                    </Dialog>
-
                 </div>
-            </div >
+            </div>
+
+            {/* DETAIL DIALOG WITH ACTIONS */}
+            <Dialog open={!!selectedConsumer} onOpenChange={(open) => {
+                if (!open) setSelectedConsumer(null);
+            }}>
+                <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Detail Data Konsumen</DialogTitle>
+                        <DialogDescription>
+                            Informasi lengkap profil, pekerjaan, dan keluarga konsumen.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {selectedConsumer && (
+                        <>
+                            <Tabs defaultValue="data-diri" className="w-full mt-4">
+                                <TabsList className="grid w-full grid-cols-4 mb-4">
+                                    <TabsTrigger value="data-diri">Data Diri</TabsTrigger>
+                                    <TabsTrigger value="pekerjaan">Pekerjaan</TabsTrigger>
+                                    <TabsTrigger value="pasangan">Pasangan</TabsTrigger>
+                                    <TabsTrigger value="keluarga">Keluarga</TabsTrigger>
+                                </TabsList>
+
+                                <TabsContent value="data-diri" className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <Label className="text-slate-500 text-xs">Kode Konsumen</Label>
+                                            <p className="font-medium">{selectedConsumer.code || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-slate-500 text-xs">NPWP</Label>
+                                            <p className="font-medium">{selectedConsumer.npwp || '-'}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Nama Lengkap</Label>
+                                        <p className="font-medium text-lg">{selectedConsumer.name}</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <Label className="text-slate-500 text-xs">HP / WA</Label>
+                                            <p className="font-medium">{selectedConsumer.phone || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-slate-500 text-xs">ID Perusahaan</Label>
+                                            <p className="font-medium">{selectedConsumer.company_id_number || '-'}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Nomor KTP (NIK)</Label>
+                                        <p className="font-medium">{selectedConsumer.id_card_number || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Alamat Lengkap</Label>
+                                        <p className="font-medium">{selectedConsumer.address || '-'}</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <Label className="text-slate-500 text-xs">Email</Label>
+                                            <p className="font-medium">{selectedConsumer.email || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-slate-500 text-xs">Proyek Perumahan</Label>
+                                            <p className="font-medium text-blue-600">{selectedConsumer.housing_project || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-slate-500 text-xs">Sumber Konsumen</Label>
+                                            <p className="font-medium">{selectedConsumer.source || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-slate-500 text-xs">Proses Bank</Label>
+                                            <Badge variant="outline" className="font-medium bg-orange-50 text-orange-700 border-orange-200">
+                                                {selectedConsumer.bank_process || '-'}
+                                            </Badge>
+                                        </div>
+                                        <div>
+                                            <Label className="text-slate-500 text-xs">Gaji / Penghasilan</Label>
+                                            <p className="font-medium">
+                                                {selectedConsumer.salary ? `Rp ${selectedConsumer.salary.toLocaleString()}` : '-'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Keterangan / Booking</Label>
+                                        <p className="font-medium">{selectedConsumer.booking_remarks || '-'}</p>
+                                    </div>
+                                </TabsContent>
+
+                                <TabsContent value="pekerjaan" className="space-y-4">
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Pekerjaan</Label>
+                                        <p className="font-medium">{selectedConsumer.occupation || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Nama Perusahaan / Usaha</Label>
+                                        <p className="font-medium">{selectedConsumer.employer_name || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Alamat Perusahaan / Usaha</Label>
+                                        <p className="font-medium">{selectedConsumer.employer_address || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">No. Telp Perusahaan</Label>
+                                        <p className="font-medium">{selectedConsumer.employer_phone || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Keterangan Pekerjaan</Label>
+                                        <p className="font-medium">{selectedConsumer.employer_remarks || '-'}</p>
+                                    </div>
+                                </TabsContent>
+
+                                <TabsContent value="pasangan" className="space-y-4">
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Status Pernikahan</Label>
+                                        <p className="font-medium capitalize">{selectedConsumer.marital_status?.replace('_', ' ') || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Nama Pasangan</Label>
+                                        <p className="font-medium">{selectedConsumer.spouse_name || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">HP / WA Pasangan</Label>
+                                        <p className="font-medium">{selectedConsumer.spouse_phone || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Pekerjaan Pasangan</Label>
+                                        <p className="font-medium">{selectedConsumer.spouse_occupation || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Alamat Kantor Pasangan</Label>
+                                        <p className="font-medium">{selectedConsumer.spouse_office_address || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Keterangan Tambahan</Label>
+                                        <p className="font-medium">{selectedConsumer.spouse_remarks || '-'}</p>
+                                    </div>
+                                </TabsContent>
+
+                                <TabsContent value="keluarga" className="space-y-4">
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Nama Keluarga (Kontak Darurat)</Label>
+                                        <p className="font-medium">{selectedConsumer.family_name || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Hubungan</Label>
+                                        <p className="font-medium capitalize">{selectedConsumer.family_relationship?.replace('_', ' ') || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">HP / WA Keluarga</Label>
+                                        <p className="font-medium">{selectedConsumer.family_phone || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-slate-500 text-xs">Alamat Keluarga</Label>
+                                        <p className="font-medium">{selectedConsumer.family_address || '-'}</p>
+                                    </div>
+                                    <div className="pt-4 border-t">
+                                        <Label className="text-slate-500 text-xs">Sales / Marketing</Label>
+                                        <p className="font-medium">{selectedConsumer.sales_person || '-'}</p>
+                                    </div>
+                                </TabsContent>
+                            </Tabs>
+
+                            <div className="flex justify-between mt-6 pt-4 border-t">
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                                        onClick={() => {
+                                            handleEdit(selectedConsumer);
+                                            setSelectedConsumer(null);
+                                        }}
+                                    >
+                                        Edit Data
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="text-red-600 border-red-200 hover:bg-red-50"
+                                        onClick={() => handleDelete(selectedConsumer.id, selectedConsumer.name)}
+                                    >
+                                        Hapus
+                                    </Button>
+                                </div>
+                                <Button onClick={() => setSelectedConsumer(null)}>Tutup</Button>
+                            </div>
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
 
             {/* Pemberkasan Dialog */}
             <Dialog open={!!pemberkasanConsumer} onOpenChange={(open) => !open && setPemberkasanConsumer(null)}>
@@ -910,7 +959,7 @@ export default function ConsumerDatabaseView() {
 
             {
                 loading ? (
-                    <div className="flex justify-center items-center h-40" >
+                    <div className="flex justify-center items-center h-40">
                         <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
                     </div>
                 ) : filteredConsumers.length === 0 ? (
@@ -1100,6 +1149,6 @@ export default function ConsumerDatabaseView() {
                     </div>
                 )
             }
-        </div >
+        </div>
     );
 }

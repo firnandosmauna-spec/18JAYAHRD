@@ -33,6 +33,29 @@ async function diagnose() {
         console.log("Employees found:", employees.length);
         employees.forEach(e => console.log(`  - ${e.id}: ${e.name}`));
     }
+
+    // 4. Check Consumer Profiles Schema
+    console.log("\n--- Checking consumer_profiles table ---");
+    const { data: consumers, error: cError } = await supabase.from('consumer_profiles').select('*').limit(1);
+    if (cError) {
+        console.error("Consumer Profiles Error:", cError.message);
+        if (cError.message.includes('not find')) {
+            console.log("CRITICAL: The table 'consumer_profiles' might be missing columns.");
+        }
+    } else {
+        console.log("Successfully connected to consumer_profiles.");
+        if (consumers && consumers.length > 0) {
+            const first = consumers[0];
+            console.log("Available columns in first record:", Object.keys(first).join(', '));
+            if (!Object.keys(first).includes('bank_process')) {
+                console.log("MISSING: 'bank_process' column is NOT found in the database.");
+            } else {
+                console.log("SUCCESS: 'bank_process' column IS found in the database.");
+            }
+        } else {
+            console.log("Table is empty. Cannot verify column existence via select *.");
+        }
+    }
 }
 
 diagnose();

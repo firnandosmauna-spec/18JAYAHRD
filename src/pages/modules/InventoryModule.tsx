@@ -236,7 +236,9 @@ function InventoryDashboard() {
                     </div>
                     <div>
                       <p className="font-medium font-body text-[#1C1C1E]">{product.name}</p>
-                      <p className="text-sm text-muted-foreground font-mono">{product.sku}</p>
+                      <p className="text-xs text-muted-foreground font-body">
+                        {product.sku} • {product.suppliers?.name || 'No Supplier'}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -307,9 +309,12 @@ function InventoryDashboard() {
                       }`}>
                       {movement.movement_type === 'in' ? '+' : '-'}{movement.quantity} unit
                     </p>
-                    <Badge variant="secondary" className="font-body text-xs">
-                      {movement.movement_type === 'in' ? 'Masuk' : movement.movement_type === 'out' ? 'Keluar' : movement.movement_type}
-                    </Badge>
+                    <p className="text-[10px] text-muted-foreground font-mono">
+                      {formatCurrency(product?.price || 0)} / unit
+                    </p>
+                    <p className={`text-xs font-bold font-mono ${movement.movement_type === 'in' ? 'text-green-700' : 'text-blue-700'}`}>
+                      {formatCurrency(movement.quantity * (product?.price || 0))}
+                    </p>
                   </div>
                 </div>
               );
@@ -342,11 +347,18 @@ function ProductList() {
   const { units } = useInventoryUnits();
   const { toast } = useToast();
 
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
   const [showStockInDialog, setShowStockInDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  const filteredProducts = (products || []).filter(product =>
+    (product.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (product.sku || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
 
   const handleEdit = (product: any) => {
     setEditingProduct(product);
@@ -373,7 +385,7 @@ function ProductList() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Daftar Produk</h1>
+          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Daftar Produk & Supplier</h1>
           <p className="text-muted-foreground font-body">Kelola katalog bahan baku bangunan</p>
         </div>
         <Button onClick={() => { setEditingProduct(null); setShowAddProductDialog(true); }} className="bg-inventory hover:bg-inventory-dark font-body">
@@ -407,7 +419,7 @@ function ProductList() {
 
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="font-body">
-          <TabsTrigger value="all">Semua ({products.length})</TabsTrigger>
+          <TabsTrigger value="all">Semua ({filteredProducts.length})</TabsTrigger>
           <TabsTrigger value="in-stock">Tersedia</TabsTrigger>
           <TabsTrigger value="low-stock">Stok Rendah</TabsTrigger>
           <TabsTrigger value="out-of-stock">Habis</TabsTrigger>
@@ -432,13 +444,13 @@ function ProductList() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {products.map((product) => (
+                  {filteredProducts.map((product) => (
                     <TableRow key={product.id}>
                       <TableCell className="font-body font-medium">{product.name}</TableCell>
                       <TableCell className="font-mono text-sm">{product.sku}</TableCell>
-                      <TableCell className="font-body">{(product as any).product_categories?.name || '-'}</TableCell>
-                      <TableCell className="font-body">{(product as any).warehouses?.name || '-'}</TableCell>
-                      <TableCell className="font-body">{(product as any).suppliers?.name || '-'}</TableCell>
+                      <TableCell className="font-body">{product.product_categories?.name || '-'}</TableCell>
+                      <TableCell className="font-body">{product.warehouses?.name || '-'}</TableCell>
+                      <TableCell className="font-body">{product.suppliers?.name || '-'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <span className="font-mono">{product.stock}</span>
@@ -504,7 +516,7 @@ function ProductList() {
 
         <TabsContent value="in-stock" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products.filter(p => p.stock > ((p as any).min_stock || 5)).map((product) => (
+            {filteredProducts.filter(p => p.stock > ((p as any).min_stock || 5)).map((product) => (
               <Card key={product.id} className="border-gray-200">
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
@@ -527,7 +539,7 @@ function ProductList() {
 
         <TabsContent value="low-stock" className="mt-6">
           <div className="space-y-4">
-            {products.filter(p => p.stock <= ((p as any).min_stock || 5) && p.stock > 0).map((product) => (
+            {filteredProducts.filter(p => p.stock <= ((p as any).min_stock || 5) && p.stock > 0).map((product) => (
               <Card key={product.id} className="border-gray-200 border-l-4 border-l-orange-500">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -560,7 +572,7 @@ function ProductList() {
 
         <TabsContent value="out-of-stock" className="mt-6">
           <div className="space-y-4">
-            {products.filter(p => p.stock === 0).map((product) => (
+            {filteredProducts.filter(p => p.stock === 0).map((product) => (
               <Card key={product.id} className="border-gray-200 border-l-4 border-l-red-500">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">

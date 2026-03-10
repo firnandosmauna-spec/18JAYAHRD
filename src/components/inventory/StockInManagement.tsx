@@ -495,6 +495,21 @@ export function StockInManagement() {
                                     </TableRow>
                                 ))
                             )}
+                            {filteredMovements.length > 0 && (
+                                <TableRow className="bg-gray-50/50 font-bold">
+                                    <TableCell colSpan={4} className="text-right font-display text-gray-900 px-4 py-4">
+                                        TOTAL
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-green-600">
+                                        +{filteredMovements.reduce((acc, m) => acc + m.quantity, 0)} unit
+                                    </TableCell>
+                                    <TableCell></TableCell>
+                                    <TableCell className="text-right font-mono text-green-600">
+                                        {formatCurrency(filteredMovements.reduce((acc, m) => acc + (m.quantity * ((m as any).products?.price || 0)), 0))}
+                                    </TableCell>
+                                    <TableCell colSpan={2}></TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>
