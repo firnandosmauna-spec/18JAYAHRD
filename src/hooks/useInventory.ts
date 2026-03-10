@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { 
-  productService, 
-  categoryService, 
-  warehouseService, 
-  stockMovementService 
+import {
+  productService,
+  categoryService,
+  warehouseService,
+  stockMovementService
 } from '@/services/inventoryService'
+import { settingsService } from '@/services/settingsService'
 import { handleSupabaseError } from '@/services/supabaseService'
 import type { Product, ProductCategory, Warehouse, StockMovement } from '@/lib/supabase'
 
@@ -288,6 +289,18 @@ export function useStockMovements(startDate?: string, endDate?: string) {
     }
   }
 
+  const updateMovement = async (id: string, updates: Partial<StockMovement>) => {
+    try {
+      const updatedMovement = await stockMovementService.update(id, updates)
+      setMovements(prev => prev.map(m => m.id === id ? updatedMovement : m))
+      return updatedMovement
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
   useEffect(() => {
     fetchMovements()
   }, [startDate, endDate])
@@ -298,7 +311,262 @@ export function useStockMovements(startDate?: string, endDate?: string) {
     error,
     refetch: fetchMovements,
     addMovement,
+    updateMovement,
     deleteMovement
+  }
+}
+
+// Inventory Units Hook (using system_settings)
+export function useInventoryUnits() {
+  const [units, setUnits] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchUnits = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const settings = await settingsService.getSettings(['inventory_units'])
+      if (settings && settings.length > 0) {
+        try {
+          const parsedUnits = JSON.parse(settings[0].value)
+          setUnits(Array.isArray(parsedUnits) ? parsedUnits : [])
+        } catch (e) {
+          console.error('Failed to parse inventory_units:', e)
+          setUnits([])
+        }
+      } else {
+        // Default units if not set
+        const defaultUnits = ['sak', 'batang', 'buah', 'm³', 'dus', 'kaleng', 'kg', 'lembar', 'meter', 'roll', 'set']
+        setUnits(defaultUnits)
+        // Optionally seed the setting
+        await settingsService.updateSetting('inventory_units', JSON.stringify(defaultUnits), 'Daftar satuan inventaris')
+      }
+    } catch (err) {
+      setError(handleSupabaseError(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const addUnit = async (unit: string) => {
+    try {
+      if (units.includes(unit)) return units
+      const newUnits = [...units, unit]
+      await settingsService.updateSetting('inventory_units', JSON.stringify(newUnits))
+      setUnits(newUnits)
+      return newUnits
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
+  const removeUnit = async (unit: string) => {
+    try {
+      const newUnits = units.filter(u => u !== unit)
+      await settingsService.updateSetting('inventory_units', JSON.stringify(newUnits))
+      setUnits(newUnits)
+      return newUnits
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
+  useEffect(() => {
+    fetchUnits()
+  }, [])
+
+  return {
+    units,
+    loading,
+    error,
+    refetch: fetchUnits,
+    addUnit,
+    removeUnit,
+    updateUnit: async (oldUnit: string, newUnit: string) => {
+      try {
+        const updatedUnits = units.map(u => u === oldUnit ? newUnit : u)
+        await settingsService.updateSetting('inventory_units', JSON.stringify(updatedUnits))
+        setUnits(updatedUnits)
+        return updatedUnits
+      } catch (err) {
+        const errorMsg = handleSupabaseError(err)
+        setError(errorMsg)
+        throw new Error(errorMsg)
+      }
+    }
+  }
+}
+
+// Inventory Volumes Hook
+export function useInventoryVolumes() {
+  const [volumes, setVolumes] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchVolumes = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const settings = await settingsService.getSettings(['inventory_volumes'])
+      if (settings && settings.length > 0) {
+        try {
+          const parsed = JSON.parse(settings[0].value)
+          setVolumes(Array.isArray(parsed) ? parsed : [])
+        } catch (e) {
+          console.error('Failed to parse inventory_volumes:', e)
+          setVolumes([])
+        }
+      } else {
+        const defaultVolumes = ['10 kg', '25 kg', '40 kg', '50 kg', '1 m3', 'Unit']
+        setVolumes(defaultVolumes)
+        await settingsService.updateSetting('inventory_volumes', JSON.stringify(defaultVolumes), 'Daftar volume produk')
+      }
+    } catch (err) {
+      setError(handleSupabaseError(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const addVolume = async (volume: string) => {
+    try {
+      if (volumes.includes(volume)) return volumes
+      const newVolumes = [...volumes, volume]
+      await settingsService.updateSetting('inventory_volumes', JSON.stringify(newVolumes))
+      setVolumes(newVolumes)
+      return newVolumes
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
+  const removeVolume = async (volume: string) => {
+    try {
+      const newVolumes = volumes.filter(v => v !== volume)
+      await settingsService.updateSetting('inventory_volumes', JSON.stringify(newVolumes))
+      setVolumes(newVolumes)
+      return newVolumes
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
+  useEffect(() => {
+    fetchVolumes()
+  }, [])
+
+  return {
+    volumes,
+    loading,
+    error,
+    refetch: fetchVolumes,
+    addVolume,
+    removeVolume,
+    updateVolume: async (oldVolume: string, newVolume: string) => {
+      try {
+        const updated = volumes.map(v => v === oldVolume ? newVolume : v)
+        await settingsService.updateSetting('inventory_volumes', JSON.stringify(updated))
+        setVolumes(updated)
+        return updated
+      } catch (err) {
+        const errorMsg = handleSupabaseError(err)
+        setError(errorMsg)
+        throw new Error(errorMsg)
+      }
+    }
+  }
+}
+
+// Project Locations Hook
+export function useProjectLocations() {
+  const [locations, setLocations] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchLocations = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const settings = await settingsService.getSettings(['inventory_project_locations'])
+      if (settings && settings.length > 0) {
+        try {
+          const parsed = JSON.parse(settings[0].value)
+          setLocations(Array.isArray(parsed) ? parsed : [])
+        } catch (e) {
+          console.error('Failed to parse inventory_project_locations:', e)
+          setLocations([])
+        }
+      } else {
+        const defaultLocations = ['Gudang Utama', 'Proyek A', 'Proyek B', 'Transit']
+        setLocations(defaultLocations)
+        await settingsService.updateSetting('inventory_project_locations', JSON.stringify(defaultLocations), 'Daftar lokasi proyek')
+      }
+    } catch (err) {
+      setError(handleSupabaseError(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const addLocation = async (location: string) => {
+    try {
+      if (locations.includes(location)) return locations
+      const newLocations = [...locations, location]
+      await settingsService.updateSetting('inventory_project_locations', JSON.stringify(newLocations))
+      setLocations(newLocations)
+      return newLocations
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
+  const removeLocation = async (location: string) => {
+    try {
+      const newLocations = locations.filter(l => l !== location)
+      await settingsService.updateSetting('inventory_project_locations', JSON.stringify(newLocations))
+      setLocations(newLocations)
+      return newLocations
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
+  useEffect(() => {
+    fetchLocations()
+  }, [])
+
+  return {
+    locations,
+    loading,
+    error,
+    refetch: fetchLocations,
+    addLocation,
+    removeLocation,
+    updateLocation: async (oldLocation: string, newLocation: string) => {
+      try {
+        const updated = locations.map(l => l === oldLocation ? newLocation : l)
+        await settingsService.updateSetting('inventory_project_locations', JSON.stringify(updated))
+        setLocations(updated)
+        return updated
+      } catch (err) {
+        const errorMsg = handleSupabaseError(err)
+        setError(errorMsg)
+        throw new Error(errorMsg)
+      }
+    }
   }
 }
 

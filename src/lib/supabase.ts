@@ -471,6 +471,10 @@ export interface Product {
   status: 'active' | 'inactive' | 'discontinued'
   image_url?: string
   barcode?: string
+  volume?: string
+  project_location?: string
+  purchase_payment_method?: 'CASH' | 'Hutang'
+  supplier_id?: string
   created_at: string
   updated_at: string
 }

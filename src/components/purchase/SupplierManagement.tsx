@@ -1,37 +1,48 @@
 import React, { useState } from 'react';
-import { 
-  Truck, 
-  Plus, 
-  Search, 
-  Edit, 
-  Trash2, 
-  Mail, 
-  Phone, 
+import {
+  Truck,
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Mail,
+  Phone,
   MapPin,
   Calendar
 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { useSuppliers } from '@/hooks/usePurchase';
+import { useToast } from '@/components/ui/use-toast';
 import type { Supplier } from '@/types/purchase';
 
 export function SupplierManagement() {
+  const location = useLocation();
+  const isInventory = location.pathname.includes('/inventory');
+  const primaryColor = isInventory ? 'bg-inventory' : 'bg-orange-600';
+  const primaryHover = isInventory ? 'hover:bg-inventory-dark' : 'hover:bg-orange-700';
+  const primaryText = isInventory ? 'text-inventory' : 'text-orange-600';
+  const primaryBorder = isInventory ? 'border-t-inventory' : 'border-t-orange-600';
+
   const { suppliers, loading, createSupplier, updateSupplier, deleteSupplier } = useSuppliers();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [showDialog, setShowDialog] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [formData, setFormData] = useState({
     code: '',
@@ -54,16 +65,43 @@ export function SupplierManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.name.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Nama supplier wajib diisi',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Auto-generate code if empty
+    let finalFormData = { ...formData };
+    if (!finalFormData.code.trim()) {
+      const timestamp = new Date().getTime().toString().slice(-4);
+      finalFormData.code = `SUP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${timestamp}`;
+    }
+
     try {
+      setIsSubmitting(true);
       if (editingSupplier) {
-        await updateSupplier(editingSupplier.id, formData);
+        await updateSupplier(editingSupplier.id, finalFormData);
+        toast({ title: 'Berhasil', description: 'Data supplier berhasil diperbarui' });
       } else {
-        await createSupplier(formData);
+        await createSupplier(finalFormData);
+        toast({ title: 'Berhasil', description: 'Supplier baru berhasil ditambahkan' });
       }
       setShowDialog(false);
       resetForm();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving supplier:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Gagal menyimpan data supplier',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -88,8 +126,14 @@ export function SupplierManagement() {
     if (confirm('Apakah Anda yakin ingin menghapus supplier ini?')) {
       try {
         await deleteSupplier(id);
-      } catch (error) {
+        toast({ title: 'Berhasil', description: 'Supplier berhasil dihapus' });
+      } catch (error: any) {
         console.error('Error deleting supplier:', error);
+        toast({
+          title: 'Error',
+          description: error.message || 'Gagal menghapus supplier',
+          variant: 'destructive'
+        });
       }
     }
   };
@@ -114,7 +158,7 @@ export function SupplierManagement() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <div className="w-8 h-8 border-4 border-orange-600/30 border-t-orange-600 rounded-full animate-spin mx-auto mb-4" />
+          <div className={`w-8 h-8 border-4 ${isInventory ? 'border-inventory/30 border-t-inventory' : 'border-orange-600/30 border-t-orange-600'} rounded-full animate-spin mx-auto mb-4`} />
           <p className="text-gray-600">Memuat data supplier...</p>
         </div>
       </div>
@@ -131,7 +175,7 @@ export function SupplierManagement() {
         </div>
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
           <DialogTrigger asChild>
-            <Button onClick={resetForm} className="bg-orange-600 hover:bg-orange-700">
+            <Button onClick={resetForm} className={`${primaryColor} ${primaryHover}`}>
               <Plus className="w-4 h-4 mr-2" />
               Tambah Supplier
             </Button>
@@ -148,13 +192,11 @@ export function SupplierManagement() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="code">Kode Supplier *</Label>
+                  <Label htmlFor="code">Kode Supplier</Label>
                   <Input
                     id="code"
                     value={formData.code}
                     onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                    placeholder="SUP001"
-                    required
                   />
                 </div>
                 <div className="space-y-2">
@@ -163,12 +205,11 @@ export function SupplierManagement() {
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="PT. Supplier Contoh"
                     required
                   />
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
@@ -177,7 +218,6 @@ export function SupplierManagement() {
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="supplier@example.com"
                   />
                 </div>
                 <div className="space-y-2">
@@ -186,7 +226,6 @@ export function SupplierManagement() {
                     id="phone"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="021-1234567"
                   />
                 </div>
               </div>
@@ -197,7 +236,6 @@ export function SupplierManagement() {
                   id="address"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Jl. Supplier No. 123"
                   rows={3}
                 />
               </div>
@@ -209,7 +247,6 @@ export function SupplierManagement() {
                     id="city"
                     value={formData.city}
                     onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    placeholder="Jakarta"
                   />
                 </div>
                 <div className="space-y-2">
@@ -218,7 +255,6 @@ export function SupplierManagement() {
                     id="postal_code"
                     value={formData.postal_code}
                     onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
-                    placeholder="12345"
                   />
                 </div>
                 <div className="space-y-2">
@@ -227,7 +263,6 @@ export function SupplierManagement() {
                     id="tax_number"
                     value={formData.tax_number}
                     onChange={(e) => setFormData({ ...formData, tax_number: e.target.value })}
-                    placeholder="12.345.678.9-012.345"
                   />
                 </div>
               </div>
@@ -239,7 +274,6 @@ export function SupplierManagement() {
                   type="number"
                   value={formData.payment_terms}
                   onChange={(e) => setFormData({ ...formData, payment_terms: Number(e.target.value) })}
-                  placeholder="30"
                 />
               </div>
 
@@ -256,8 +290,8 @@ export function SupplierManagement() {
                 <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
                   Batal
                 </Button>
-                <Button type="submit" className="bg-orange-600 hover:bg-orange-700">
-                  {editingSupplier ? 'Update' : 'Simpan'}
+                <Button type="submit" disabled={isSubmitting} className={`${primaryColor} ${primaryHover}`}>
+                  {isSubmitting ? 'Menyimpan...' : (editingSupplier ? 'Update' : 'Simpan')}
                 </Button>
               </div>
             </form>
@@ -321,7 +355,7 @@ export function SupplierManagement() {
                   <span>Termin: {supplier.payment_terms} hari</span>
                 </div>
               )}
-              
+
               <div className="flex justify-end gap-2 pt-2">
                 <Button
                   size="sm"
@@ -352,7 +386,7 @@ export function SupplierManagement() {
             {searchQuery ? 'Tidak ada supplier yang sesuai dengan pencarian' : 'Mulai dengan menambahkan supplier pertama'}
           </p>
           {!searchQuery && (
-            <Button onClick={() => setShowDialog(true)} className="bg-orange-600 hover:bg-orange-700">
+            <Button onClick={() => setShowDialog(true)} className={`${primaryColor} ${primaryHover}`}>
               <Plus className="w-4 h-4 mr-2" />
               Tambah Supplier
             </Button>

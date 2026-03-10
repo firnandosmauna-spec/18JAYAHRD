@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ModuleLayout from '@/components/layout/ModuleLayout';
-import { useProducts, useProductCategories, useWarehouses, useStockMovements, useLowStockProducts } from '@/hooks/useInventory';
+import { useProducts, useProductCategories, useWarehouses, useStockMovements, useLowStockProducts, useInventoryUnits } from '@/hooks/useInventory';
 import { useToast } from '@/components/ui/use-toast';
 import type { Product } from '@/lib/supabase';
 import {
@@ -20,7 +20,12 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
-  X
+  X,
+  Scale,
+  Tags,
+  Users,
+  Box,
+  MapPin
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,12 +64,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SupplierManagement } from '@/components/purchase/SupplierManagement';
+import { CategoryManagement } from '@/components/inventory/CategoryManagement';
+import { WarehouseManagement } from '@/components/inventory/WarehouseManagement';
+import { UnitManagement } from '@/components/inventory/UnitManagement';
+import { VolumeManagement } from '@/components/inventory/VolumeManagement';
+import { ProjectLocationManagement } from '@/components/inventory/ProjectLocationManagement';
+import { AddProductDialog } from '@/components/inventory/AddProductDialog';
+import { StockInManagement } from '@/components/inventory/StockInManagement';
+import { StockOutManagement } from '@/components/inventory/StockOutManagement';
+import { AddStockMovementDialog } from '@/components/inventory/AddStockMovementDialog';
+import { InventoryReports } from '@/components/inventory/InventoryReports';
 
 const navItems = [
   { label: 'Dashboard', href: '/inventory', icon: Package },
   { label: 'Produk', href: '/inventory/products', icon: Package },
   { label: 'Stok Masuk', href: '/inventory/stock-in', icon: ArrowDownRight },
   { label: 'Stok Keluar', href: '/inventory/stock-out', icon: ArrowUpRight },
+  { label: 'Supplier', href: '/inventory/suppliers', icon: Truck },
+  { label: 'Satuan', href: '/inventory/units', icon: Scale },
+  { label: 'Volume', href: '/inventory/volumes', icon: Box },
+  { label: 'Lokasi Proyek', href: '/inventory/locations', icon: MapPin },
+  { label: 'Kategori', href: '/inventory/categories', icon: Tags },
   { label: 'Gudang', href: '/inventory/warehouse', icon: Warehouse },
   { label: 'Laporan', href: '/inventory/reports', icon: BarChart3 },
 ];
@@ -76,20 +97,7 @@ function getProductStatus(product: Product): 'in-stock' | 'low-stock' | 'out-of-
   return 'in-stock'
 }
 
-// Satuan produk (static list)
-const productUnits = [
-  'sak',
-  'batang',
-  'buah',
-  'm³',
-  'dus',
-  'kaleng',
-  'kg',
-  'lembar',
-  'meter',
-  'roll',
-  'set',
-];
+// Satuan produk (moved to useInventoryUnits hook)
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('id-ID', {
@@ -104,44 +112,15 @@ function InventoryDashboard() {
   const { products, loading: productsLoading, addProduct, refetch: refetchProducts } = useProducts();
   const { categories } = useProductCategories();
   const { warehouses } = useWarehouses();
-  const today = new Date().toISOString().split('T')[0];
+  const { units } = useInventoryUnits();
   const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const { movements, loading: movementsLoading } = useStockMovements(lastWeek, today);
+  const { movements, loading: movementsLoading } = useStockMovements(lastWeek, undefined);
   const { products: lowStockProducts } = useLowStockProducts();
   const { toast } = useToast();
 
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [newProduct, setNewProduct] = useState({
-    name: '',
-    sku: '',
-    category_id: '',
-    stock: '',
-    min_stock: '',
-    price: '',
-    unit: '',
-    warehouse_id: '',
-    cost: '',
-    description: '',
-    barcode: '',
-  });
-
-  // Reset form function
-  const resetForm = () => {
-    setNewProduct({
-      name: '',
-      sku: '',
-      category_id: '',
-      stock: '',
-      min_stock: '',
-      price: '',
-      unit: '',
-      warehouse_id: '',
-      cost: '',
-      description: '',
-      barcode: '',
-    });
-  };
+  const [showRestockDialog, setShowRestockDialog] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   // Calculate stats from real data
   const stats = [
@@ -172,165 +151,9 @@ function InventoryDashboard() {
     },
   ];
 
-  const handleAddProduct = async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    try {
-      console.log('handleAddProduct called (Dashboard)', { newProduct, isSubmitting });
-      setIsSubmitting(true);
-
-      // Validasi field wajib
-      if (!newProduct.name || !newProduct.sku || !newProduct.unit || !newProduct.price) {
-        toast({
-          title: 'Error',
-          description: 'Mohon lengkapi semua field yang wajib diisi (Nama, SKU, Satuan, Harga Jual)',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Validasi format SKU (minimal 3 karakter)
-      if (newProduct.sku.trim().length < 3) {
-        toast({
-          title: 'Error',
-          description: 'SKU minimal 3 karakter',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Validasi SKU unik
-      const existingProduct = products.find(p => p.sku.toLowerCase() === newProduct.sku.trim().toLowerCase());
-      if (existingProduct) {
-        toast({
-          title: 'Error',
-          description: `SKU "${newProduct.sku}" sudah digunakan oleh produk lain`,
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Validasi dan parse angka
-      const stock = newProduct.stock ? parseFloat(newProduct.stock) : 0;
-      const minStock = newProduct.min_stock ? parseFloat(newProduct.min_stock) : 0;
-      const price = parseFloat(newProduct.price);
-      const cost = newProduct.cost ? parseFloat(newProduct.cost) : 0;
-
-      // Validasi angka valid
-      if (isNaN(price) || price <= 0) {
-        toast({
-          title: 'Error',
-          description: 'Harga jual harus lebih besar dari 0',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!isNaN(stock) && stock < 0) {
-        toast({
-          title: 'Error',
-          description: 'Stok awal tidak boleh negatif',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!isNaN(minStock) && minStock < 0) {
-        toast({
-          title: 'Error',
-          description: 'Stok minimum tidak boleh negatif',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!isNaN(cost) && cost < 0) {
-        toast({
-          title: 'Error',
-          description: 'Harga beli tidak boleh negatif',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Simpan produk - hapus undefined values untuk menghindari error
-      const productData: any = {
-        name: newProduct.name.trim(),
-        sku: newProduct.sku.trim().toUpperCase(),
-        stock: stock || 0,
-        min_stock: minStock || 0,
-        price: price,
-        cost: cost || 0,
-        unit: newProduct.unit,
-        status: 'active',
-      };
-
-      // Hanya tambahkan field optional jika ada nilainya
-      if (newProduct.category_id) {
-        productData.category_id = newProduct.category_id;
-      }
-      if (newProduct.warehouse_id) {
-        productData.warehouse_id = newProduct.warehouse_id;
-      }
-      if (newProduct.description?.trim()) {
-        productData.description = newProduct.description.trim();
-      }
-      if (newProduct.barcode?.trim()) {
-        productData.barcode = newProduct.barcode.trim();
-      }
-
-      console.log('Saving product with data (Dashboard):', productData);
-      console.log('Available categories:', categories);
-      console.log('Available warehouses:', warehouses);
-
-      const savedProduct = await addProduct(productData);
-      console.log('Product saved successfully (Dashboard):', savedProduct);
-
-      // Refresh data
-      await refetchProducts();
-
-      // Tutup dialog dan reset form
-      setShowAddProductDialog(false);
-      resetForm();
-
-      toast({
-        title: 'Berhasil',
-        description: `Produk "${newProduct.name}" berhasil ditambahkan`,
-      });
-    } catch (error: any) {
-      console.error('Failed to add product:', error);
-
-      // Error handling yang lebih spesifik
-      let errorMessage = 'Gagal menambahkan produk';
-      if (error?.message) {
-        if (error.message.includes('duplicate') || error.message.includes('unique')) {
-          errorMessage = 'SKU sudah digunakan. Silakan gunakan SKU lain.';
-        } else if (error.message.includes('foreign key')) {
-          errorMessage = 'Kategori atau gudang yang dipilih tidak valid';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive',
-        duration: 5000
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleAddSuccess = () => {
+    refetchProducts();
+    toast({ title: 'Berhasil', description: 'Data produk telah diperbarui' });
   };
 
   if (productsLoading || movementsLoading) {
@@ -351,240 +174,15 @@ function InventoryDashboard() {
           <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Dashboard Persediaan</h1>
           <p className="text-muted-foreground font-body">Kelola stok dan inventaris bahan bangunan</p>
         </div>
-        <Dialog open={showAddProductDialog} onOpenChange={setShowAddProductDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-inventory hover:bg-inventory-dark font-body">
-              <Plus className="w-4 h-4 mr-2" />
-              Tambah Produk
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="font-display">Tambah Produk Baru</DialogTitle>
-              <DialogDescription className="font-body">
-                Tambahkan bahan baku bangunan ke inventaris
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name" className="font-body">Nama Produk <span className="text-red-500">*</span></Label>
-                <Input
-                  id="name"
-                  placeholder="Contoh: Semen Portland 50kg"
-                  value={newProduct.name}
-                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                  className="font-body"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="sku" className="font-body">SKU <span className="text-red-500">*</span></Label>
-                  <Input
-                    id="sku"
-                    placeholder="SMN-PRT-50"
-                    value={newProduct.sku}
-                    onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })}
-                    className="font-mono"
-                    required
-                    maxLength={50}
-                  />
-                  <p className="text-xs text-muted-foreground font-body">Minimal 3 karakter, akan otomatis diubah ke huruf besar</p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="category" className="font-body">Kategori</Label>
-                  <Select
-                    value={newProduct.category_id}
-                    onValueChange={(value) => setNewProduct({ ...newProduct, category_id: value })}
-                  >
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder="Pilih kategori" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.length === 0 ? (
-                        <div className="px-2 py-1.5 text-sm text-muted-foreground font-body">
-                          Tidak ada kategori tersedia
-                        </div>
-                      ) : (
-                        categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id} className="font-body">
-                            {cat.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="stock" className="font-body">Stok Awal</Label>
-                  <Input
-                    id="stock"
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="0"
-                    value={newProduct.stock}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)) {
-                        setNewProduct({ ...newProduct, stock: value });
-                      }
-                    }}
-                    className="font-mono"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="minStock" className="font-body">Stok Minimum</Label>
-                  <Input
-                    id="minStock"
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="10"
-                    value={newProduct.min_stock}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)) {
-                        setNewProduct({ ...newProduct, min_stock: value });
-                      }
-                    }}
-                    className="font-mono"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="price" className="font-body">Harga Jual (Rp) <span className="text-red-500">*</span></Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    min="0"
-                    step="100"
-                    placeholder="75000"
-                    value={newProduct.price}
-                    onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-                    className="font-mono"
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="unit" className="font-body">Satuan <span className="text-red-500">*</span></Label>
-                  <Select
-                    value={newProduct.unit}
-                    onValueChange={(value) => setNewProduct({ ...newProduct, unit: value })}
-                  >
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder="Pilih satuan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {productUnits.map((unit) => (
-                        <SelectItem key={unit} value={unit} className="font-body">
-                          {unit}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="warehouse" className="font-body">Gudang</Label>
-                  <Select
-                    value={newProduct.warehouse_id || undefined}
-                    onValueChange={(value) => setNewProduct({ ...newProduct, warehouse_id: value || '' })}
-                  >
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder="Pilih gudang (opsional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouses.length === 0 ? (
-                        <div className="px-2 py-1.5 text-sm text-muted-foreground font-body">
-                          Tidak ada gudang tersedia
-                        </div>
-                      ) : (
-                        warehouses.map((wh) => (
-                          <SelectItem key={wh.id} value={wh.id} className="font-body">
-                            {wh.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="cost" className="font-body">Harga Beli (Cost)</Label>
-                  <Input
-                    id="cost"
-                    type="number"
-                    min="0"
-                    step="100"
-                    placeholder="0"
-                    value={newProduct.cost}
-                    onChange={(e) => setNewProduct({ ...newProduct, cost: e.target.value })}
-                    className="font-mono"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="description" className="font-body">Deskripsi</Label>
-                <Input
-                  id="description"
-                  placeholder="Deskripsi produk (opsional)"
-                  value={newProduct.description}
-                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                  className="font-body"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="barcode" className="font-body">Barcode</Label>
-                <Input
-                  id="barcode"
-                  placeholder="Barcode produk (opsional)"
-                  value={newProduct.barcode}
-                  onChange={(e) => setNewProduct({ ...newProduct, barcode: e.target.value })}
-                  className="font-mono"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowAddProductDialog(false);
-                  resetForm();
-                }}
-                className="font-body"
-                disabled={isSubmitting}
-              >
-                Batal
-              </Button>
-              <Button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleAddProduct(e);
-                }}
-                className="bg-inventory hover:bg-inventory-dark font-body"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                    Menyimpan...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Simpan Produk
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setShowAddProductDialog(true)} className="bg-inventory hover:bg-inventory-dark font-body">
+          <Plus className="w-4 h-4 mr-2" />
+          Tambah Produk
+        </Button>
+        <AddProductDialog
+          open={showAddProductDialog}
+          onOpenChange={setShowAddProductDialog}
+          onSuccess={handleAddSuccess}
+        />
       </div>
 
       {/* Stats Grid */}
@@ -652,7 +250,15 @@ function InventoryDashboard() {
                         className="w-24 h-2"
                       />
                     </div>
-                    <Button size="sm" variant="outline" className="font-body">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="font-body"
+                      onClick={() => {
+                        setSelectedProduct(product);
+                        setShowRestockDialog(true);
+                      }}
+                    >
                       Restok
                     </Button>
                   </div>
@@ -716,6 +322,15 @@ function InventoryDashboard() {
           </div>
         </CardContent>
       </Card>
+      <AddStockMovementDialog
+        open={showRestockDialog}
+        onOpenChange={setShowRestockDialog}
+        onSuccess={() => {
+          refetchProducts();
+          toast({ title: 'Berhasil', description: 'Stok berhasil ditambahkan' });
+        }}
+        product={selectedProduct}
+      />
     </div>
   );
 }
@@ -724,237 +339,35 @@ function ProductList() {
   const { products, loading, addProduct, updateProduct, deleteProduct, refetch } = useProducts();
   const { categories } = useProductCategories();
   const { warehouses } = useWarehouses();
+  const { units } = useInventoryUnits();
   const { toast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [newProduct, setNewProduct] = useState({
-    name: '',
-    sku: '',
-    category_id: '',
-    stock: '',
-    min_stock: '',
-    price: '',
-    unit: '',
-    warehouse_id: '',
-    cost: '',
-    description: '',
-    barcode: '',
-  });
+  const [showStockInDialog, setShowStockInDialog] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
-  // Reset form function
-  const resetForm = () => {
-    setNewProduct({
-      name: '',
-      sku: '',
-      category_id: '',
-      stock: '',
-      min_stock: '',
-      price: '',
-      unit: '',
-      warehouse_id: '',
-      cost: '',
-      description: '',
-      barcode: '',
-    });
+  const handleEdit = (product: any) => {
+    setEditingProduct(product);
+    setShowAddProductDialog(true);
   };
 
-  const handleAddProduct = async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    try {
-      console.log('handleAddProduct called (ProductList)', { newProduct, isSubmitting });
-      setIsSubmitting(true);
-
-      // Validasi field wajib
-      if (!newProduct.name || !newProduct.sku || !newProduct.unit || !newProduct.price) {
-        console.log('Validation failed - missing required fields');
+  const handleDelete = async (id: string) => {
+    if (confirm('Apakah Anda yakin ingin menghapus produk ini?')) {
+      try {
+        await deleteProduct(id);
+        toast({ title: 'Berhasil', description: 'Produk berhasil dihapus' });
+        refetch();
+      } catch (error: any) {
         toast({
           title: 'Error',
-          description: 'Mohon lengkapi semua field yang wajib diisi (Nama, SKU, Satuan, Harga Jual)',
+          description: error.message || 'Gagal menghapus produk',
           variant: 'destructive'
         });
-        setIsSubmitting(false);
-        return;
       }
-
-      // Validasi format SKU (minimal 3 karakter)
-      if (newProduct.sku.trim().length < 3) {
-        toast({
-          title: 'Error',
-          description: 'SKU minimal 3 karakter',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Validasi SKU unik
-      const existingProduct = products.find(p => p.sku.toLowerCase() === newProduct.sku.trim().toLowerCase());
-      if (existingProduct) {
-        toast({
-          title: 'Error',
-          description: `SKU "${newProduct.sku}" sudah digunakan oleh produk lain`,
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Validasi dan parse angka
-      const stock = newProduct.stock ? parseFloat(newProduct.stock) : 0;
-      const minStock = newProduct.min_stock ? parseFloat(newProduct.min_stock) : 0;
-      const price = parseFloat(newProduct.price);
-      const cost = newProduct.cost ? parseFloat(newProduct.cost) : 0;
-
-      // Validasi angka valid
-      if (isNaN(price) || price <= 0) {
-        toast({
-          title: 'Error',
-          description: 'Harga jual harus lebih besar dari 0',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!isNaN(stock) && stock < 0) {
-        toast({
-          title: 'Error',
-          description: 'Stok awal tidak boleh negatif',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!isNaN(minStock) && minStock < 0) {
-        toast({
-          title: 'Error',
-          description: 'Stok minimum tidak boleh negatif',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!isNaN(cost) && cost < 0) {
-        toast({
-          title: 'Error',
-          description: 'Harga beli tidak boleh negatif',
-          variant: 'destructive'
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Simpan produk - hapus undefined values untuk menghindari error
-      const productData: any = {
-        name: newProduct.name.trim(),
-        sku: newProduct.sku.trim().toUpperCase(),
-        stock: stock || 0,
-        min_stock: minStock || 0,
-        price: price,
-        cost: cost || 0,
-        unit: newProduct.unit,
-        status: 'active',
-      };
-
-      // Hanya tambahkan field optional jika ada nilainya
-      if (newProduct.category_id) {
-        productData.category_id = newProduct.category_id;
-      }
-      if (newProduct.warehouse_id) {
-        productData.warehouse_id = newProduct.warehouse_id;
-      }
-      if (newProduct.description?.trim()) {
-        productData.description = newProduct.description.trim();
-      }
-      if (newProduct.barcode?.trim()) {
-        productData.barcode = newProduct.barcode.trim();
-      }
-
-      console.log('Saving product with data (ProductList):', productData);
-      console.log('Available categories:', categories);
-      console.log('Available warehouses:', warehouses);
-
-      const savedProduct = await addProduct(productData);
-      console.log('Product saved successfully (ProductList):', savedProduct);
-
-      // Refresh data
-      await refetch();
-
-      // Tutup dialog dan reset form
-      setShowAddProductDialog(false);
-      resetForm();
-
-      toast({
-        title: 'Berhasil',
-        description: `Produk "${newProduct.name}" berhasil ditambahkan`,
-      });
-    } catch (error: any) {
-      console.error('Failed to add product (ProductList):', error);
-      console.error('Error details:', {
-        message: error?.message,
-        code: error?.code,
-        details: error?.details,
-        hint: error?.hint
-      });
-
-      // Error handling yang lebih spesifik
-      let errorMessage = 'Gagal menambahkan produk';
-      if (error?.message) {
-        errorMessage = error.message;
-      } else if (error?.code) {
-        switch (error.code) {
-          case '23505':
-            errorMessage = 'SKU sudah digunakan. Silakan gunakan SKU lain.';
-            break;
-          case '23503':
-            errorMessage = 'Kategori atau gudang yang dipilih tidak valid.';
-            break;
-          case '23502':
-            errorMessage = 'Field wajib tidak boleh kosong.';
-            break;
-          case 'PGRST116':
-          case '42P01':
-            errorMessage = 'Tabel products belum dibuat. Silakan jalankan INVENTORY_SCHEMA.sql di Supabase SQL Editor.';
-            break;
-          default:
-            errorMessage = `Error: ${error.code}. ${error.message || 'Silakan coba lagi.'}`;
-        }
-      }
-
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive',
-        duration: 8000
-      });
-    } finally {
-      setIsSubmitting(false);
     }
   };
-
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-inventory/30 border-t-inventory rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground font-body">Memuat data produk...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -963,240 +376,16 @@ function ProductList() {
           <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Daftar Produk</h1>
           <p className="text-muted-foreground font-body">Kelola katalog bahan baku bangunan</p>
         </div>
-        <Dialog open={showAddProductDialog} onOpenChange={setShowAddProductDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-inventory hover:bg-inventory-dark font-body">
-              <Plus className="w-4 h-4 mr-2" />
-              Tambah Produk
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="font-display">Tambah Produk Baru</DialogTitle>
-              <DialogDescription className="font-body">
-                Tambahkan bahan baku bangunan ke inventaris
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name2" className="font-body">Nama Produk <span className="text-red-500">*</span></Label>
-                <Input
-                  id="name2"
-                  placeholder="Contoh: Semen Portland 50kg"
-                  value={newProduct.name}
-                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                  className="font-body"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="sku2" className="font-body">SKU <span className="text-red-500">*</span></Label>
-                  <Input
-                    id="sku2"
-                    placeholder="SMN-PRT-50"
-                    value={newProduct.sku}
-                    onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })}
-                    className="font-mono"
-                    required
-                    maxLength={50}
-                  />
-                  <p className="text-xs text-muted-foreground font-body">Minimal 3 karakter, akan otomatis diubah ke huruf besar</p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="category2" className="font-body">Kategori</Label>
-                  <Select
-                    value={newProduct.category_id}
-                    onValueChange={(value) => setNewProduct({ ...newProduct, category_id: value })}
-                  >
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder="Pilih kategori" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.length === 0 ? (
-                        <div className="px-2 py-1.5 text-sm text-muted-foreground font-body">
-                          Tidak ada kategori tersedia
-                        </div>
-                      ) : (
-                        categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id} className="font-body">
-                            {cat.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="stock2" className="font-body">Stok Awal</Label>
-                  <Input
-                    id="stock2"
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="0"
-                    value={newProduct.stock}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)) {
-                        setNewProduct({ ...newProduct, stock: value });
-                      }
-                    }}
-                    className="font-mono"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="minStock2" className="font-body">Stok Minimum</Label>
-                  <Input
-                    id="minStock2"
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="10"
-                    value={newProduct.min_stock}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)) {
-                        setNewProduct({ ...newProduct, min_stock: value });
-                      }
-                    }}
-                    className="font-mono"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="price2" className="font-body">Harga Jual (Rp) <span className="text-red-500">*</span></Label>
-                  <Input
-                    id="price2"
-                    type="number"
-                    min="0"
-                    step="100"
-                    placeholder="75000"
-                    value={newProduct.price}
-                    onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-                    className="font-mono"
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="unit2" className="font-body">Satuan <span className="text-red-500">*</span></Label>
-                  <Select
-                    value={newProduct.unit}
-                    onValueChange={(value) => setNewProduct({ ...newProduct, unit: value })}
-                  >
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder="Pilih satuan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {productUnits.map((unit) => (
-                        <SelectItem key={unit} value={unit} className="font-body">
-                          {unit}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="warehouse2" className="font-body">Gudang</Label>
-                  <Select
-                    value={newProduct.warehouse_id || undefined}
-                    onValueChange={(value) => setNewProduct({ ...newProduct, warehouse_id: value || '' })}
-                  >
-                    <SelectTrigger className="font-body">
-                      <SelectValue placeholder="Pilih gudang (opsional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouses.length === 0 ? (
-                        <div className="px-2 py-1.5 text-sm text-muted-foreground font-body">
-                          Tidak ada gudang tersedia
-                        </div>
-                      ) : (
-                        warehouses.map((wh) => (
-                          <SelectItem key={wh.id} value={wh.id} className="font-body">
-                            {wh.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="cost2" className="font-body">Harga Beli (Cost)</Label>
-                  <Input
-                    id="cost2"
-                    type="number"
-                    min="0"
-                    step="100"
-                    placeholder="0"
-                    value={newProduct.cost}
-                    onChange={(e) => setNewProduct({ ...newProduct, cost: e.target.value })}
-                    className="font-mono"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="description2" className="font-body">Deskripsi</Label>
-                <Input
-                  id="description2"
-                  placeholder="Deskripsi produk (opsional)"
-                  value={newProduct.description}
-                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                  className="font-body"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="barcode2" className="font-body">Barcode</Label>
-                <Input
-                  id="barcode2"
-                  placeholder="Barcode produk (opsional)"
-                  value={newProduct.barcode}
-                  onChange={(e) => setNewProduct({ ...newProduct, barcode: e.target.value })}
-                  className="font-mono"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowAddProductDialog(false);
-                  resetForm();
-                }}
-                className="font-body"
-                disabled={isSubmitting}
-              >
-                Batal
-              </Button>
-              <Button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleAddProduct(e);
-                }}
-                className="bg-inventory hover:bg-inventory-dark font-body"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                    Menyimpan...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Simpan Produk
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => { setEditingProduct(null); setShowAddProductDialog(true); }} className="bg-inventory hover:bg-inventory-dark font-body">
+          <Plus className="w-4 h-4 mr-2" />
+          Tambah Produk
+        </Button>
+        <AddProductDialog
+          open={showAddProductDialog}
+          onOpenChange={setShowAddProductDialog}
+          onSuccess={() => { refetch(); setEditingProduct(null); }}
+          existingProduct={editingProduct}
+        />
       </div>
 
       {/* Search and Filter */}
@@ -1233,8 +422,11 @@ function ProductList() {
                     <TableHead className="font-body">Produk</TableHead>
                     <TableHead className="font-body">SKU</TableHead>
                     <TableHead className="font-body">Kategori</TableHead>
+                    <TableHead className="font-body">Gudang</TableHead>
+                    <TableHead className="font-body">Supplier</TableHead>
                     <TableHead className="font-body">Stok</TableHead>
                     <TableHead className="font-body">Harga</TableHead>
+                    <TableHead className="font-body">Metode Bayar</TableHead>
                     <TableHead className="font-body">Status</TableHead>
                     <TableHead className="font-body text-right">Aksi</TableHead>
                   </TableRow>
@@ -1244,7 +436,9 @@ function ProductList() {
                     <TableRow key={product.id}>
                       <TableCell className="font-body font-medium">{product.name}</TableCell>
                       <TableCell className="font-mono text-sm">{product.sku}</TableCell>
-                      <TableCell className="font-body">{(product as any).category || '-'}</TableCell>
+                      <TableCell className="font-body">{(product as any).product_categories?.name || '-'}</TableCell>
+                      <TableCell className="font-body">{(product as any).warehouses?.name || '-'}</TableCell>
+                      <TableCell className="font-body">{(product as any).suppliers?.name || '-'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <span className="font-mono">{product.stock}</span>
@@ -1255,6 +449,11 @@ function ProductList() {
                         </div>
                       </TableCell>
                       <TableCell className="font-mono">{formatCurrency(product.price)}</TableCell>
+                      <TableCell className="font-body">
+                        <Badge variant="outline" className="font-body bg-gray-50">
+                          {product.purchase_payment_method || 'CASH'}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <Badge
                           variant={product.stock === 0 ? 'destructive' : product.stock <= ((product as any).min_stock || 5) ? 'secondary' : 'default'}
@@ -1272,9 +471,17 @@ function ProductList() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem className="font-body">Lihat Detail</DropdownMenuItem>
-                            <DropdownMenuItem className="font-body">Edit</DropdownMenuItem>
-                            <DropdownMenuItem className="font-body">Tambah Stok</DropdownMenuItem>
-                            <DropdownMenuItem className="font-body text-destructive">Hapus</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEdit(product)} className="font-body">Edit</DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="font-body"
+                              onClick={() => {
+                                setSelectedProduct(product);
+                                setShowStockInDialog(true);
+                              }}
+                            >
+                              Tambah Stok
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDelete(product.id)} className="font-body text-destructive">Hapus</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -1283,6 +490,15 @@ function ProductList() {
                 </TableBody>
               </Table>
             </CardContent>
+            <AddStockMovementDialog
+              open={showStockInDialog}
+              onOpenChange={setShowStockInDialog}
+              onSuccess={() => {
+                refetch();
+                toast({ title: 'Berhasil', description: 'Stok berhasil ditambahkan' });
+              }}
+              product={selectedProduct}
+            />
           </Card>
         </TabsContent>
 
@@ -1394,10 +610,15 @@ export default function InventoryModule() {
       <Routes>
         <Route index element={<InventoryDashboard />} />
         <Route path="products" element={<ProductList />} />
-        <Route path="stock-in" element={<PlaceholderPage title="Stok Masuk" />} />
-        <Route path="stock-out" element={<PlaceholderPage title="Stok Keluar" />} />
-        <Route path="warehouse" element={<PlaceholderPage title="Manajemen Gudang" />} />
-        <Route path="reports" element={<PlaceholderPage title="Laporan Persediaan" />} />
+        <Route path="stock-in" element={<StockInManagement />} />
+        <Route path="stock-out" element={<StockOutManagement />} />
+        <Route path="suppliers" element={<SupplierManagement />} />
+        <Route path="units" element={<UnitManagement />} />
+        <Route path="volumes" element={<VolumeManagement />} />
+        <Route path="locations" element={<ProjectLocationManagement />} />
+        <Route path="categories" element={<CategoryManagement />} />
+        <Route path="warehouse" element={<WarehouseManagement />} />
+        <Route path="reports" element={<InventoryReports />} />
       </Routes>
     </ModuleLayout>
   );
