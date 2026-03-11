@@ -64,7 +64,8 @@ export function SupplierManagement() {
     postal_code: '',
     tax_number: '',
     payment_terms: 30,
-    status: 'active'
+    status: 'active',
+    payment_method: 'CASH' as 'CASH' | 'Hutang'
   });
 
   const { products } = useProducts();
@@ -79,7 +80,11 @@ export function SupplierManagement() {
 
     if (activeTab === 'all') return true;
 
-    // Filter suppliers that have products with the selected payment method
+    // Filter suppliers by their own payment method if set, fallback to product check
+    if (supplier.payment_method) {
+      return supplier.payment_method.toLowerCase() === activeTab.toLowerCase();
+    }
+
     const supplierProducts = products.filter(p => p.supplier_id === supplier.id);
     const paymentMethod = activeTab === 'cash' ? 'CASH' : 'Hutang';
 
@@ -140,7 +145,8 @@ export function SupplierManagement() {
       postal_code: supplier.postal_code || '',
       tax_number: supplier.tax_number || '',
       payment_terms: supplier.payment_terms || 30,
-      status: supplier.status || 'active'
+      status: supplier.status || 'active',
+      payment_method: (supplier.payment_method as any) || 'CASH'
     });
     setShowDialog(true);
   };
@@ -310,6 +316,34 @@ export function SupplierManagement() {
                   onCheckedChange={(checked) => setFormData({ ...formData, status: checked ? 'active' : 'inactive' })}
                 />
                 <Label htmlFor="status">Supplier Aktif</Label>
+              </div>
+
+              <div className="grid gap-2">
+                <Label className="font-body">Metode Pembayaran Default</Label>
+                <div className="flex gap-4">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      id="pm-cash"
+                      name="payment_method"
+                      className="w-4 h-4"
+                      checked={formData.payment_method === 'CASH'}
+                      onChange={() => setFormData({ ...formData, payment_method: 'CASH' })}
+                    />
+                    <Label htmlFor="pm-cash">CASH</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      id="pm-debt"
+                      name="payment_method"
+                      className="w-4 h-4"
+                      checked={formData.payment_method === 'Hutang'}
+                      onChange={() => setFormData({ ...formData, payment_method: 'Hutang' })}
+                    />
+                    <Label htmlFor="pm-debt">Hutang</Label>
+                  </div>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4">

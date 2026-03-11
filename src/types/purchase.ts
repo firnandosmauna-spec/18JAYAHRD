@@ -10,6 +10,7 @@ export interface Supplier {
   tax_number?: string;
   payment_terms?: number; // days
   deposit_balance?: number;
+  payment_method?: 'CASH' | 'Hutang';
   status: string;
   created_at: string;
   updated_at: string;
