@@ -514,6 +514,7 @@ function DepositManagementDialog({ open, onOpenChange, supplier, onSuccess, isIn
   const [deposits, setDeposits] = useState<SupplierDeposit[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     amount: '',
