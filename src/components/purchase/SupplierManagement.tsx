@@ -514,7 +514,7 @@ function DepositManagementDialog({ open, onOpenChange, supplier, onSuccess, isIn
   const [deposits, setDeposits] = useState<SupplierDeposit[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     amount: '',
     type: 'deposit' as 'deposit' | 'usage' | 'refund',
@@ -548,19 +548,55 @@ function DepositManagementDialog({ open, onOpenChange, supplier, onSuccess, isIn
 
     try {
       setIsSubmitting(true);
-      await PurchaseService.addSupplierDeposit({
-        supplier_id: supplier.id,
-        amount: Number(formData.amount),
-        type: formData.type,
-        description: formData.description
-      });
-      toast({ title: 'Berhasil', description: 'Transaksi deposit berhasil dicatat' });
+      if (editingId) {
+        await PurchaseService.updateSupplierDeposit(editingId, {
+          amount: Number(formData.amount),
+          type: formData.type,
+          description: formData.description
+        });
+        toast({ title: 'Berhasil', description: 'Transaksi deposit berhasil diperbarui' });
+      } else {
+        await PurchaseService.addSupplierDeposit({
+          supplier_id: supplier.id,
+          amount: Number(formData.amount),
+          type: formData.type,
+          description: formData.description
+        });
+        toast({ title: 'Berhasil', description: 'Transaksi deposit berhasil dicatat' });
+      }
       setShowAddForm(false);
+      setEditingId(null);
       setFormData({ amount: '', type: 'deposit', description: '' });
       fetchDeposits();
       onSuccess();
     } catch (error: any) {
-      toast({ title: 'Error', description: error.message || 'Gagal mencatat transaksi', variant: 'destructive' });
+      toast({ title: 'Error', description: error.message || 'Gagal menyimpan transaksi', variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = (dep: SupplierDeposit) => {
+    setEditingId(dep.id);
+    setFormData({
+      amount: dep.amount.toString(),
+      type: dep.type,
+      description: dep.description || ''
+    });
+    setShowAddForm(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus data deposit ini? Saldo akan disesuaikan otomatis.')) return;
+
+    try {
+      setIsSubmitting(true);
+      await PurchaseService.deleteSupplierDeposit(id);
+      toast({ title: 'Berhasil', description: 'Transaksi deposit dihapus' });
+      fetchDeposits();
+      onSuccess();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Gagal menghapus transaksi', variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
@@ -599,6 +635,10 @@ function DepositManagementDialog({ open, onOpenChange, supplier, onSuccess, isIn
           ) : (
             <Card className="border-inventory/20 bg-inventory/5">
               <CardContent className="p-4">
+                <h5 className="text-xs font-bold mb-3 flex items-center gap-1 text-inventory-dark">
+                  {editingId ? <Edit className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                  {editingId ? 'Edit Transaksi' : 'Transaksi Baru'}
+                </h5>
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -633,11 +673,15 @@ function DepositManagementDialog({ open, onOpenChange, supplier, onSuccess, isIn
                     />
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setShowAddForm(false)}>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => {
+                      setShowAddForm(false);
+                      setEditingId(null);
+                      setFormData({ amount: '', type: 'deposit', description: '' });
+                    }}>
                       Batal
                     </Button>
                     <Button type="submit" size="sm" className={primaryColor} disabled={isSubmitting}>
-                      {isSubmitting ? 'Memproses...' : 'Simpan Transaksi'}
+                      {isSubmitting ? 'Memproses...' : editingId ? 'Perbarui Transaksi' : 'Simpan Transaksi'}
                     </Button>
                   </div>
                 </form>
@@ -688,6 +732,24 @@ function DepositManagementDialog({ open, onOpenChange, supplier, onSuccess, isIn
                       <Badge variant="outline" className="text-[10px] py-0 h-4">
                         {dep.type.toUpperCase()}
                       </Badge>
+                    </div>
+                    <div className="flex gap-1 ml-4 border-l pl-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 hover:bg-inventory/10 text-inventory"
+                        onClick={() => handleEdit(dep)}
+                      >
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 hover:bg-red-50 text-red-600"
+                        onClick={() => handleDelete(dep.id)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
                     </div>
                   </div>
                 ))}

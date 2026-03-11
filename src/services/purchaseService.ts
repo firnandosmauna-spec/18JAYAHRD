@@ -298,6 +298,27 @@ export class PurchaseService {
     return data;
   }
 
+  static async updateSupplierDeposit(id: string, updates: Partial<SupplierDeposit>): Promise<SupplierDeposit> {
+    const { data, error } = await supabase
+      .from('supplier_deposits')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async deleteSupplierDeposit(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('supplier_deposits')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
   // Utility Methods
   static generateOrderNumber(): string {
     const now = new Date();

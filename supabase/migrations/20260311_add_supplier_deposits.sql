@@ -15,23 +15,41 @@ ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS deposit_balance NUMERIC(15, 2) DE
 -- Function to update supplier deposit balance
 CREATE OR REPLACE FUNCTION update_supplier_deposit_balance()
 RETURNS TRIGGER AS $$
+DECLARE
+    delta NUMERIC(15, 2) := 0;
 BEGIN
     IF (TG_OP = 'INSERT') THEN
         IF (NEW.type = 'deposit') THEN
-            UPDATE suppliers SET deposit_balance = deposit_balance + NEW.amount WHERE id = NEW.supplier_id;
-        ELSIF (NEW.type = 'usage') THEN
-            UPDATE suppliers SET deposit_balance = deposit_balance - NEW.amount WHERE id = NEW.supplier_id;
-        ELSIF (NEW.type = 'refund') THEN
-            UPDATE suppliers SET deposit_balance = deposit_balance - NEW.amount WHERE id = NEW.supplier_id;
+            delta := NEW.amount;
+        ELSE
+            delta := -NEW.amount;
         END IF;
+        UPDATE suppliers SET deposit_balance = deposit_balance + delta WHERE id = NEW.supplier_id;
+        
+    ELSIF (TG_OP = 'UPDATE') THEN
+        -- Reverse old amount
+        IF (OLD.type = 'deposit') THEN
+            delta := -OLD.amount;
+        ELSE
+            delta := OLD.amount;
+        END IF;
+        
+        -- Add new amount
+        IF (NEW.type = 'deposit') THEN
+            delta := delta + NEW.amount;
+        ELSE
+            delta := delta - NEW.amount;
+        END IF;
+        
+        UPDATE suppliers SET deposit_balance = deposit_balance + delta WHERE id = NEW.supplier_id;
+        
     ELSIF (TG_OP = 'DELETE') THEN
         IF (OLD.type = 'deposit') THEN
-            UPDATE suppliers SET deposit_balance = deposit_balance - OLD.amount WHERE id = OLD.supplier_id;
-        ELSIF (OLD.type = 'usage') THEN
-            UPDATE suppliers SET deposit_balance = deposit_balance + OLD.amount WHERE id = OLD.supplier_id;
-        ELSIF (OLD.type = 'refund') THEN
-            UPDATE suppliers SET deposit_balance = deposit_balance + OLD.amount WHERE id = OLD.supplier_id;
+            delta := -OLD.amount;
+        ELSE
+            delta := OLD.amount;
         END IF;
+        UPDATE suppliers SET deposit_balance = deposit_balance + delta WHERE id = OLD.supplier_id;
     END IF;
     RETURN NULL;
 END;
@@ -40,7 +58,7 @@ $$ LANGUAGE plpgsql;
 -- Trigger to maintain supplier deposit balance
 DROP TRIGGER IF EXISTS trg_update_supplier_deposit_balance ON supplier_deposits;
 CREATE TRIGGER trg_update_supplier_deposit_balance
-AFTER INSERT OR DELETE ON supplier_deposits
+AFTER INSERT OR UPDATE OR DELETE ON supplier_deposits
 FOR EACH ROW EXECUTE FUNCTION update_supplier_deposit_balance();
 
 -- Enable RLS
