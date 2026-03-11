@@ -1,11 +1,12 @@
 import { supabase } from '@/lib/supabase';
-import type { 
-  Supplier, 
-  PurchaseOrder, 
-  PurchaseOrderItem, 
-  PurchaseInvoice, 
+import type {
+  Supplier,
+  PurchaseOrder,
+  PurchaseOrderItem,
+  PurchaseInvoice,
   PurchaseInvoiceItem,
-  PurchaseStats 
+  PurchaseStats,
+  SupplierDeposit
 } from '@/types/purchase';
 import type { Product } from '@/types/sales';
 
@@ -16,7 +17,7 @@ export class PurchaseService {
       .from('suppliers')
       .select('*')
       .order('name');
-    
+
     if (error) throw error;
     return data || [];
   }
@@ -27,7 +28,7 @@ export class PurchaseService {
       .select('*')
       .eq('id', id)
       .single();
-    
+
     if (error) throw error;
     return data;
   }
@@ -38,7 +39,7 @@ export class PurchaseService {
       .insert(supplier)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   }
@@ -50,7 +51,7 @@ export class PurchaseService {
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   }
@@ -60,7 +61,7 @@ export class PurchaseService {
       .from('suppliers')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
   }
 
@@ -77,7 +78,7 @@ export class PurchaseService {
         )
       `)
       .order('created_at', { ascending: false });
-    
+
     if (error) throw error;
     return data || [];
   }
@@ -95,7 +96,7 @@ export class PurchaseService {
       `)
       .eq('id', id)
       .single();
-    
+
     if (error) throw error;
     return data;
   }
@@ -109,7 +110,7 @@ export class PurchaseService {
       .insert(order)
       .select()
       .single();
-    
+
     if (orderError) throw orderError;
 
     if (items.length > 0) {
@@ -121,7 +122,7 @@ export class PurchaseService {
       const { error: itemsError } = await supabase
         .from('purchase_order_items')
         .insert(orderItems);
-      
+
       if (itemsError) throw itemsError;
     }
 
@@ -135,7 +136,7 @@ export class PurchaseService {
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   }
@@ -145,7 +146,7 @@ export class PurchaseService {
       .from('purchase_orders')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
   }
 
@@ -163,7 +164,7 @@ export class PurchaseService {
         )
       `)
       .order('created_at', { ascending: false });
-    
+
     if (error) throw error;
     return data || [];
   }
@@ -182,7 +183,7 @@ export class PurchaseService {
       `)
       .eq('id', id)
       .single();
-    
+
     if (error) throw error;
     return data;
   }
@@ -196,7 +197,7 @@ export class PurchaseService {
       .insert(invoice)
       .select()
       .single();
-    
+
     if (invoiceError) throw invoiceError;
 
     if (items.length > 0) {
@@ -208,7 +209,7 @@ export class PurchaseService {
       const { error: itemsError } = await supabase
         .from('purchase_invoice_items')
         .insert(invoiceItems);
-      
+
       if (itemsError) throw itemsError;
     }
 
@@ -222,7 +223,7 @@ export class PurchaseService {
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return data;
   }
@@ -232,7 +233,7 @@ export class PurchaseService {
       .from('purchase_invoices')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
   }
 
@@ -252,13 +253,13 @@ export class PurchaseService {
 
     const orders = ordersResult.data || [];
     const invoices = invoicesResult.data || [];
-    
+
     const totalExpenses = invoices
       .filter(inv => inv.payment_status === 'paid')
       .reduce((sum, inv) => sum + inv.total_amount, 0);
 
     const pendingInvoices = invoices.filter(inv => inv.payment_status === 'unpaid').length;
-    const overdueInvoices = invoices.filter(inv => 
+    const overdueInvoices = invoices.filter(inv =>
       inv.payment_status === 'unpaid' && new Date(inv.due_date) < new Date()
     ).length;
 
@@ -272,6 +273,29 @@ export class PurchaseService {
       topProducts: [], // TODO: Implement detailed stats
       monthlyExpenses: [] // TODO: Implement detailed stats
     };
+  }
+
+  // Deposit Management
+  static async getSupplierDeposits(supplierId: string): Promise<SupplierDeposit[]> {
+    const { data, error } = await supabase
+      .from('supplier_deposits')
+      .select('*')
+      .eq('supplier_id', supplierId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async addSupplierDeposit(deposit: Omit<SupplierDeposit, 'id' | 'created_at'>): Promise<SupplierDeposit> {
+    const { data, error } = await supabase
+      .from('supplier_deposits')
+      .insert(deposit)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   // Utility Methods

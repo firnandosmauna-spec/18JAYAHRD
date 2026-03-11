@@ -9,9 +9,20 @@ export interface Supplier {
   postal_code?: string;
   tax_number?: string;
   payment_terms?: number; // days
+  deposit_balance?: number;
   status: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface SupplierDeposit {
+  id: string;
+  supplier_id: string;
+  amount: number;
+  type: 'deposit' | 'usage' | 'refund';
+  description?: string;
+  reference_id?: string;
+  created_at: string;
 }
 
 export interface PurchaseOrder {

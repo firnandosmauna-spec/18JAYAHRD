@@ -8,7 +8,12 @@ import {
   Mail,
   Phone,
   MapPin,
-  Calendar
+  Calendar,
+  Wallet,
+  History,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  Undo2
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -21,7 +26,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger
+  DialogTrigger,
+  DialogFooter
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,7 +36,9 @@ import { useSuppliers } from '@/hooks/usePurchase';
 import { useProducts } from '@/hooks/useInventory';
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { Supplier } from '@/types/purchase';
+import { PurchaseService } from '@/services/purchaseService';
+import { formatCurrency } from '@/lib/utils';
+import type { Supplier, SupplierDeposit } from '@/types/purchase';
 
 export function SupplierManagement() {
   const location = useLocation();
@@ -168,6 +176,9 @@ export function SupplierManagement() {
       status: 'active'
     });
   };
+
+  const [selectedSupplierForDeposit, setSelectedSupplierForDeposit] = useState<Supplier | null>(null);
+  const [showDepositDialog, setShowDepositDialog] = useState(false);
 
   if (loading) {
     return (
@@ -379,6 +390,30 @@ export function SupplierManagement() {
                 </div>
               )}
 
+              <div className={`mt-4 p-3 rounded-lg ${isInventory ? 'bg-inventory/5' : 'bg-orange-50'} border border-dashed ${isInventory ? 'border-inventory/20' : 'border-orange-200'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                    <Wallet className="w-3 h-3" />
+                    Saldo Deposit
+                  </span>
+                  <Badge variant="outline" className={`text-xs font-mono font-bold ${isInventory ? 'text-inventory-dark' : 'text-orange-700'}`}>
+                    {formatCurrency(supplier.deposit_balance || 0)}
+                  </Badge>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`w-full h-7 text-[10px] mt-2 ${isInventory ? 'hover:bg-inventory/10 text-inventory' : 'hover:bg-orange-100 text-orange-600'}`}
+                  onClick={() => {
+                    setSelectedSupplierForDeposit(supplier);
+                    setShowDepositDialog(true);
+                  }}
+                >
+                  <History className="w-3 h-3 mr-1" />
+                  Kelola & Riwayat
+                </Button>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <Button
                   size="sm"
@@ -416,6 +451,227 @@ export function SupplierManagement() {
           )}
         </div>
       )}
+
+      {selectedSupplierForDeposit && (
+        <DepositManagementDialog
+          open={showDepositDialog}
+          onOpenChange={setShowDepositDialog}
+          supplier={selectedSupplierForDeposit}
+          onSuccess={() => {
+            // Refetch is handled by useSuppliers through refresh if we had one, 
+            // but useSuppliers returns the state directly. 
+            // We might need to add a refresh method to useSuppliers if not already there.
+            // Looking at usePurchase.ts, it returns 'refetch'.
+            (suppliers as any).refetch?.() || window.location.reload();
+          }}
+          isInventory={isInventory}
+        />
+      )}
     </div>
+  );
+}
+
+interface DepositManagementDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  supplier: Supplier;
+  onSuccess: () => void;
+  isInventory: boolean;
+}
+
+function DepositManagementDialog({ open, onOpenChange, supplier, onSuccess, isInventory }: DepositManagementDialogProps) {
+  const { toast } = useToast();
+  const [deposits, setDeposits] = useState<SupplierDeposit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [formData, setFormData] = useState({
+    amount: '',
+    type: 'deposit' as 'deposit' | 'usage' | 'refund',
+    description: ''
+  });
+
+  const fetchDeposits = async () => {
+    try {
+      setLoading(true);
+      const data = await PurchaseService.getSupplierDeposits(supplier.id);
+      setDeposits(data);
+    } catch (error: any) {
+      toast({ title: 'Error', description: 'Gagal memuat riwayat deposit', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (open) {
+      fetchDeposits();
+    }
+  }, [open, supplier.id]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.amount || Number(formData.amount) <= 0) {
+      toast({ title: 'Error', description: 'Jumlah harus lebih dari 0', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await PurchaseService.addSupplierDeposit({
+        supplier_id: supplier.id,
+        amount: Number(formData.amount),
+        type: formData.type,
+        description: formData.description
+      });
+      toast({ title: 'Berhasil', description: 'Transaksi deposit berhasil dicatat' });
+      setShowAddForm(false);
+      setFormData({ amount: '', type: 'deposit', description: '' });
+      fetchDeposits();
+      onSuccess();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Gagal mencatat transaksi', variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const primaryColor = isInventory ? 'bg-inventory' : 'bg-orange-600';
+  const primaryHover = isInventory ? 'hover:bg-inventory-dark' : 'hover:bg-orange-700';
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="p-6 pb-2">
+          <DialogTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wallet className="w-5 h-5 text-inventory" />
+              Kelola Deposit: {supplier.name}
+            </div>
+            <Badge variant="secondary" className="font-mono text-lg py-1 px-3">
+              {formatCurrency(supplier.deposit_balance || 0)}
+            </Badge>
+          </DialogTitle>
+          <DialogDescription>
+            Kelola saldo titipan dan riwayat penggunaan dana pada supplier ini.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {!showAddForm ? (
+            <Button
+              className={`w-full ${primaryColor} ${primaryHover}`}
+              onClick={() => setShowAddForm(true)}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Catat Deposit / Penggunaan Baru
+            </Button>
+          ) : (
+            <Card className="border-inventory/20 bg-inventory/5">
+              <CardContent className="p-4">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Jenis Transaksi</Label>
+                      <select
+                        className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={formData.type}
+                        onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+                      >
+                        <option value="deposit">Deposit Baru (+)</option>
+                        <option value="usage">Penggunaan Saldo (-)</option>
+                        <option value="refund">Refund / Pengembalian (-)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Jumlah (Rp)</Label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={formData.amount}
+                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Keterangan</Label>
+                    <Input
+                      placeholder="Misal: Deposit untuk order PO-001"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setShowAddForm(false)}>
+                      Batal
+                    </Button>
+                    <Button type="submit" size="sm" className={primaryColor} disabled={isSubmitting}>
+                      {isSubmitting ? 'Memproses...' : 'Simpan Transaksi'}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="space-y-3">
+            <h4 className="text-sm font-bold flex items-center gap-2">
+              <History className="w-4 h-4" />
+              Riwayat Transaksi
+            </h4>
+            {loading ? (
+              <div className="text-center py-8 text-gray-400">Memuat riwayat...</div>
+            ) : deposits.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 border rounded-lg border-dashed">
+                Belum ada riwayat transaksi deposit
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {deposits.map((dep) => (
+                  <div key={dep.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-full ${dep.type === 'deposit' ? 'bg-green-100' : 'bg-red-100'
+                        }`}>
+                        {dep.type === 'deposit' ? (
+                          <ArrowUpCircle className={`w-4 h-4 ${isInventory ? 'text-inventory-dark' : 'text-green-700'}`} />
+                        ) : dep.type === 'usage' ? (
+                          <ArrowDownCircle className="w-4 h-4 text-red-700" />
+                        ) : (
+                          <Undo2 className="w-4 h-4 text-orange-700" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{dep.description || (dep.type === 'deposit' ? 'Setoran Deposit' : 'Penggunaan Saldo')}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {new Date(dep.created_at).toLocaleDateString('id-ID', {
+                            day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-mono text-sm font-bold ${dep.type === 'deposit' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                        {dep.type === 'deposit' ? '+' : '-'}{formatCurrency(dep.amount)}
+                      </p>
+                      <Badge variant="outline" className="text-[10px] py-0 h-4">
+                        {dep.type.toUpperCase()}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter className="p-4 bg-gray-50 border-t">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full">
+            Tutup
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
