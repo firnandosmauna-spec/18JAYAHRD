@@ -196,6 +196,16 @@ function AccountingDashboard() {
                             </div>
                             Jurnal Umum Baru
                         </Button>
+                        <Button
+                            variant="secondary"
+                            className="h-16 justify-start text-lg px-6 bg-blue-50 text-blue-700 hover:bg-blue-100 border-none group"
+                            onClick={() => navigate('/accounting/coa')}
+                        >
+                            <div className="p-2 bg-blue-600 rounded-lg mr-4 group-hover:scale-110 transition-transform">
+                                <Settings className="w-6 h-6 text-white" />
+                            </div>
+                            Pengaturan Daftar Akun
+                        </Button>
                     </div>
                 </Card>
 
