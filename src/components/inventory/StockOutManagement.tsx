@@ -77,7 +77,8 @@ export function StockOutManagement() {
         warehouse_id: '',
         quantity: '',
         reference: '',
-        notes: ''
+        notes: '',
+        unit_price: '',
     });
 
     const selectedProduct = products.find(p => p.id === formData.product_id);
@@ -118,6 +119,7 @@ export function StockOutManagement() {
                 movement_type: 'out',
                 reference: formData.reference.trim() || null,
                 notes: formData.notes.trim() || null,
+                unit_price: parseFloat(formData.unit_price) || 0,
                 reference_type: 'manual_entry'
             });
 
@@ -128,7 +130,8 @@ export function StockOutManagement() {
                 warehouse_id: '',
                 quantity: '',
                 reference: '',
-                notes: ''
+                notes: '',
+                unit_price: '',
             });
             refetch();
             refetchProducts();
@@ -150,7 +153,8 @@ export function StockOutManagement() {
             warehouse_id: movement.warehouse_id || '',
             quantity: movement.quantity.toString(),
             reference: movement.reference || '',
-            notes: movement.notes || ''
+            notes: movement.notes || '',
+            unit_price: movement.unit_price ? movement.unit_price.toString() : '',
         });
         setShowEditDialog(true);
     };
@@ -178,7 +182,8 @@ export function StockOutManagement() {
                 warehouse_id: formData.warehouse_id || null,
                 quantity: parseFloat(formData.quantity),
                 reference: formData.reference.trim() || null,
-                notes: formData.notes.trim() || null
+                notes: formData.notes.trim() || null,
+                unit_price: parseFloat(formData.unit_price) || 0,
             });
 
             toast({ title: 'Berhasil', description: 'Stok keluar berhasil diperbarui' });
@@ -240,7 +245,14 @@ export function StockOutManagement() {
                                 <Label className="font-body">Pilih Produk *</Label>
                                 <Select
                                     value={formData.product_id}
-                                    onValueChange={(val) => setFormData({ ...formData, product_id: val })}
+                                    onValueChange={(val) => {
+                                        const p = products.find(prod => prod.id === val);
+                                        setFormData({
+                                            ...formData,
+                                            product_id: val,
+                                            unit_price: p?.price?.toString() || ''
+                                        });
+                                    }}
                                     required
                                 >
                                     <SelectTrigger className="font-body">
@@ -296,6 +308,18 @@ export function StockOutManagement() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="font-body text-xs">Harga Satuan (IDR) *</Label>
+                                <Input
+                                    type="number"
+                                    placeholder="0"
+                                    value={formData.unit_price}
+                                    onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
+                                    required
+                                    className="font-mono"
+                                />
                             </div>
 
                             <div className="space-y-2">
@@ -405,6 +429,23 @@ export function StockOutManagement() {
                             </div>
 
                             <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <Label className="font-body text-xs">Harga Satuan (IDR) *</Label>
+                                    <span className="text-[10px] text-muted-foreground font-body">
+                                        {selectedProduct ? `Ref Beli: ${formatCurrency(selectedProduct.cost)} / Jual: ${formatCurrency(selectedProduct.price)}` : ''}
+                                    </span>
+                                </div>
+                                <Input
+                                    type="number"
+                                    placeholder="0"
+                                    value={formData.unit_price}
+                                    onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
+                                    required
+                                    className="font-mono"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
                                 <Label className="font-body text-xs">No. Referensi (SO/Kwitansi)</Label>
                                 <Input
                                     placeholder="KLR-2024..."
@@ -417,7 +458,7 @@ export function StockOutManagement() {
                             <div className="space-y-2">
                                 <Label className="font-body text-xs">Keterangan</Label>
                                 <Input
-                                    placeholder="Alasayan pengeluaran..."
+                                    placeholder="Alasan pengeluaran..."
                                     value={formData.notes}
                                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                                     className="font-body"
@@ -465,8 +506,9 @@ export function StockOutManagement() {
                                 <TableHead className="font-body">Gudang</TableHead>
                                 <TableHead className="font-body">Referensi</TableHead>
                                 <TableHead className="font-body text-right">Jumlah</TableHead>
-                                <TableHead className="font-body text-right">Harga Satuan</TableHead>
-                                <TableHead className="font-body text-right">Total Harga</TableHead>
+                                <TableHead className="font-body text-right">Harga Beli</TableHead>
+                                <TableHead className="font-body text-right">Harga Jual</TableHead>
+                                <TableHead className="font-body text-right">Total Jual</TableHead>
                                 <TableHead className="font-body">Status</TableHead>
                                 <TableHead className="font-body text-right">Aksi</TableHead>
                             </TableRow>
@@ -518,11 +560,14 @@ export function StockOutManagement() {
                                         <TableCell className="text-right font-bold font-mono text-red-600">
                                             -{m.quantity}
                                         </TableCell>
-                                        <TableCell className="text-right font-mono text-sm">
-                                            {formatCurrency((m as any).products?.price || 0)}
+                                        <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                                            {formatCurrency((m as any).products?.cost || 0)}
                                         </TableCell>
-                                        <TableCell className="text-right font-bold font-mono text-red-600">
-                                            {formatCurrency(m.quantity * ((m as any).products?.price || 0))}
+                                        <TableCell className="text-right font-mono text-xs">
+                                            {formatCurrency(m.unit_price || (m as any).products?.price || 0)}
+                                        </TableCell>
+                                        <TableCell className="text-right font-bold text-blue-600 font-mono">
+                                            {formatCurrency(m.quantity * (m.unit_price || (m as any).products?.price || 0))}
                                         </TableCell>
                                         <TableCell>
                                             <Badge className="bg-red-50 text-red-700 hover:bg-red-50 border-none">
@@ -560,8 +605,9 @@ export function StockOutManagement() {
                                         -{filteredMovements.reduce((acc, m) => acc + m.quantity, 0)} unit
                                     </TableCell>
                                     <TableCell></TableCell>
-                                    <TableCell className="text-right font-mono text-red-600">
-                                        {formatCurrency(filteredMovements.reduce((acc, m) => acc + (m.quantity * ((m as any).products?.price || 0)), 0))}
+                                    <TableCell></TableCell>
+                                    <TableCell className="text-right font-mono text-inventory">
+                                        {formatCurrency(filteredMovements.reduce((acc, m) => acc + (m.quantity * (m.unit_price || (m as any).products?.price || 0)), 0))}
                                     </TableCell>
                                     <TableCell colSpan={2}></TableCell>
                                 </TableRow>

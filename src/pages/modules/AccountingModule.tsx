@@ -23,7 +23,8 @@ import {
     Calculator,
     BookOpen,
     Plus,
-    Loader2
+    Loader2,
+    Settings
 } from 'lucide-react';
 import { useAccountingReports, useAccounts, useJournalEntries } from '../../hooks/useAccounting';
 import { formatCurrency } from '../../lib/utils';
@@ -38,6 +39,7 @@ export default function AccountingModule() {
         { label: 'Buku Besar', href: '/accounting/ledger', icon: BookOpen },
         { label: 'Jurnal Umum', href: '/accounting/journal', icon: FileText },
         { label: 'Laporan', href: '/accounting/reports', icon: BarChart3 },
+        { label: 'Daftar Akun', href: '/accounting/coa', icon: Settings },
     ];
 
     return (

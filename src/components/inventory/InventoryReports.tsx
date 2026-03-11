@@ -75,12 +75,12 @@ export function InventoryReports() {
         const totalOut = outMovements.reduce((acc, m) => acc + Math.abs(m.quantity), 0);
 
         const totalInValue = inMovements.reduce((acc, m) => {
-            const price = (m as any).products?.price || 0;
+            const price = m.unit_price || (m as any).products?.cost || 0;
             return acc + (m.quantity * price);
         }, 0);
 
         const totalOutValue = outMovements.reduce((acc, m) => {
-            const price = (m as any).products?.price || 0;
+            const price = m.unit_price || (m as any).products?.price || 0;
             return acc + (Math.abs(m.quantity) * price);
         }, 0);
 
@@ -112,10 +112,9 @@ export function InventoryReports() {
 
     const filteredTotalValue = useMemo(() => {
         return filteredMovements.reduce((acc, m) => {
-            const price = (m as any).products?.price || 0;
-            const qty = (m.movement_type === 'out' || (m.movement_type === 'adjustment' && m.quantity < 0))
-                ? Math.abs(m.quantity)
-                : m.quantity;
+            const isOut = m.movement_type === 'out' || (m.movement_type === 'adjustment' && m.quantity < 0);
+            const price = m.unit_price || (isOut ? (m as any).products?.price : (m as any).products?.cost) || 0;
+            const qty = isOut ? Math.abs(m.quantity) : m.quantity;
             return acc + (qty * price);
         }, 0);
     }, [filteredMovements]);
@@ -271,8 +270,9 @@ export function InventoryReports() {
                                 <TableHead className="font-body">Produk</TableHead>
                                 <TableHead className="font-body">Tipe</TableHead>
                                 <TableHead className="font-body text-right">Jumlah</TableHead>
-                                <TableHead className="font-body text-right">Harga Satuan (IDR)</TableHead>
-                                <TableHead className="font-body text-right">Total Harga (IDR)</TableHead>
+                                <TableHead className="font-body text-right">Harga Beli</TableHead>
+                                <TableHead className="font-body text-right">Harga Jual</TableHead>
+                                <TableHead className="font-body text-right">Subtotal</TableHead>
                                 <TableHead className="font-body">Referensi</TableHead>
                                 <TableHead className="font-body">Keterangan</TableHead>
                             </TableRow>
@@ -320,11 +320,18 @@ export function InventoryReports() {
                                         <TableCell className={`text-right font-bold font-mono ${m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0) ? 'text-green-600' : 'text-blue-600'}`}>
                                             {m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0) ? '+' : '-'}{Math.abs(m.quantity)}
                                         </TableCell>
-                                        <TableCell className="text-right font-mono text-sm">
-                                            {formatCurrency((m as any).products?.price || 0)}
+                                        <TableCell className="text-right font-mono text-xs">
+                                            {movementType === 'in'
+                                                ? formatCurrency(m.unit_price || (m as any).products?.cost || 0)
+                                                : formatCurrency((m as any).products?.cost || 0)}
+                                        </TableCell>
+                                        <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                                            {movementType === 'in'
+                                                ? formatCurrency((m as any).products?.price || 0)
+                                                : formatCurrency(m.unit_price || (m as any).products?.price || 0)}
                                         </TableCell>
                                         <TableCell className={`text-right font-bold font-mono ${m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0) ? 'text-green-600' : 'text-blue-600'}`}>
-                                            {formatCurrency(Math.abs(m.quantity) * ((m as any).products?.price || 0))}
+                                            {formatCurrency(Math.abs(m.quantity) * (m.unit_price || (m.movement_type === 'in' ? (m as any).products?.cost : (m as any).products?.price) || 0))}
                                         </TableCell>
                                         <TableCell className="font-mono text-xs text-muted-foreground">
                                             {m.reference || '-'}
@@ -349,8 +356,13 @@ export function InventoryReports() {
                                         }, 0)} unit
                                     </TableCell>
                                     <TableCell></TableCell>
-                                    <TableCell className="text-right font-mono text-inventory">
-                                        {formatCurrency(filteredTotalValue)}
+                                    <TableCell></TableCell>
+                                    <TableCell className={`text-right font-mono ${movementType === 'in' ? 'text-green-600' : 'text-blue-600'}`}>
+                                        {formatCurrency(filteredMovements.reduce((acc, m) => {
+                                            const isOut = m.movement_type === 'out' || (m.movement_type === 'adjustment' && m.quantity < 0);
+                                            const price = m.unit_price || (isOut ? (m as any).products?.price : (m as any).products?.cost) || 0;
+                                            return acc + (Math.abs(m.quantity) * price);
+                                        }, 0))}
                                     </TableCell>
                                     <TableCell colSpan={2}></TableCell>
                                 </TableRow>

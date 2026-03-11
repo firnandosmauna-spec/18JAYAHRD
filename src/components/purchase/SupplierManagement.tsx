@@ -27,7 +27,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { useSuppliers } from '@/hooks/usePurchase';
+import { useProducts } from '@/hooks/useInventory';
 import { useToast } from '@/components/ui/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Supplier } from '@/types/purchase';
 
 export function SupplierManagement() {
@@ -57,11 +59,24 @@ export function SupplierManagement() {
     status: 'active'
   });
 
-  const filteredSuppliers = suppliers.filter(supplier =>
-    supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    supplier.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    supplier.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const { products } = useProducts();
+  const [activeTab, setActiveTab] = useState('all');
+
+  const filteredSuppliers = suppliers.filter(supplier => {
+    const matchesSearch = supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      supplier.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      supplier.email?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (activeTab === 'all') return true;
+
+    // Filter suppliers that have products with the selected payment method
+    const supplierProducts = products.filter(p => p.supplier_id === supplier.id);
+    const paymentMethod = activeTab === 'cash' ? 'CASH' : 'Hutang';
+
+    return supplierProducts.some(p => p.purchase_payment_method === paymentMethod);
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -311,9 +326,17 @@ export function SupplierManagement() {
           />
         </div>
         <Badge variant="outline" className="px-3 py-1">
-          {filteredSuppliers.length} supplier
+          {filteredSuppliers.length} supplier {activeTab !== 'all' ? `(${activeTab.toUpperCase()})` : ''}
         </Badge>
       </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="font-body">
+          <TabsTrigger value="all">Semua</TabsTrigger>
+          <TabsTrigger value="cash">CASH</TabsTrigger>
+          <TabsTrigger value="debt">Hutang</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* Supplier Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

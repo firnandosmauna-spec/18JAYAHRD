@@ -27,13 +27,15 @@ interface AddStockMovementDialogProps {
     onOpenChange: (open: boolean) => void;
     onSuccess: () => void;
     product?: Product | null;
+    mode?: 'in' | 'out';
 }
 
 export function AddStockMovementDialog({
     open,
     onOpenChange,
     onSuccess,
-    product
+    product,
+    mode = 'in'
 }: AddStockMovementDialogProps) {
     const { warehouses } = useWarehouses();
     const { toast } = useToast();
@@ -43,6 +45,7 @@ export function AddStockMovementDialog({
         warehouse_id: '',
         reference: '',
         notes: '',
+        unit_price: '',
     });
 
     useEffect(() => {
@@ -52,9 +55,10 @@ export function AddStockMovementDialog({
                 warehouse_id: product?.warehouse_id || '',
                 reference: '',
                 notes: '',
+                unit_price: (mode === 'in' ? product?.cost : product?.price)?.toString() || '',
             });
         }
-    }, [open, product]);
+    }, [open, product, mode]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -66,22 +70,23 @@ export function AddStockMovementDialog({
                 product_id: product.id,
                 warehouse_id: formData.warehouse_id || null,
                 quantity: parseFloat(formData.quantity),
-                movement_type: 'in',
+                movement_type: mode,
                 reference: formData.reference.trim() || null,
                 notes: formData.notes.trim() || null,
+                unit_price: parseFloat(formData.unit_price) || 0,
                 reference_type: 'manual_entry'
             });
 
             toast({
                 title: 'Berhasil',
-                description: `Stok ${product.name} telah ditambahkan`,
+                description: `Stok ${product.name} telah di${mode === 'in' ? 'tambah' : 'kurang'}kan`,
             });
             onSuccess();
             onOpenChange(false);
         } catch (error: any) {
             toast({
                 title: 'Gagal',
-                description: error.message || 'Gagal menambah stok',
+                description: error.message || `Gagal ${mode === 'in' ? 'menambah' : 'mengeluarkan'} stok`,
                 variant: 'destructive',
             });
         } finally {
@@ -93,9 +98,13 @@ export function AddStockMovementDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle className="font-display">Tambah Stok</DialogTitle>
+                    <DialogTitle className="font-display">
+                        {mode === 'in' ? 'Tambah Stok (Masuk)' : 'Catat Stok Keluar'}
+                    </DialogTitle>
                     <DialogDescription className="font-body">
-                        {product ? `Menambah stok untuk ${product.name}` : 'Masukkan detail penambahan stok'}
+                        {product
+                            ? `${mode === 'in' ? 'Menambah' : 'Mengeluarkan'} stok untuk ${product.name}`
+                            : `Masukkan detail ${mode === 'in' ? 'penambahan' : 'pengeluaran'} stok`}
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4 pt-4">
@@ -107,6 +116,19 @@ export function AddStockMovementDialog({
                             placeholder="0"
                             value={formData.quantity}
                             onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                            required
+                            className="font-mono"
+                        />
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label htmlFor="unit_price" className="font-body">Harga Satuan (IDR) *</Label>
+                        <Input
+                            id="unit_price"
+                            type="number"
+                            placeholder="0"
+                            value={formData.unit_price}
+                            onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
                             required
                             className="font-mono"
                         />
@@ -165,9 +187,9 @@ export function AddStockMovementDialog({
                         <Button
                             type="submit"
                             disabled={isSubmitting}
-                            className="bg-inventory hover:bg-inventory-dark font-body"
+                            className={`${mode === 'in' ? 'bg-inventory hover:bg-inventory-dark' : 'bg-red-600 hover:bg-red-700'} font-body`}
                         >
-                            {isSubmitting ? 'Menyimpan...' : 'Simpan Stok'}
+                            {isSubmitting ? 'Menyimpan...' : (mode === 'in' ? 'Simpan Stok' : 'Catat Keluar')}
                         </Button>
                     </DialogFooter>
                 </form>

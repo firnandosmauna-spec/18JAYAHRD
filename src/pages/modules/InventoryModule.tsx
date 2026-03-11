@@ -120,6 +120,7 @@ function InventoryDashboard() {
 
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
   const [showRestockDialog, setShowRestockDialog] = useState(false);
+  const [showStockOutDialog, setShowStockOutDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   // Calculate stats from real data
@@ -310,10 +311,10 @@ function InventoryDashboard() {
                       {movement.movement_type === 'in' ? '+' : '-'}{movement.quantity} unit
                     </p>
                     <p className="text-[10px] text-muted-foreground font-mono">
-                      {formatCurrency(product?.price || 0)} / unit
+                      {formatCurrency(movement.unit_price || (movement.movement_type === 'in' ? product?.cost : product?.price) || 0)} / unit
                     </p>
                     <p className={`text-xs font-bold font-mono ${movement.movement_type === 'in' ? 'text-green-700' : 'text-blue-700'}`}>
-                      {formatCurrency(movement.quantity * (product?.price || 0))}
+                      {formatCurrency(movement.quantity * (movement.unit_price || (movement.movement_type === 'in' ? product?.cost : product?.price) || 0))}
                     </p>
                   </div>
                 </div>
@@ -335,6 +336,18 @@ function InventoryDashboard() {
           toast({ title: 'Berhasil', description: 'Stok berhasil ditambahkan' });
         }}
         product={selectedProduct}
+        mode="in"
+      />
+
+      <AddStockMovementDialog
+        open={showStockOutDialog}
+        onOpenChange={setShowStockOutDialog}
+        onSuccess={() => {
+          refetchProducts();
+          toast({ title: 'Berhasil', description: 'Stok berhasil dikurangi' });
+        }}
+        product={selectedProduct}
+        mode="out"
       />
     </div>
   );
@@ -351,8 +364,9 @@ function ProductList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
   const [showStockInDialog, setShowStockInDialog] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [showStockOutDialog, setShowStockOutDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
 
   const filteredProducts = (products || []).filter(product =>
     (product.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -364,6 +378,97 @@ function ProductList() {
     setEditingProduct(product);
     setShowAddProductDialog(true);
   };
+
+  const renderProductTable = (items: Product[]) => (
+    <Card className="border-gray-200">
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="font-body">Produk</TableHead>
+              <TableHead className="font-body">SKU</TableHead>
+              <TableHead className="font-body">Kategori</TableHead>
+              <TableHead className="font-body">Gudang</TableHead>
+              <TableHead className="font-body">Supplier</TableHead>
+              <TableHead className="font-body">Stok</TableHead>
+              <TableHead className="font-body">Harga Beli</TableHead>
+              <TableHead className="font-body">Harga Jual</TableHead>
+              <TableHead className="font-body">Metode Bayar</TableHead>
+              <TableHead className="font-body">Status</TableHead>
+              <TableHead className="font-body text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((product) => (
+              <TableRow key={product.id}>
+                <TableCell className="font-body font-medium">{product.name}</TableCell>
+                <TableCell className="font-mono text-sm">{product.sku}</TableCell>
+                <TableCell className="font-body">{product.product_categories?.name || '-'}</TableCell>
+                <TableCell className="font-body">{product.warehouses?.name || '-'}</TableCell>
+                <TableCell className="font-body">{product.suppliers?.name || '-'}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono">{product.stock}</span>
+                    <Progress
+                      value={Math.min((product.stock / ((product as any).min_stock || 1)) * 100, 100)}
+                      className="w-16 h-2"
+                    />
+                  </div>
+                </TableCell>
+                <TableCell className="font-mono text-xs">{formatCurrency(product.cost || 0)}</TableCell>
+                <TableCell className="font-mono text-sm font-bold">{formatCurrency(product.price)}</TableCell>
+                <TableCell className="font-body">
+                  <Badge variant="outline" className="font-body bg-gray-50">
+                    {product.purchase_payment_method || 'CASH'}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={product.stock === 0 ? 'destructive' : product.stock <= ((product as any).min_stock || 5) ? 'secondary' : 'default'}
+                    className="font-body"
+                  >
+                    {product.stock === 0 ? 'Habis' : product.stock <= ((product as any).min_stock || 5) ? 'Stok Rendah' : 'Tersedia'}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem className="font-body">Lihat Detail</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleEdit(product)} className="font-body">Edit</DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setSelectedProduct(product);
+                          setShowStockInDialog(true);
+                        }}
+                        className="font-body text-green-600"
+                      >
+                        Tambah Stok (+)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setSelectedProduct(product);
+                          setShowStockOutDialog(true);
+                        }}
+                        className="font-body text-red-600"
+                      >
+                        Catat Keluar (-)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleDelete(product.id)} className="font-body text-destructive">Hapus</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
 
   const handleDelete = async (id: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus produk ini?')) {
@@ -420,99 +525,45 @@ function ProductList() {
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="font-body">
           <TabsTrigger value="all">Semua ({filteredProducts.length})</TabsTrigger>
+          <TabsTrigger value="cash">CASH ({filteredProducts.filter(p => p.purchase_payment_method === 'CASH').length})</TabsTrigger>
+          <TabsTrigger value="debt">Hutang ({filteredProducts.filter(p => p.purchase_payment_method === 'Hutang').length})</TabsTrigger>
           <TabsTrigger value="in-stock">Tersedia</TabsTrigger>
           <TabsTrigger value="low-stock">Stok Rendah</TabsTrigger>
           <TabsTrigger value="out-of-stock">Habis</TabsTrigger>
         </TabsList>
 
         <TabsContent value="all" className="mt-6">
-          <Card className="border-gray-200">
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="font-body">Produk</TableHead>
-                    <TableHead className="font-body">SKU</TableHead>
-                    <TableHead className="font-body">Kategori</TableHead>
-                    <TableHead className="font-body">Gudang</TableHead>
-                    <TableHead className="font-body">Supplier</TableHead>
-                    <TableHead className="font-body">Stok</TableHead>
-                    <TableHead className="font-body">Harga</TableHead>
-                    <TableHead className="font-body">Metode Bayar</TableHead>
-                    <TableHead className="font-body">Status</TableHead>
-                    <TableHead className="font-body text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredProducts.map((product) => (
-                    <TableRow key={product.id}>
-                      <TableCell className="font-body font-medium">{product.name}</TableCell>
-                      <TableCell className="font-mono text-sm">{product.sku}</TableCell>
-                      <TableCell className="font-body">{product.product_categories?.name || '-'}</TableCell>
-                      <TableCell className="font-body">{product.warehouses?.name || '-'}</TableCell>
-                      <TableCell className="font-body">{product.suppliers?.name || '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono">{product.stock}</span>
-                          <Progress
-                            value={Math.min((product.stock / ((product as any).min_stock || 1)) * 100, 100)}
-                            className="w-16 h-2"
-                          />
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono">{formatCurrency(product.price)}</TableCell>
-                      <TableCell className="font-body">
-                        <Badge variant="outline" className="font-body bg-gray-50">
-                          {product.purchase_payment_method || 'CASH'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={product.stock === 0 ? 'destructive' : product.stock <= ((product as any).min_stock || 5) ? 'secondary' : 'default'}
-                          className="font-body"
-                        >
-                          {product.stock === 0 ? 'Habis' : product.stock <= ((product as any).min_stock || 5) ? 'Stok Rendah' : 'Tersedia'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="font-body">Lihat Detail</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEdit(product)} className="font-body">Edit</DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="font-body"
-                              onClick={() => {
-                                setSelectedProduct(product);
-                                setShowStockInDialog(true);
-                              }}
-                            >
-                              Tambah Stok
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDelete(product.id)} className="font-body text-destructive">Hapus</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-            <AddStockMovementDialog
-              open={showStockInDialog}
-              onOpenChange={setShowStockInDialog}
-              onSuccess={() => {
-                refetch();
-                toast({ title: 'Berhasil', description: 'Stok berhasil ditambahkan' });
-              }}
-              product={selectedProduct}
-            />
-          </Card>
+          {renderProductTable(filteredProducts)}
         </TabsContent>
+
+        <TabsContent value="cash" className="mt-6">
+          {renderProductTable(filteredProducts.filter(p => p.purchase_payment_method === 'CASH'))}
+        </TabsContent>
+
+        <TabsContent value="debt" className="mt-6">
+          {renderProductTable(filteredProducts.filter(p => p.purchase_payment_method === 'Hutang'))}
+        </TabsContent>
+
+        <AddStockMovementDialog
+          open={showStockInDialog}
+          onOpenChange={setShowStockInDialog}
+          onSuccess={() => {
+            refetch();
+            toast({ title: 'Berhasil', description: 'Stok berhasil ditambahkan' });
+          }}
+          product={selectedProduct}
+          mode="in"
+        />
+        <AddStockMovementDialog
+          open={showStockOutDialog}
+          onOpenChange={setShowStockOutDialog}
+          onSuccess={() => {
+            refetch();
+            toast({ title: 'Berhasil', description: 'Stok berhasil dikurangi' });
+          }}
+          product={selectedProduct}
+          mode="out"
+        />
 
         <TabsContent value="in-stock" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

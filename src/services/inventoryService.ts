@@ -421,12 +421,14 @@ export const stockMovementService = {
           id,
           name,
           sku,
-          price
+          price,
+          cost
         ),
         warehouses (
           id,
           name
-        )
+        ),
+        unit_price
       `)
       .order('created_at', { ascending: false })
 
@@ -459,12 +461,14 @@ export const stockMovementService = {
           id,
           name,
           sku,
-          price
+          price,
+          cost
         ),
         warehouses (
           id,
           name
-        )
+        ),
+        unit_price
       `)
       .eq('product_id', productId)
       .order('created_at', { ascending: false })
@@ -480,8 +484,9 @@ export const stockMovementService = {
       .insert(movement)
       .select(`
         *,
-        products (id, name, sku, price),
-        warehouses (id, name)
+        products (id, name, sku, price, cost),
+        warehouses (id, name),
+        unit_price
       `)
       .single()
 
@@ -531,8 +536,9 @@ export const stockMovementService = {
       .eq('id', id)
       .select(`
         *,
-        products (id, name, sku, price),
-        warehouses (id, name)
+        products (id, name, sku, price, cost),
+        warehouses (id, name),
+        unit_price
       `)
       .single()
 

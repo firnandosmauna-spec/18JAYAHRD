@@ -77,6 +77,8 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     const [gettingLocation, setGettingLocation] = useState(false);
     const [locationError, setLocationError] = useState<string | null>(null);
     const [penaltyRate, setPenaltyRate] = useState<number>(0);
+    const [attendanceSettings, setAttendanceSettings] = useState<any>(null);
+    const [isCheckingIn, setIsCheckingIn] = useState(false);
 
     // Out of range check-in states
     const [showReasonDialog, setShowReasonDialog] = useState(false);
@@ -92,6 +94,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
         const fetchSettings = async () => {
             try {
                 const settings = await settingsService.getAttendanceSettings();
+                setAttendanceSettings(settings);
                 setPenaltyRate(settings.attendance_late_penalty);
             } catch (err) {
                 console.error('Error fetching attendance settings:', err);
@@ -108,12 +111,24 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
 
     // Calculate weekly stats
     const weeklyAttendance = attendance.filter(a => a.employee_id === user?.employee_id);
+
+    // Helper to get work start minutes based on day
+    const getWorkStartMinutes = (dateStr: string) => {
+        if (!attendanceSettings) return 8 * 60; // Fallback
+        const date = new Date(dateStr);
+        const day = date.getDay();
+        const startTime = day === 6 ? attendanceSettings.work_start_time_saturday : attendanceSettings.work_start_time_weekday;
+        const [h, m] = startTime.split(':').map(Number);
+        return h * 60 + m;
+    };
+
     const weeklyLateMinutes = weeklyAttendance.reduce((acc, record) => {
         if (record.status === 'late' && record.check_in) {
             const [h, m] = record.check_in.split(':').map(Number);
             const checkInMinutes = h * 60 + m;
-            const workStartMinutes = 8 * 60; // 08:00
-            const lateThreshold = workStartMinutes + 5; // 5 mins tolerance
+            const workStartMinutes = getWorkStartMinutes(record.date);
+            const tolerance = attendanceSettings?.attendance_late_tolerance || 5;
+            const lateThreshold = workStartMinutes + tolerance;
             if (checkInMinutes > lateThreshold) {
                 return acc + (checkInMinutes - lateThreshold);
             }
@@ -228,9 +243,22 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
 
             // 4. Determine Lateness status
             const now = new Date();
-            const scheduleStartMinutes = 8 * 60; // 08:00
+            const workStartMinutes = getWorkStartMinutes(today);
             const currentMinutes = now.getHours() * 60 + now.getMinutes();
-            const isLate = currentMinutes > (scheduleStartMinutes + 5);
+
+            // Check if it's too early to clock in (start time - 30 mins)
+            const earliestAllowableMinutes = workStartMinutes - 30; // Allowing 30 mins before 07:30
+            if (currentMinutes < earliestAllowableMinutes) {
+                toast({
+                    title: 'Terlalu Awal',
+                    description: `Absensi baru bisa dimulai pukul ${attendanceSettings.work_start_time_weekday} (atau 30 menit sebelumnya).`,
+                    variant: 'destructive'
+                });
+                return;
+            }
+
+            const tolerance = attendanceSettings?.attendance_late_tolerance || 5;
+            const isLate = currentMinutes > (workStartMinutes + tolerance);
             const status = isLate ? 'late' : 'present';
 
             if (distance > officeRadius) {
@@ -252,10 +280,11 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             const checkInTime = now.toTimeString().slice(0, 5);
 
             // Recalculate late minutes for notes
-            const scheduleStartMinutes = 8 * 60; // 08:00
+            const workStartMinutes = getWorkStartMinutes(today);
             const currentMinutes = now.getHours() * 60 + now.getMinutes();
             const isLate = status === 'late';
-            const lateMinutes = isLate ? (currentMinutes - (scheduleStartMinutes + 5)) : 0;
+            const tolerance = attendanceSettings?.attendance_late_tolerance || 5;
+            const lateMinutes = isLate ? (currentMinutes - (workStartMinutes + tolerance)) : 0;
             const penalty = lateMinutes * (penaltyRate || 1000);
 
             // SP1 Check
@@ -412,7 +441,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                             )}
 
                             <p className="text-[10px] text-center text-muted-foreground font-body">
-                                Jadwal: <span className="font-bold">08:00 - 16:00</span> • Denda: Rp 1.000/mnt
+                                Jadwal: <span className="font-bold">{attendanceSettings ? (new Date().getDay() === 6 ? attendanceSettings.work_start_time_saturday : attendanceSettings.work_start_time_weekday) : '07:30'} - {attendanceSettings ? (new Date().getDay() === 6 ? attendanceSettings.work_end_time_saturday : attendanceSettings.work_end_time_weekday) : '17:00'}</span> • Denda: Rp {(penaltyRate || 1000).toLocaleString('id-ID')}/mnt
                             </p>
                         </div>
 

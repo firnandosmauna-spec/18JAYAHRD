@@ -307,6 +307,29 @@ export function useLeaveRequests() {
     }
   }
 
+  const updateLeaveRequest = async (id: string, updates: Partial<LeaveRequest>) => {
+    try {
+      const updatedRequest = await leaveService.update(id, updates)
+      setLeaveRequests(prev => prev.map(req => req.id === id ? updatedRequest : req))
+      return updatedRequest
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
+  const deleteLeaveRequest = async (id: string) => {
+    try {
+      await leaveService.delete(id)
+      setLeaveRequests(prev => prev.filter(req => req.id !== id))
+    } catch (err) {
+      const errorMsg = handleSupabaseError(err)
+      setError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  }
+
   useEffect(() => {
     fetchLeaveRequests()
   }, [])
@@ -317,6 +340,8 @@ export function useLeaveRequests() {
     error,
     refetch: fetchLeaveRequests,
     addLeaveRequest,
+    updateLeaveRequest,
+    deleteLeaveRequest,
     approveLeaveRequest,
     rejectLeaveRequest
   }

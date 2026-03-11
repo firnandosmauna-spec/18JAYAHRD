@@ -26,9 +26,9 @@ export interface AttendanceSettings {
 export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
     attendance_late_penalty: 1000,
     attendance_sp1_threshold: 30,
-    work_start_time_weekday: '08:00',
+    work_start_time_weekday: '07:30',
     work_end_time_weekday: '17:00',
-    work_start_time_saturday: '08:00',
+    work_start_time_saturday: '07:30',
     work_end_time_saturday: '13:00',
     admin_attendance_required: true,
     attendance_late_tolerance: 5,

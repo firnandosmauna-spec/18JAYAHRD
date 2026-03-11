@@ -167,7 +167,16 @@ async function checkLateReturn(leave: LeaveRequest): Promise<{ isLate: boolean; 
 }
 
 export function LeaveManagement() {
-  const { leaveRequests, loading, error, addLeaveRequest, approveLeaveRequest, rejectLeaveRequest } = useLeaveRequests();
+  const {
+    leaveRequests,
+    loading,
+    error,
+    addLeaveRequest,
+    updateLeaveRequest,
+    deleteLeaveRequest,
+    approveLeaveRequest,
+    rejectLeaveRequest
+  } = useLeaveRequests();
   const { employees } = useEmployees();
   const { user } = useAuth();
 
@@ -176,6 +185,7 @@ export function LeaveManagement() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState<LeaveRequest | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const { quotas: allQuotas, refetch: refetchQuota } = useLeaveQuota();
   const [lateReturns, setLateReturns] = useState<Record<string, { isLate: boolean; returnDate?: string }>>({});
 
@@ -229,7 +239,7 @@ export function LeaveManagement() {
     });
   };
 
-  // Handle add leave request
+  // Handle add/edit leave request
   const handleAddLeaveRequest = async () => {
     try {
       if (!formData.employee_id || !formData.start_date || !formData.end_date || !formData.reason) {
@@ -239,48 +249,99 @@ export function LeaveManagement() {
 
       const days = calculateDays(formData.start_date, formData.end_date);
 
-      // Rule: Annual leave max 4 times per year
-      if (formData.leave_type === 'annual') {
-        const year = new Date(formData.start_date).getFullYear();
-        const annualRequestsThisYear = leaveRequests.filter(req =>
-          req.employee_id === formData.employee_id &&
-          req.leave_type === 'annual' &&
-          req.status !== 'rejected' &&
-          new Date(req.start_date).getFullYear() === year
-        );
+      if (isEditing && selectedLeave) {
+        const updates = {
+          leave_type: formData.leave_type,
+          start_date: formData.start_date,
+          end_date: formData.end_date,
+          days,
+          reason: formData.reason,
+          emergency_contact: formData.emergency_contact || null,
+          handover_to: formData.handover_to || null,
+        };
 
-        if (annualRequestsThisYear.length >= 4) {
-          alert(`Maaf, jatah pengambilan cuti tahunan sudah maksimal (4 kali) untuk tahun ${year}.`);
-          return;
+        await updateLeaveRequest(selectedLeave.id, updates);
+        alert('Pengajuan cuti berhasil diperbarui');
+      } else {
+        // Rule: Annual leave max 4 times per year
+        if (formData.leave_type === 'annual') {
+          const year = new Date(formData.start_date).getFullYear();
+          const annualRequestsThisYear = leaveRequests.filter(req =>
+            req.employee_id === formData.employee_id &&
+            req.leave_type === 'annual' &&
+            req.status !== 'rejected' &&
+            new Date(req.start_date).getFullYear() === year
+          );
+
+          if (annualRequestsThisYear.length >= 4) {
+            alert(`Maaf, jatah pengambilan cuti tahunan sudah maksimal (4 kali) untuk tahun ${year}.`);
+            return;
+          }
         }
+
+        const newLeaveRequest = {
+          employee_id: formData.employee_id,
+          leave_type: formData.leave_type,
+          start_date: formData.start_date,
+          end_date: formData.end_date,
+          days,
+          reason: formData.reason,
+          status: 'pending' as const,
+          emergency_contact: formData.emergency_contact || null,
+          handover_to: formData.handover_to || null,
+          approved_by: null,
+          approved_at: null
+        };
+
+        await addLeaveRequest(newLeaveRequest);
+        alert('Pengajuan cuti berhasil dikirim');
       }
 
-      const newLeaveRequest = {
-        employee_id: formData.employee_id,
-        leave_type: formData.leave_type,
-        start_date: formData.start_date,
-        end_date: formData.end_date,
-        days,
-        reason: formData.reason,
-        status: 'pending' as const,
-        emergency_contact: formData.emergency_contact || null,
-        handover_to: formData.handover_to || null,
-        approved_by: null,
-        approved_at: null
-      };
-
-      await addLeaveRequest(newLeaveRequest);
       setShowAddDialog(false);
       resetForm();
     } catch (error) {
-      console.error('Failed to add leave request:', error);
-      alert('Gagal menambah pengajuan cuti');
+      console.error('Failed to process leave request:', error);
+      alert('Gagal memproses pengajuan cuti');
+    }
+  };
+
+  // Handle edit leave
+  const handleEditLeave = (leave: LeaveRequest) => {
+    setSelectedLeave(leave);
+    setFormData({
+      employee_id: leave.employee_id,
+      leave_type: leave.leave_type as LeaveType,
+      start_date: leave.start_date,
+      end_date: leave.end_date,
+      reason: leave.reason,
+      emergency_contact: leave.emergency_contact || '',
+      handover_to: leave.handover_to || ''
+    });
+    setIsEditing(true);
+    setShowAddDialog(true);
+  };
+
+  // Handle delete leave
+  const handleDeleteLeave = async (leaveId: string) => {
+    if (window.confirm('Apakah Anda yakin ingin menghapus/membatalkan pengajuan cuti ini?')) {
+      try {
+        await deleteLeaveRequest(leaveId);
+        alert('Pengajuan cuti berhasil dihapus');
+      } catch (error) {
+        console.error('Failed to delete leave:', error);
+        alert('Gagal menghapus pengajuan cuti');
+      }
     }
   };
 
   // Handle approve leave
   const handleApproveLeave = async (leaveId: string) => {
     try {
+      if (user?.role !== 'Administrator') {
+        alert('Hanya Administrator yang dapat menyetujui pengajuan cuti.');
+        return;
+      }
+
       if (!user?.id) {
         alert('User tidak terautentikasi');
         return;
@@ -313,6 +374,11 @@ export function LeaveManagement() {
   // Handle reject leave
   const handleRejectLeave = async (leaveId: string) => {
     try {
+      if (user?.role !== 'Administrator') {
+        alert('Hanya Administrator yang dapat menolak pengajuan cuti.');
+        return;
+      }
+
       console.log('Rejecting leave:', { leaveId });
       await rejectLeaveRequest(leaveId);
       alert('Cuti berhasil ditolak');
@@ -569,19 +635,37 @@ export function LeaveManagement() {
                                 {leave.status === 'pending' && (
                                   <>
                                     <DropdownMenuItem
-                                      className="font-body text-green-600"
-                                      onClick={() => handleApproveLeave(leave.id)}
+                                      className="font-body text-blue-600"
+                                      onClick={() => handleEditLeave(leave)}
                                     >
-                                      <CheckCircle className="w-4 h-4 mr-2" />
-                                      Setujui
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      Edit
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                       className="font-body text-red-600"
-                                      onClick={() => handleRejectLeave(leave.id)}
+                                      onClick={() => handleDeleteLeave(leave.id)}
                                     >
-                                      <XCircle className="w-4 h-4 mr-2" />
-                                      Tolak
+                                      <Trash2 className="w-4 h-4 mr-2" />
+                                      Hapus
                                     </DropdownMenuItem>
+                                    {user?.role === 'Administrator' && (
+                                      <>
+                                        <DropdownMenuItem
+                                          className="font-body text-green-600"
+                                          onClick={() => handleApproveLeave(leave.id)}
+                                        >
+                                          <CheckCircle className="w-4 h-4 mr-2" />
+                                          Setujui
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          className="font-body text-red-600"
+                                          onClick={() => handleRejectLeave(leave.id)}
+                                        >
+                                          <XCircle className="w-4 h-4 mr-2" />
+                                          Tolak
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
                                   </>
                                 )}
                                 <DropdownMenuItem className="font-body">
@@ -603,12 +687,20 @@ export function LeaveManagement() {
       </Tabs>
 
       {/* Add Leave Request Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+      <Dialog open={showAddDialog} onOpenChange={(open) => {
+        setShowAddDialog(open);
+        if (!open) {
+          resetForm();
+          setIsEditing(false);
+        }
+      }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display">Ajukan Cuti/Izin</DialogTitle>
+            <DialogTitle className="font-display">
+              {isEditing ? 'Edit Pengajuan Cuti/Izin' : 'Ajukan Cuti/Izin'}
+            </DialogTitle>
             <DialogDescription className="font-body">
-              Buat pengajuan cuti atau izin baru
+              {isEditing ? 'Perbarui data pengajuan Anda' : 'Buat pengajuan cuti atau izin baru'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -710,12 +802,12 @@ export function LeaveManagement() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); }} className="font-body">
+            <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); setIsEditing(false); }} className="font-body">
               Batal
             </Button>
             <Button onClick={handleAddLeaveRequest} className="bg-hrd hover:bg-hrd-dark font-body">
               <Send className="w-4 h-4 mr-2" />
-              Ajukan
+              {isEditing ? 'Simpan Perubahan' : 'Ajukan'}
             </Button>
           </DialogFooter>
         </DialogContent>

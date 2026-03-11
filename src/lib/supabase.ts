@@ -505,6 +505,7 @@ export interface StockMovement {
   reference?: string
   reference_type?: string
   notes?: string
+  unit_price: number
   created_by?: string
   created_at: string
   updated_at: string
