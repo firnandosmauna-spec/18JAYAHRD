@@ -48,7 +48,7 @@ export function SupplierManagement() {
   const primaryText = isInventory ? 'text-inventory' : 'text-orange-600';
   const primaryBorder = isInventory ? 'border-t-inventory' : 'border-t-orange-600';
 
-  const { suppliers, loading, createSupplier, updateSupplier, deleteSupplier } = useSuppliers();
+  const { suppliers, loading, refetch, createSupplier, updateSupplier, deleteSupplier } = useSuppliers();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [showDialog, setShowDialog] = useState(false);
@@ -458,11 +458,7 @@ export function SupplierManagement() {
           onOpenChange={setShowDepositDialog}
           supplier={selectedSupplierForDeposit}
           onSuccess={() => {
-            // Refetch is handled by useSuppliers through refresh if we had one, 
-            // but useSuppliers returns the state directly. 
-            // We might need to add a refresh method to useSuppliers if not already there.
-            // Looking at usePurchase.ts, it returns 'refetch'.
-            (suppliers as any).refetch?.() || window.location.reload();
+            refetch();
           }}
           isInventory={isInventory}
         />
