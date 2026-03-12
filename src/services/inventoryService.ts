@@ -464,6 +464,7 @@ export const stockMovementService = {
         warehouses (id, name),
         unit_price,
         payment_method_id,
+        payment_methods (id, name),
         project_location,
         movement_category
       `)
@@ -519,6 +520,7 @@ export const stockMovementService = {
         warehouses (id, name),
         unit_price,
         payment_method_id,
+        payment_methods (id, name),
         project_location,
         movement_category
       `)

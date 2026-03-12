@@ -57,6 +57,7 @@ import {
     useProjectLocations
 } from '@/hooks/useInventory';
 import { useToast } from '@/components/ui/use-toast';
+import { format } from 'date-fns';
 
 export function StockOutManagement() {
     const { products, refetch: refetchProducts } = useProducts();
@@ -127,12 +128,14 @@ export function StockOutManagement() {
 
     const filteredMovements = movementsWithBalances.filter(m => {
         const productName = (m as any).products?.name || '';
+        const supplierName = (m as any).products?.suppliers?.name || '';
         const sku = (m as any).products?.sku || '';
         const reference = m.reference || '';
         const search = searchQuery.toLowerCase();
 
         if (searchQuery) {
             return productName.toLowerCase().includes(search) ||
+                supplierName.toLowerCase().includes(search) ||
                 sku.toLowerCase().includes(search) ||
                 reference.toLowerCase().includes(search);
         }
@@ -640,24 +643,30 @@ export function StockOutManagement() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="font-body">No</TableHead>
-                                <TableHead className="font-body">Tanggal</TableHead>
-                                <TableHead className="font-body">Produk</TableHead>
-                                <TableHead className="font-body">Stok Awal</TableHead>
-                                <TableHead className="font-body text-inventory">Masuk</TableHead>
-                                <TableHead className="font-body text-red-600">Keluar</TableHead>
-                                <TableHead className="font-body text-orange-600">Pemakaian</TableHead>
-                                <TableHead className="font-body">Lokasi Proyek</TableHead>
-                                <TableHead className="font-body">Gudang</TableHead>
-                                <TableHead className="font-body">Saldo Stok Akhir</TableHead>
-                                <TableHead className="font-body">Keterangan</TableHead>
-                                <TableHead className="font-body">Aksi</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">No</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Tanggal</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Supplier</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">No. Ref</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Produk</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center bg-blue-50/50">Stok Awal</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center bg-green-50/50">Masuk</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center bg-red-50/50">Keluar</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center bg-blue-50/50">Stok Akhir</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center">Volume</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center">Satuan</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Kategori</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-right">Harga</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-right">Total Harga</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Lokasi Proyek</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Gudang</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Keterangan</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-right">Aksi</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={12} className="text-center py-8">
+                                    <TableCell colSpan={18} className="text-center py-8">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-4 h-4 border-2 border-inventory/30 border-t-inventory rounded-full animate-spin" />
                                             <span className="font-body text-muted-foreground">Memuat data...</span>
@@ -666,7 +675,7 @@ export function StockOutManagement() {
                                 </TableRow>
                             ) : filteredMovements.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={12} className="text-center py-12">
+                                    <TableCell colSpan={18} className="text-center py-12">
                                         <ArrowUpRight className="w-12 h-12 text-gray-200 mx-auto mb-4" />
                                         <p className="font-body text-muted-foreground">Belum ada data ending material masuk dan keluar</p>
                                     </TableCell>
@@ -675,11 +684,14 @@ export function StockOutManagement() {
                                 filteredMovements.map((m, index) => (
                                     <TableRow key={m.id}>
                                         <TableCell className="font-body text-xs text-muted-foreground">{index + 1}</TableCell>
-                                        <TableCell className="font-body whitespace-nowrap">
-                                            <div className="flex items-center gap-2 text-xs">
-                                                <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                                                {new Date(m.created_at).toLocaleDateString('id-ID')}
-                                            </div>
+                                        <TableCell className="font-body whitespace-nowrap text-xs">
+                                            {format(new Date(m.created_at), 'dd/MM/yyyy')}
+                                        </TableCell>
+                                        <TableCell className="font-body text-xs">
+                                            {(m as any).products?.suppliers?.name || '-'}
+                                        </TableCell>
+                                        <TableCell className="font-mono text-[10px] text-muted-foreground">
+                                            {m.reference || '-'}
                                         </TableCell>
                                         <TableCell>
                                             <div>
@@ -687,24 +699,44 @@ export function StockOutManagement() {
                                                 <p className="text-[10px] text-muted-foreground font-mono">{(m as any).products?.sku || '-'}</p>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs">{(m as any).opening_stock || 0}</TableCell>
-                                        <TableCell className="font-mono text-xs text-inventory font-bold">
-                                            {m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0) ? `+${m.quantity}` : '-'}
+                                        <TableCell className="font-mono text-xs text-center bg-blue-50/30">
+                                            {(m as any).opening_stock || 0}
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs text-red-600 font-bold">
-                                            {m.movement_type === 'out' && (m.movement_category === 'Keluar' || !m.movement_category) ? `-${Math.abs(m.quantity)}` : '-'}
+                                        <TableCell className="font-mono text-xs text-center text-green-600 bg-green-50/30">
+                                            {m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0) ? Math.abs(m.quantity) : '-'}
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs text-orange-600 font-bold">
-                                            {m.movement_type === 'out' && m.movement_category === 'Pemakaian' ? `-${Math.abs(m.quantity)}` : '-'}
+                                        <TableCell className="font-mono text-xs text-center text-red-600 bg-red-50/30">
+                                            {m.movement_type === 'out' || (m.movement_type === 'adjustment' && m.quantity < 0) ? Math.abs(m.quantity) : '-'}
+                                        </TableCell>
+                                        <TableCell className="font-mono text-xs text-center font-bold bg-blue-50/30">
+                                            {(m as any).closing_balance || 0}
+                                        </TableCell>
+                                        <TableCell className="font-mono text-xs text-center">
+                                            {Math.abs(m.quantity)}
+                                        </TableCell>
+                                        <TableCell className="font-body text-xs text-center text-muted-foreground">
+                                            {(m as any).products?.unit || '-'}
+                                        </TableCell>
+                                        <TableCell className="font-body text-[10px]">
+                                            <Badge variant="secondary" className="font-normal">
+                                                {(m as any).products?.product_categories?.name || '-'}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right font-mono text-xs">
+                                            {formatCurrency(m.unit_price || 0)}
+                                        </TableCell>
+                                        <TableCell className="text-right font-bold text-red-600 font-mono text-xs">
+                                            {formatCurrency(Math.abs(m.quantity) * (m.unit_price || 0))}
                                         </TableCell>
                                         <TableCell className="font-body text-xs">
-                                            {m.project_location || '-'}
+                                            <Badge variant="outline" className="text-[10px] font-normal bg-gray-50">
+                                                {m.project_location || '-'}
+                                            </Badge>
                                         </TableCell>
                                         <TableCell className="font-body text-xs">
                                             {(m as any).warehouses?.name || '-'}
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs font-bold">{(m as any).closing_balance || 0}</TableCell>
-                                        <TableCell className="font-body text-xs max-w-[150px] truncate">
+                                        <TableCell className="font-body text-[10px] max-w-[150px] truncate uppercase text-muted-foreground">
                                             {m.notes || '-'}
                                         </TableCell>
                                         <TableCell>
@@ -731,18 +763,13 @@ export function StockOutManagement() {
                             )}
                             {filteredMovements.length > 0 && (
                                 <TableRow className="bg-gray-50/50 font-bold">
-                                    <TableCell colSpan={4} className="font-display text-gray-900 px-4 py-4">
-                                        TOTAL
+                                    <TableCell colSpan={13} className="font-display text-gray-900 px-4 py-4 text-right">
+                                        TOTAL HARGA
                                     </TableCell>
-                                    <TableCell className="font-mono text-red-600">
-                                        -{filteredMovements.reduce((acc, m) => acc + m.quantity, 0)} unit
+                                    <TableCell className="font-mono text-red-600 text-right">
+                                        {formatCurrency(filteredMovements.reduce((acc, m) => acc + (Math.abs(m.quantity) * (m.unit_price || 0)), 0))}
                                     </TableCell>
-                                    <TableCell></TableCell>
-                                    <TableCell></TableCell>
-                                    <TableCell className="font-mono text-inventory">
-                                        {formatCurrency(filteredMovements.reduce((acc, m) => acc + (m.quantity * (m.unit_price || (m as any).products?.price || 0)), 0))}
-                                    </TableCell>
-                                    <TableCell colSpan={2}></TableCell>
+                                    <TableCell colSpan={4}></TableCell>
                                 </TableRow>
                             )}
                         </TableBody>

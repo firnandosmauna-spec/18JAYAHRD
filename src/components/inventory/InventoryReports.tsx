@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { format } from 'date-fns';
 import {
     BarChart3,
     TrendingUp,
@@ -175,7 +176,7 @@ export function InventoryReports() {
             if (!paymentMethod) {
                 const supplierProducts = products.filter(p => p.supplier_id === s.id);
                 if (supplierProducts.length > 0) {
-                    paymentMethod = supplierProducts[0].purchase_payment_method as any;
+                    paymentMethod = (supplierProducts[0] as any).purchase_payment_method as any;
                 }
             }
             if (!paymentMethod) paymentMethod = 'CASH';
@@ -217,7 +218,7 @@ export function InventoryReports() {
                     const price = m.unit_price || product.cost || 0;
                     const value = m.quantity * price;
 
-                    const method = product.purchase_payment_method || 'CASH';
+                    const method = (product as any).purchase_payment_method || 'CASH';
                     if (method === 'Hutang') {
                         purchases[product.supplier_id].debt += value;
                     } else {
@@ -455,7 +456,7 @@ export function InventoryReports() {
                                             <TableRow key={m.id}>
                                                 {visibleColumns.date && (
                                                     <TableCell className="font-body whitespace-nowrap">
-                                                        {new Date(m.created_at).toLocaleDateString('id-ID')}
+                                                        {format(new Date(m.created_at), 'dd/MM/yyyy')}
                                                     </TableCell>
                                                 )}
                                                 {visibleColumns.product && (
@@ -687,7 +688,7 @@ export function InventoryReports() {
                                                                 {(() => {
                                                                     if (s.payment_method) return s.payment_method;
                                                                     const supplierProducts = products.filter(p => p.supplier_id === s.id);
-                                                                    return supplierProducts.length > 0 ? supplierProducts[0].purchase_payment_method : 'CASH';
+                                                                    return supplierProducts.length > 0 ? (supplierProducts[0] as any).purchase_payment_method : 'CASH';
                                                                 })()}
                                                             </Badge>
                                                         </TableCell>

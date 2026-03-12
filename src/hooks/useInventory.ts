@@ -5,6 +5,7 @@ import {
   warehouseService,
   stockMovementService
 } from '@/services/inventoryService'
+import { projectService } from '@/services/projectService'
 import { settingsService } from '@/services/settingsService'
 import { handleSupabaseError } from '@/services/supabaseService'
 import type { Product, ProductCategory, Warehouse, StockMovement } from '@/lib/supabase'
@@ -489,6 +490,8 @@ export function useInventoryVolumes() {
 // Project Locations Hook
 export function useProjectLocations() {
   const [locations, setLocations] = useState<string[]>([])
+  const [projectNames, setProjectNames] = useState<string[]>([])
+  const [customLocations, setCustomLocations] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -496,20 +499,36 @@ export function useProjectLocations() {
     try {
       setLoading(true)
       setError(null)
+      
+      // Fetch from settings (custom locations)
       const settings = await settingsService.getSettings(['inventory_project_locations'])
+      let custom: string[] = []
       if (settings && settings.length > 0) {
         try {
           const parsed = JSON.parse(settings[0].value)
-          setLocations(Array.isArray(parsed) ? parsed : [])
+          custom = Array.isArray(parsed) ? parsed : []
         } catch (e) {
           console.error('Failed to parse inventory_project_locations:', e)
-          setLocations([])
         }
       } else {
-        const defaultLocations = ['Gudang Utama', 'Proyek A', 'Proyek B', 'Transit']
-        setLocations(defaultLocations)
-        await settingsService.updateSetting('inventory_project_locations', JSON.stringify(defaultLocations), 'Daftar lokasi proyek')
+        custom = ['Gudang Utama', 'Transit']
+        await settingsService.updateSetting('inventory_project_locations', JSON.stringify(custom), 'Daftar lokasi proyek')
       }
+      setCustomLocations(custom)
+
+      // Fetch from projects table
+      let projects: string[] = []
+      try {
+        const projectData = await projectService.getAll('in-progress')
+        projects = projectData.map(p => p.name)
+      } catch (e) {
+        console.error('Failed to fetch projects for locations:', e)
+      }
+      setProjectNames(projects)
+
+      // Merge and deduplicate
+      const merged = Array.from(new Set([...custom, ...projects]))
+      setLocations(merged)
     } catch (err) {
       setError(handleSupabaseError(err))
     } finally {
@@ -519,11 +538,14 @@ export function useProjectLocations() {
 
   const addLocation = async (location: string) => {
     try {
-      if (locations.includes(location)) return locations
-      const newLocations = [...locations, location]
-      await settingsService.updateSetting('inventory_project_locations', JSON.stringify(newLocations))
-      setLocations(newLocations)
-      return newLocations
+      if (customLocations.includes(location) || projectNames.includes(location)) return locations
+      const newCustom = [...customLocations, location]
+      await settingsService.updateSetting('inventory_project_locations', JSON.stringify(newCustom))
+      setCustomLocations(newCustom)
+      
+      const merged = Array.from(new Set([...newCustom, ...projectNames]))
+      setLocations(merged)
+      return merged
     } catch (err) {
       const errorMsg = handleSupabaseError(err)
       setError(errorMsg)
@@ -533,10 +555,13 @@ export function useProjectLocations() {
 
   const removeLocation = async (location: string) => {
     try {
-      const newLocations = locations.filter(l => l !== location)
-      await settingsService.updateSetting('inventory_project_locations', JSON.stringify(newLocations))
-      setLocations(newLocations)
-      return newLocations
+      const newCustom = customLocations.filter(l => l !== location)
+      await settingsService.updateSetting('inventory_project_locations', JSON.stringify(newCustom))
+      setCustomLocations(newCustom)
+      
+      const merged = Array.from(new Set([...newCustom, ...projectNames]))
+      setLocations(merged)
+      return merged
     } catch (err) {
       const errorMsg = handleSupabaseError(err)
       setError(errorMsg)
@@ -550,6 +575,8 @@ export function useProjectLocations() {
 
   return {
     locations,
+    projectNames,
+    customLocations,
     loading,
     error,
     refetch: fetchLocations,
@@ -557,10 +584,13 @@ export function useProjectLocations() {
     removeLocation,
     updateLocation: async (oldLocation: string, newLocation: string) => {
       try {
-        const updated = locations.map(l => l === oldLocation ? newLocation : l)
-        await settingsService.updateSetting('inventory_project_locations', JSON.stringify(updated))
-        setLocations(updated)
-        return updated
+        const updatedCustom = customLocations.map(l => l === oldLocation ? newLocation : l)
+        await settingsService.updateSetting('inventory_project_locations', JSON.stringify(updatedCustom))
+        setCustomLocations(updatedCustom)
+        
+        const merged = Array.from(new Set([...updatedCustom, ...projectNames]))
+        setLocations(merged)
+        return merged
       } catch (err) {
         const errorMsg = handleSupabaseError(err)
         setError(errorMsg)

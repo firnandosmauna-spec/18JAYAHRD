@@ -29,7 +29,8 @@ import {
   MapPin,
   Settings2,
   GripVertical,
-  CreditCard
+  CreditCard,
+  DollarSign
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,23 +88,10 @@ import { InventoryReports } from '../../components/inventory/InventoryReports';
 // WatermanSalaryManagement removed as it was unused and non-existent
 import { PaymentMethodManagement } from '../../components/inventory/PaymentMethodManagement';
 import { PriceAdjustmentManagement } from '../../components/inventory/PriceAdjustmentManagement';
+import { SupplierDebtManagement } from '../../components/inventory/SupplierDebtManagement';
 
 const navItems = [
-  {
-    group: 'Utama',
-    items: [
-      { label: 'Dashboard', href: '/inventory', icon: Package },
-      { label: 'Laporan', href: '/inventory/reports', icon: BarChart3 },
-    ]
-  },
-  {
-    group: 'Operasional',
-    items: [
-      { label: 'Belanja Material', href: '/inventory/stock-in', icon: ArrowDownRight },
-      { label: 'Ending material masuk dan keluar', href: '/inventory/stock-out', icon: ArrowUpRight },
-      { label: 'Penyesuaian Harga', href: '/inventory/price-adjustments', icon: TrendingUp },
-    ]
-  },
+  { label: 'Dashboard', href: '/inventory', icon: Package },
   {
     group: 'Master Data',
     items: [
@@ -114,6 +102,21 @@ const navItems = [
       { label: 'Kategori', href: '/inventory/categories', icon: Tags },
       { label: 'Gudang', href: '/inventory/warehouse', icon: Warehouse },
       { label: 'Cara Pembayaran', href: '/inventory/payment-methods', icon: CreditCard },
+    ]
+  },
+  {
+    group: 'Operasional',
+    items: [
+      { label: 'Belanja Material', href: '/inventory/stock-in', icon: ArrowDownRight },
+      { label: 'Ending material masuk dan keluar', href: '/inventory/stock-out', icon: ArrowUpRight },
+      { label: 'Penyesuaian Harga', href: '/inventory/price-adjustments', icon: TrendingUp },
+      { label: 'Hutang Supplier', href: '/inventory/supplier-debt', icon: DollarSign },
+    ]
+  },
+  {
+    group: 'Laporan',
+    items: [
+      { label: 'Laporan', href: '/inventory/reports', icon: BarChart3 },
     ]
   }
 ];
@@ -771,6 +774,7 @@ function InventoryModule() {
         <Route path="warehouse" element={<WarehouseManagement />} />
         <Route path="payment-methods" element={<PaymentMethodManagement />} />
         <Route path="price-adjustments" element={<PriceAdjustmentManagement />} />
+        <Route path="supplier-debt" element={<SupplierDebtManagement />} />
         <Route path="reports" element={<InventoryReports />} />
       </Routes>
     </ModuleLayout>

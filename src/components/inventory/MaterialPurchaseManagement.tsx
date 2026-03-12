@@ -48,9 +48,10 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useProducts, useWarehouses, useStockMovements } from '../../hooks/useInventory';
+import { useProducts, useWarehouses, useStockMovements, useProjectLocations } from '../../hooks/useInventory';
 import { usePurchaseInvoices } from '../../hooks/usePurchase';
 import { useToast } from '../ui/use-toast';
+import { format } from 'date-fns';
 import { paymentMethodService, PaymentMethod } from '../../services/paymentMethodService';
 import { cn } from '../../lib/utils';
 import type { Product } from '../../lib/supabase';
@@ -70,12 +71,15 @@ interface StockMovement {
     payment_method_id?: string | null;
     products?: any;
     warehouses?: any;
-    payment_methods?: any;
+    project_location?: string | null;
+    movement_category?: string | null;
+    payment_methods?: { id: string, name: string };
 }
 
 export function MaterialPurchaseManagement() {
     const { products, refetch: refetchProducts } = useProducts();
     const { warehouses } = useWarehouses();
+    const { locations: projectLocations } = useProjectLocations();
     const { movements, loading, addMovement, updateMovement, deleteMovement, refetch } = useStockMovements();
     const { invoices } = usePurchaseInvoices();
     const { toast } = useToast();
@@ -117,16 +121,51 @@ export function MaterialPurchaseManagement() {
         notes: '',
         unit_price: '',
         payment_method_id: '',
+        project_location: '',
     });
 
-    const stockInMovements = (movements as StockMovement[]).filter(m => m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0));
+    // Calculate running balances per product
+    const calculateBalances = () => {
+        // Sort all movements by created_at ascending to calculate running balance correctly
+        const sortedAllMovements = [...movements].sort((a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+
+        const productBalances: Record<string, number> = {};
+
+        return sortedAllMovements.map(m => {
+            const pid = m.product_id;
+            const prevBalance = productBalances[pid] || 0;
+            let currentBalance = prevBalance;
+
+            if (m.movement_type === 'in' || m.movement_type === 'adjustment') {
+                currentBalance += m.quantity;
+            } else if (m.movement_type === 'out') {
+                currentBalance -= Math.abs(m.quantity);
+            }
+
+            productBalances[pid] = currentBalance;
+
+            return {
+                ...m,
+                opening_stock: prevBalance,
+                closing_balance: currentBalance
+            };
+        }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    };
+
+    const movementsWithBalances = calculateBalances();
+
+    const stockInMovements = movementsWithBalances.filter(m => m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0));
 
     const filteredMovements = stockInMovements.filter(m => {
-        const productName = m.products?.name || '';
-        const sku = m.products?.sku || '';
-        const reference = m.reference || '';
+        const productName = (m as any).products?.name || '';
+        const supplierName = (m as any).products?.suppliers?.name || '';
+        const sku = (m as any).products?.sku || '';
+        const reference = (m as any).reference || '';
         const search = searchQuery.toLowerCase();
         return productName.toLowerCase().includes(search) ||
+            supplierName.toLowerCase().includes(search) ||
             sku.toLowerCase().includes(search) ||
             reference.toLowerCase().includes(search);
     });
@@ -146,7 +185,8 @@ export function MaterialPurchaseManagement() {
                 notes: formData.notes.trim() || null,
                 unit_price: parseFloat(formData.unit_price) || 0,
                 reference_type: 'manual_entry',
-                payment_method_id: formData.payment_method_id || null
+                payment_method_id: formData.payment_method_id || null,
+                project_location: formData.project_location || null
             });
 
             toast({ title: 'Berhasil', description: 'Stok masuk berhasil dicatat' });
@@ -159,6 +199,7 @@ export function MaterialPurchaseManagement() {
                 notes: '',
                 unit_price: '',
                 payment_method_id: paymentMethods[0]?.id || '',
+                project_location: '',
             });
             refetch();
             refetchProducts();
@@ -183,6 +224,7 @@ export function MaterialPurchaseManagement() {
             notes: movement.notes || '',
             unit_price: movement.unit_price.toString(),
             payment_method_id: movement.payment_method_id || '',
+            project_location: movement.project_location || '',
         });
         setShowEditDialog(true);
     };
@@ -200,7 +242,8 @@ export function MaterialPurchaseManagement() {
                 reference: formData.reference.trim() || null,
                 notes: formData.notes.trim() || null,
                 unit_price: parseFloat(formData.unit_price) || 0,
-                payment_method_id: formData.payment_method_id || null
+                payment_method_id: formData.payment_method_id || null,
+                project_location: formData.project_location || null
             });
 
             toast({ title: 'Berhasil', description: 'Belanja material berhasil diperbarui' });
@@ -315,6 +358,25 @@ export function MaterialPurchaseManagement() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+
+                            <div className="space-y-2">
+                                <Label className="font-body text-xs">Lokasi Proyek</Label>
+                                <Select
+                                    value={formData.project_location}
+                                    onValueChange={(val: string) => setFormData({ ...formData, project_location: val })}
+                                >
+                                    <SelectTrigger className="font-body h-10">
+                                        <SelectValue placeholder="Pilih lokasi proyek" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {projectLocations.map((l: string) => (
+                                            <SelectItem key={l} value={l} className="font-body text-xs cursor-pointer">
+                                                {l}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             </div>
 
                             <div className="space-y-2">
@@ -442,6 +504,25 @@ export function MaterialPurchaseManagement() {
                             </div>
 
                             <div className="space-y-2">
+                                <Label className="font-body text-xs">Lokasi Proyek</Label>
+                                <Select
+                                    value={formData.project_location}
+                                    onValueChange={(val: string) => setFormData({ ...formData, project_location: val })}
+                                >
+                                    <SelectTrigger className="font-body h-10">
+                                        <SelectValue placeholder="Ganti lokasi proyek..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {projectLocations.map((l: string) => (
+                                            <SelectItem key={l} value={l} className="font-body text-xs cursor-pointer">
+                                                {l}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
                                 <Label className="font-body text-xs">No. Referensi (PO/Surat Jalan)</Label>
                                 <Input
                                     placeholder="MSK-2024..."
@@ -514,23 +595,29 @@ export function MaterialPurchaseManagement() {
                             <TableRow>
                                 <TableHead className="font-body text-[10px] uppercase">No</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">Tanggal</TableHead>
-                                <TableHead className="font-body text-[10px] uppercase">Produk</TableHead>
-                                <TableHead className="font-body text-[10px] uppercase">SKU</TableHead>
-                                <TableHead className="font-body text-[10px] uppercase">Kategori</TableHead>
-                                <TableHead className="font-body text-[10px] uppercase">Volume</TableHead>
-                                <TableHead className="font-body text-[10px] uppercase">Satuan</TableHead>
-                                <TableHead className="font-body text-[10px] uppercase text-right">Harga Beli</TableHead>
-                                <TableHead className="font-body text-[10px] uppercase text-right">Total Harga</TableHead>
-                                <TableHead className="font-body text-[10px] uppercase">Gudang</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">Supplier</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">No. Ref</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Produk</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center bg-blue-50/50">Stok Awal</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center bg-green-50/50">Masuk</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center bg-red-50/50">Keluar</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center bg-blue-50/50">Stok Akhir</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-center">Volume</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Satuan</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Kategori</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-right">Harga</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-right">Total Harga</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">Cara Bayar</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Lokasi Proyek</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Gudang</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Keterangan</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase text-right">Aksi</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={13} className="text-center py-8">
+                                    <TableCell colSpan={19} className="text-center py-8">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-4 h-4 border-2 border-inventory/30 border-t-inventory rounded-full animate-spin" />
                                             <span className="font-body text-muted-foreground">Memuat data...</span>
@@ -539,14 +626,14 @@ export function MaterialPurchaseManagement() {
                                 </TableRow>
                             ) : filteredMovements.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={13} className="text-center py-12">
+                                    <TableCell colSpan={19} className="text-center py-12">
                                         <ArrowDownRight className="w-12 h-12 text-gray-200 mx-auto mb-4" />
                                         <p className="font-body text-muted-foreground">Belum ada data belanja material</p>
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredMovements.map((m: StockMovement, idx: number) => {
-                                    const prod = m.products;
+                                filteredMovements.map((m: any, idx: number) => {
+                                    const prod = (m as any).products;
                                     const inv = (invoices as PurchaseInvoice[]).find((i: PurchaseInvoice) => i.id === m.reference);
 
                                     // Priority: 1. Linked payment method, 2. Invoice status, 3. Reference type
@@ -564,22 +651,35 @@ export function MaterialPurchaseManagement() {
                                         <TableRow key={m.id}>
                                             <TableCell className="font-mono text-xs">{idx + 1}</TableCell>
                                             <TableCell className="font-body whitespace-nowrap text-xs">
-                                                {new Date(m.created_at).toLocaleDateString('id-ID')}
+                                                {format(new Date(m.created_at), 'dd/MM/yyyy')}
+                                            </TableCell>
+                                            <TableCell className="font-body text-xs">
+                                                {prod?.suppliers?.name || '-'}
+                                            </TableCell>
+                                            <TableCell className="font-mono text-[10px] text-muted-foreground uppercase">
+                                                {m.reference || '-'}
                                             </TableCell>
                                             <TableCell className="font-body font-medium text-xs">
                                                 {prod?.name || '-'}
                                             </TableCell>
-                                            <TableCell className="font-mono text-[10px]">
-                                                {prod?.sku || '-'}
+                                            <TableCell className="font-mono text-xs text-center bg-blue-50/30">{(m as any).opening_stock || 0}</TableCell>
+                                            <TableCell className="font-mono text-xs text-center text-green-600 bg-green-50/30">
+                                                {m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0) ? Math.abs(m.quantity) : '-'}
                                             </TableCell>
-                                            <TableCell className="font-body text-xs">
-                                                {prod?.product_categories?.name || '-'}
+                                            <TableCell className="font-mono text-xs text-center text-red-600 bg-red-50/30">
+                                                {m.movement_type === 'out' || (m.movement_type === 'adjustment' && m.quantity < 0) ? Math.abs(m.quantity) : '-'}
                                             </TableCell>
+                                            <TableCell className="font-mono text-xs text-center font-bold bg-blue-50/30">{(m as any).closing_balance || 0}</TableCell>
                                             <TableCell className="font-body text-xs text-center">
-                                                {prod?.volume || '-'}
+                                                {m.quantity || '-'}
                                             </TableCell>
                                             <TableCell className="font-body text-xs text-center">
                                                 {prod?.unit || '-'}
+                                            </TableCell>
+                                            <TableCell className="font-body text-[10px]">
+                                                <Badge variant="secondary" className="font-normal">
+                                                    {(prod as any)?.product_categories?.name || '-'}
+                                                </Badge>
                                             </TableCell>
                                             <TableCell className="text-right font-mono text-xs">
                                                 {formatCurrency(m.unit_price || prod?.cost || 0)}
@@ -587,23 +687,21 @@ export function MaterialPurchaseManagement() {
                                             <TableCell className="text-right font-bold text-green-600 font-mono text-xs">
                                                 {formatCurrency(m.quantity * (m.unit_price || prod?.cost || 0))}
                                             </TableCell>
+                                            <TableCell className="font-body text-[10px]">
+                                                <Badge variant="secondary" className="font-normal">
+                                                    {caraBayar}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="font-body text-xs">
+                                                <Badge variant="outline" className="text-[10px] font-normal bg-gray-50">
+                                                    {m.project_location || '-'}
+                                                </Badge>
+                                            </TableCell>
                                             <TableCell className="font-body text-xs">
                                                 {m.warehouses?.name || '-'}
                                             </TableCell>
-                                            <TableCell className="font-body text-xs">
-                                                {prod?.suppliers?.name || '-'}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge
-                                                    variant="outline"
-                                                    className={cn(
-                                                        "text-[10px] font-body",
-                                                        caraBayar?.toLowerCase().includes('cash') || caraBayar?.toLowerCase().includes('tunai') ? "text-green-600 bg-green-50" :
-                                                            caraBayar?.toLowerCase().includes('hutang') || caraBayar?.toLowerCase().includes('tempo') ? "text-orange-600 bg-orange-50" : "text-gray-600 bg-gray-50"
-                                                    )}
-                                                >
-                                                    {caraBayar}
-                                                </Badge>
+                                            <TableCell className="font-body text-[10px] max-w-[150px] truncate uppercase text-muted-foreground">
+                                                {m.notes || '-'}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <DropdownMenu>
@@ -629,14 +727,14 @@ export function MaterialPurchaseManagement() {
                                 })
                             )}
                             {filteredMovements.length > 0 && (
-                                <TableRow className="bg-gray-50/50 font-bold">
-                                    <TableCell colSpan={8} className="text-right font-display text-gray-900 px-4 py-3">
-                                        TOTAL
+                                <TableRow className="bg-gray-50/50 font-bold border-t-2 border-gray-200">
+                                    <TableCell colSpan={13} className="text-right font-display text-gray-900 px-4 py-3">
+                                        TOTAL BELANJA
                                     </TableCell>
-                                    <TableCell className="text-right font-mono text-green-600">
+                                    <TableCell className="text-right font-mono text-green-600 text-sm">
                                         {formatCurrency(filteredMovements.reduce((acc, m) => acc + (m.quantity * (m.unit_price || (m as any).products?.cost || 0)), 0))}
                                     </TableCell>
-                                    <TableCell colSpan={4}></TableCell>
+                                    <TableCell colSpan={5}></TableCell>
                                 </TableRow>
                             )}
                         </TableBody>

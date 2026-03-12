@@ -194,8 +194,18 @@ export interface Database {
         Insert: Omit<ConsumerProfile, 'id' | 'created_at'>
         Update: Partial<Omit<ConsumerProfile, 'id' | 'created_at'>>
       }
+      supplier_invoices: {
+        Row: SupplierInvoice
+        Insert: Omit<SupplierInvoice, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<SupplierInvoice, 'id' | 'created_at'>>
+      }
+      supplier_payments: {
+        Row: SupplierPayment
+        Insert: Omit<SupplierPayment, 'id' | 'created_at'>
+        Update: Partial<Omit<SupplierPayment, 'id' | 'created_at'>>
+      }
       payment_methods: {
-        Row: any // Simplified for now
+        Row: any
         Insert: any
         Update: any
       }
@@ -653,4 +663,39 @@ export interface ConsumerProfile {
   source?: string
   bank_process?: string
   created_at: string
+}
+
+export interface SupplierInvoice {
+  id: string
+  supplier_id: string
+  invoice_number: string
+  amount: number
+  remaining_amount: number
+  due_date?: string
+  invoice_date: string
+  status: 'unpaid' | 'partially_paid' | 'paid' | 'overdue'
+  notes?: string
+  created_at: string
+  updated_at: string
+  suppliers?: {
+    name: string
+  }
+}
+
+export interface SupplierPayment {
+  id: string
+  supplier_id: string
+  invoice_id?: string
+  amount: number
+  payment_date: string
+  payment_method: string
+  reference_number?: string
+  notes?: string
+  created_at: string
+  suppliers?: {
+    name: string
+  }
+  supplier_invoices?: {
+    invoice_number: string
+  }
 }

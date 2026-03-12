@@ -4,7 +4,9 @@ import {
     Plus,
     Search,
     Trash2,
-    Edit2
+    Edit2,
+    Hammer,
+    Lock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,7 +26,7 @@ import { useProjectLocations } from '@/hooks/useInventory';
 import { useToast } from '@/components/ui/use-toast';
 
 export function ProjectLocationManagement() {
-    const { locations, loading, addLocation, removeLocation, updateLocation } = useProjectLocations();
+    const { locations, projectNames, customLocations, loading, addLocation, removeLocation, updateLocation } = useProjectLocations();
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState('');
     const [showAddDialog, setShowAddDialog] = useState(false);
@@ -175,35 +177,60 @@ export function ProjectLocationManagement() {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                {filteredLocations.map((l) => (
-                    <Card key={l} className="hover:shadow-sm transition-shadow border-gray-100 group">
-                        <CardContent className="p-4 flex flex-col items-center justify-center relative min-h-[120px]">
-                            <div className="w-10 h-10 bg-inventory/5 rounded-full flex items-center justify-center mb-2">
-                                <MapPin className="w-5 h-5 text-inventory/60" />
-                            </div>
-                            <span className="font-bold text-[#1C1C1E] font-display text-center break-words w-full px-2">{l}</span>
+                {filteredLocations.map((l) => {
+                    const isProject = projectNames.includes(l);
+                    return (
+                        <Card key={l} className="hover:shadow-sm transition-shadow border-gray-100 group relative">
+                            <CardContent className="p-4 flex flex-col items-center justify-center relative min-h-[120px]">
+                                <div className={`w-10 h-10 ${isProject ? 'bg-[#E76F51]/10' : 'bg-inventory/5'} rounded-full flex items-center justify-center mb-2`}>
+                                    {isProject ? (
+                                        <Hammer className="w-5 h-5 text-[#E76F51]" />
+                                    ) : (
+                                        <MapPin className="w-5 h-5 text-inventory/60" />
+                                    )}
+                                </div>
+                                <span className="font-bold text-[#1C1C1E] font-display text-center break-words w-full px-2">{l}</span>
+                                
+                                {isProject ? (
+                                    <Badge variant="secondary" className="mt-2 text-[10px] bg-blue-50 text-blue-600 border-blue-100 uppercase font-mono">
+                                        Proyek Aktif
+                                    </Badge>
+                                ) : (
+                                    <Badge variant="outline" className="mt-2 text-[10px] bg-gray-50 text-gray-500 border-gray-100 uppercase font-mono">
+                                        Manual
+                                    </Badge>
+                                )}
 
-                            <div className="absolute top-1 right-1 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => startEditing(l)}
-                                    className="h-7 w-7 p-0 text-gray-400 hover:text-inventory hover:bg-inventory/5"
-                                >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleDelete(l)}
-                                    className="h-7 w-7 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
-                                >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
+                                <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {isProject ? (
+                                        <div className="bg-white/80 backdrop-blur-sm p-1 rounded-full shadow-sm">
+                                            <Lock className="w-3 h-3 text-gray-300" />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => startEditing(l)}
+                                                className="h-7 w-7 p-0 text-gray-400 hover:text-inventory hover:bg-inventory/5"
+                                            >
+                                                <Edit2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleDelete(l)}
+                                                className="h-7 w-7 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                        </>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    );
+                })}
             </div>
 
             {filteredLocations.length === 0 && (
