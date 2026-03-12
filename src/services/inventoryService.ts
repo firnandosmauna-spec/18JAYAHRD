@@ -106,49 +106,67 @@ export const warehouseService = {
   }
 }
 
+// Helper to enrich products with supplier debt
+async function enrichProductsWithSupplierDebt(products: any[]) {
+  try {
+    const { data: invoices, error: invoicesError } = await supabase
+      .from('purchase_invoices')
+      .select('supplier_id, total_amount, paid_amount')
+      .neq('payment_status', 'paid')
+      .neq('status', 'cancelled');
+
+    if (invoicesError) return products;
+
+    const debtMap = (invoices || []).reduce((acc: any, inv) => {
+      const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
+      acc[inv.supplier_id] = (acc[inv.supplier_id] || 0) + debt;
+      return acc;
+    }, {});
+
+    products.forEach(p => {
+      if (!p) return;
+      if (p.suppliers) {
+        const isHutang = p.suppliers.payment_method?.toLowerCase() === 'hutang';
+        p.suppliers.total_debt = isHutang ? (debtMap[p.suppliers.id] || 0) : 0;
+      }
+    });
+    return products;
+  } catch (e) {
+    console.error('Error enriching products with debt:', e);
+    return products;
+  }
+}
+
 // Product Services
 export const productService = {
   async getAll() {
     try {
+      const { data: products, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          product_categories (id, name),
+          warehouses (id, name),
+          suppliers (*)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return await enrichProductsWithSupplierDebt(products || []);
+    } catch (err: any) {
+      console.error('Error fetching products:', err);
+      // Fallback
       const { data, error } = await supabase
         .from('products')
         .select(`
           *,
           product_categories (id, name),
           warehouses (id, name),
-          suppliers (id, name)
+          suppliers (*)
         `)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        // If error is related to suppliers table/join, fallback to query without suppliers
-        if (error.message?.toLowerCase().includes('suppliers') || error.code === 'PGRST116') {
-          console.warn('Falling back to basic product fetch due to supplier join error:', error.message);
-          const { data: fallbackData, error: fallbackError } = await supabase
-            .from('products')
-            .select('*, product_categories (id, name), warehouses (id, name)')
-            .order('created_at', { ascending: false });
-
-          if (fallbackError) throw fallbackError;
-          return fallbackData || [];
-        }
-        throw error;
-      }
-      return data || [];
-    } catch (err: any) {
-      console.error('Error fetching products:', err);
-      // Final fallback to just products if everything else fails
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
-          return [];
-        }
-        throw error;
-      }
+      if (error) return [];
       return data || [];
     }
   },
@@ -178,7 +196,8 @@ export const productService = {
         }
         throw error;
       }
-      return data;
+      const enriched = await enrichProductsWithSupplierDebt([data]);
+      return enriched[0];
     } catch (err) {
       const { data, error } = await supabase
         .from('products')
@@ -215,7 +234,7 @@ export const productService = {
         }
         throw error;
       }
-      return data || [];
+      return await enrichProductsWithSupplierDebt(data || []);
     } catch (err) {
       const { data, error } = await supabase
         .from('products')
@@ -253,7 +272,8 @@ export const productService = {
         }
         throw error;
       }
-      return (data || []).filter(product => product.stock <= product.min_stock);
+      const lowStock = (data || []).filter(product => product.stock <= product.min_stock);
+      return await enrichProductsWithSupplierDebt(lowStock);
     } catch (err) {
       const { data, error } = await supabase
         .from('products')
@@ -270,55 +290,16 @@ export const productService = {
       const { data, error } = await supabase
         .from('products')
         .insert(product)
-        .select(`
-          *,
-          product_categories (
-            id,
-            name
-          ),
-          warehouses (
-            id,
-            name
-          ),
-          suppliers (
-            id,
-            name
-          )
-        `)
-        .single()
+        .select('*')
+        .single();
 
       if (error) {
-        // If error is related to suppliers table/join (PGRST200), fallback to selection without suppliers
-        if (error.message?.toLowerCase().includes('suppliers') || error.code === 'PGRST200') {
-          console.warn('Falling back to basic product create return due to join error:', error.message);
-          const { data: fallbackData, error: fallbackError } = await supabase
-            .from('products')
-            .insert(product)
-            .select(`
-              *,
-              product_categories (id, name),
-              warehouses (id, name)
-            `)
-            .single();
-          if (fallbackError) throw fallbackError;
-          return fallbackData;
-        }
-
-        // Better error handling for other codes
-        if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
-          throw new Error('Products table does not exist. Please run the schema.sql in Supabase SQL Editor.');
-        }
-        if (error.code === '23505' || error.message?.includes('duplicate')) {
-          throw new Error('SKU sudah digunakan. Silakan gunakan SKU lain.');
-        }
-        if (error.code === '23503' || error.message?.includes('foreign key')) {
-          throw new Error('Kategori atau gudang yang dipilih tidak valid.');
-        }
+        console.error('Error creating product:', error);
         throw error;
       }
-      return data
+      return data;
     } catch (err) {
-      console.error('Save product error (catch):', err);
+      console.error('Save product error (catch):', JSON.stringify(err, null, 2));
       throw err;
     }
   },
@@ -329,45 +310,16 @@ export const productService = {
         .from('products')
         .update(updates)
         .eq('id', id)
-        .select(`
-          *,
-          product_categories (
-            id,
-            name
-          ),
-          warehouses (
-            id,
-            name
-          ),
-          suppliers (
-            id,
-            name
-          )
-        `)
-        .single()
+        .select('*')
+        .single();
 
       if (error) {
-        // If error is related to suppliers table/join (PGRST200), fallback to selection without suppliers
-        if (error.message?.toLowerCase().includes('suppliers') || error.code === 'PGRST200') {
-          console.warn('Falling back to basic product update return due to join error:', error.message);
-          const { data: fallbackData, error: fallbackError } = await supabase
-            .from('products')
-            .update(updates)
-            .eq('id', id)
-            .select(`
-              *,
-              product_categories (id, name),
-              warehouses (id, name)
-            `)
-            .single();
-          if (fallbackError) throw fallbackError;
-          return fallbackData;
-        }
+        console.error('Error updating product:', error);
         throw error;
       }
-      return data
+      return data;
     } catch (err) {
-      console.error('Update product error (catch):', err);
+      console.error('Update product error (catch):', JSON.stringify(err, null, 2));
       throw err;
     }
   },
@@ -422,13 +374,25 @@ export const stockMovementService = {
           name,
           sku,
           price,
-          cost
+          cost,
+          unit,
+          volume,
+          category_id,
+          product_categories (name),
+          supplier_id,
+          suppliers (name)
         ),
         warehouses (
           id,
           name
         ),
-        unit_price
+        unit_price,
+        reference,
+        reference_type,
+        payment_method_id,
+        payment_methods (id, name),
+        project_location,
+        movement_category
       `)
       .order('created_at', { ascending: false })
 
@@ -462,13 +426,25 @@ export const stockMovementService = {
           name,
           sku,
           price,
-          cost
+          cost,
+          unit,
+          volume,
+          category_id,
+          product_categories (name),
+          supplier_id,
+          suppliers (name)
         ),
         warehouses (
           id,
           name
         ),
-        unit_price
+        unit_price,
+        reference,
+        reference_type,
+        payment_method_id,
+        payment_methods (id, name),
+        project_location,
+        movement_category
       `)
       .eq('product_id', productId)
       .order('created_at', { ascending: false })
@@ -486,7 +462,10 @@ export const stockMovementService = {
         *,
         products (id, name, sku, price, cost),
         warehouses (id, name),
-        unit_price
+        unit_price,
+        payment_method_id,
+        project_location,
+        movement_category
       `)
       .single()
 
@@ -538,7 +517,10 @@ export const stockMovementService = {
         *,
         products (id, name, sku, price, cost),
         warehouses (id, name),
-        unit_price
+        unit_price,
+        payment_method_id,
+        project_location,
+        movement_category
       `)
       .single()
 

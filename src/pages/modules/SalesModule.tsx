@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { 
-  ShoppingCart, 
-  Users, 
-  Package, 
-  FileText, 
+import {
+  ShoppingCart,
+  Users,
+  Package,
+  FileText,
   Receipt,
   TrendingUp,
   DollarSign,
   AlertCircle,
-  Plus
+  Plus,
+  CreditCard
 } from 'lucide-react';
 import ModuleLayout from '@/components/layout/ModuleLayout';
 import { Button } from '@/components/ui/button';
@@ -120,15 +121,15 @@ function SalesDashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pelanggan Aktif</CardTitle>
-            <Users className="h-4 w-4 text-purple-600" />
+            <CardTitle className="text-sm font-medium">Total Piutang</CardTitle>
+            <CreditCard className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">
-              {formatNumber(customers.filter(c => c.status === 'active').length)}
+              {formatCurrency(customers.reduce((sum, c) => sum + (c.total_debt || 0), 0))}
             </div>
             <p className="text-xs text-muted-foreground">
-              {customers.length} total pelanggan
+              Dari {customers.filter(c => (c.total_debt || 0) > 0).length} pelanggan
             </p>
           </CardContent>
         </Card>
@@ -209,11 +210,11 @@ function SalesDashboard() {
                   </div>
                   <div className="text-right">
                     <p className="font-medium">{formatCurrency(order.total_amount)}</p>
-                    <Badge 
+                    <Badge
                       variant={
                         order.status === 'confirmed' ? 'default' :
-                        order.status === 'delivered' ? 'secondary' :
-                        order.status === 'cancelled' ? 'destructive' : 'outline'
+                          order.status === 'delivered' ? 'secondary' :
+                            order.status === 'cancelled' ? 'destructive' : 'outline'
                       }
                       className="text-xs"
                     >
@@ -240,10 +241,10 @@ function SalesDashboard() {
                   </div>
                   <div className="text-right">
                     <p className="font-medium">{formatCurrency(invoice.total_amount)}</p>
-                    <Badge 
+                    <Badge
                       variant={
                         invoice.payment_status === 'paid' ? 'secondary' :
-                        invoice.payment_status === 'partial' ? 'outline' : 'destructive'
+                          invoice.payment_status === 'partial' ? 'outline' : 'destructive'
                       }
                       className="text-xs"
                     >

@@ -38,7 +38,9 @@ class AccountingService {
         const { data, error } = await supabase
             .from('accounting_journals')
             .select('*, items:accounting_journal_items(*)')
-            .order('date', { ascending: false });
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(5000);
 
         if (error) throw error;
         return data || [];
@@ -60,15 +62,124 @@ class AccountingService {
 
         const { data: journal, error: journalError } = await supabase
             .from('accounting_journals')
-            .insert([{ ...entryData, status: entry.status || 'posted' }])
+            .insert([{
+                date: entryData.date,
+                description: entryData.description,
+                reference: entryData.reference,
+                status: entry.status || 'posted',
+                created_by: entryData.created_by
+            }])
+            .select()
+            .single();
+
+        if (journalError) {
+            console.error('Error creating journal:', journalError);
+            throw journalError;
+        }
+
+        const journalItems = items.map(item => ({
+            journal_id: journal.id,
+            account_id: item.account_id,
+            account_code: item.account_code,
+            account_name: item.account_name,
+            debit: Number(item.debit || 0),
+            credit: Number(item.credit || 0),
+            description: item.description || ''
+        }));
+
+        const { error: itemsError } = await supabase
+            .from('accounting_journal_items')
+            .insert(journalItems);
+
+        if (itemsError) {
+            console.error('Error creating journal items:', itemsError);
+            throw itemsError;
+        }
+
+        // Update account balances
+        for (const item of items) {
+            await this.updateAccountBalance(item.account_id, item.debit, item.credit);
+        }
+
+        return { ...journal, items };
+    }
+
+    async deleteJournalEntry(id: string): Promise<void> {
+        // 1. Fetch entry items to reverse balances
+        const { data: items, error: fetchError } = await supabase
+            .from('accounting_journal_items')
+            .select('*')
+            .eq('journal_id', id);
+
+        if (fetchError) throw fetchError;
+
+        // 2. Reverse account balances
+        if (items) {
+            for (const item of items) {
+                // To reverse: send negative debit and negative credit
+                await this.updateAccountBalance(item.account_id, -item.debit, -item.credit);
+            }
+        }
+
+        // 3. Delete journal (cascade will handle items)
+        const { error: deleteError } = await supabase
+            .from('accounting_journals')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) throw deleteError;
+    }
+
+    async updateJournalEntry(id: string, entry: Omit<JournalEntry, 'id' | 'created_at' | 'status'> & { status?: string }): Promise<JournalEntry> {
+        const { items, ...entryData } = entry;
+
+        // 1. Fetch old items to reverse balances
+        const { data: oldItems, error: fetchOldError } = await supabase
+            .from('accounting_journal_items')
+            .select('*')
+            .eq('journal_id', id);
+
+        if (fetchOldError) throw fetchOldError;
+
+        // 2. Reverse old account balances
+        if (oldItems) {
+            for (const item of oldItems) {
+                await this.updateAccountBalance(item.account_id, -item.debit, -item.credit);
+            }
+        }
+
+        // 3. Update journal header
+        const { data: journal, error: journalError } = await supabase
+            .from('accounting_journals')
+            .update({
+                date: entryData.date,
+                description: entryData.description,
+                reference: entryData.reference,
+                status: entry.status || 'posted'
+            })
+            .eq('id', id)
             .select()
             .single();
 
         if (journalError) throw journalError;
 
+        // 4. Delete old items
+        const { error: deleteItemsError } = await supabase
+            .from('accounting_journal_items')
+            .delete()
+            .eq('journal_id', id);
+
+        if (deleteItemsError) throw deleteItemsError;
+
+        // 5. Insert new items
         const journalItems = items.map(item => ({
-            ...item,
-            journal_id: journal.id
+            journal_id: id,
+            account_id: item.account_id,
+            account_code: item.account_code,
+            account_name: item.account_name,
+            debit: Number(item.debit || 0),
+            credit: Number(item.credit || 0),
+            description: item.description || ''
         }));
 
         const { error: itemsError } = await supabase
@@ -77,7 +188,7 @@ class AccountingService {
 
         if (itemsError) throw itemsError;
 
-        // Update account balances (This should ideally be done by a trigger in DB or via a procedure)
+        // 6. Apply new account balances
         for (const item of items) {
             await this.updateAccountBalance(item.account_id, item.debit, item.credit);
         }
@@ -86,6 +197,8 @@ class AccountingService {
     }
 
     private async updateAccountBalance(accountId: string, debit: number, credit: number) {
+        if (!accountId) throw new Error('Account ID is required for balance update');
+
         // Determine if debit increases or decreases balance based on account type
         const { data: account, error: fetchError } = await supabase
             .from('accounting_accounts')
@@ -93,25 +206,32 @@ class AccountingService {
             .eq('id', accountId)
             .single();
 
-        if (fetchError) throw fetchError;
+        if (fetchError) {
+            console.error(`Error fetching account ${accountId}:`, fetchError);
+            throw fetchError;
+        }
 
         let adjustment = 0;
         const type = account.type as AccountType;
+        const currentBalance = Number(account.balance || 0);
 
         // Assets, Expenses: Debit increases balance, Credit decreases
         // Liabilities, Equity, Revenue: Debit decreases balance, Credit increases
         if (type === 'asset' || type === 'expense') {
-            adjustment = debit - credit;
+            adjustment = Number(debit) - Number(credit);
         } else {
-            adjustment = credit - debit;
+            adjustment = Number(credit) - Number(debit);
         }
 
         const { error: updateError } = await supabase
             .from('accounting_accounts')
-            .update({ balance: account.balance + adjustment })
+            .update({ balance: currentBalance + adjustment })
             .eq('id', accountId);
 
-        if (updateError) throw updateError;
+        if (updateError) {
+            console.error(`Error updating balance for account ${accountId}:`, updateError);
+            throw updateError;
+        }
     }
 
     // Reports

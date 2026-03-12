@@ -10,6 +10,9 @@ export interface Customer {
   tax_number?: string;
   credit_limit?: number;
   payment_terms?: number; // days
+  deposit_balance?: number;
+  total_debt?: number;
+  preferred_payment_method?: 'CASH' | 'Credit';
   status: string;
   created_at: string;
   updated_at: string;
@@ -43,6 +46,7 @@ export interface SalesOrder {
   tax_amount: number;
   discount_amount: number;
   total_amount: number;
+  payment_method?: 'CASH' | 'Credit';
   notes?: string;
   created_by: string;
   created_at: string;
@@ -78,6 +82,7 @@ export interface SalesInvoice {
   total_amount: number;
   paid_amount: number;
   payment_status: 'unpaid' | 'partial' | 'paid';
+  payment_method?: 'CASH' | 'Credit';
   notes?: string;
   created_by: string;
   created_at: string;

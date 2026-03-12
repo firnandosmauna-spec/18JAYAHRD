@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../..
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Plus, Trash2, Save, Loader2, ArrowLeft, History } from 'lucide-react';
+import { Plus, Trash2, Save, Loader2, ArrowLeft, History, Edit } from 'lucide-react';
 import { toast } from '../../components/ui/use-toast';
 import { accountingService } from '../../services/accountingService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
@@ -12,11 +12,30 @@ import { formatCurrency, cn } from '../../lib/utils';
 import { JournalItem } from '../../types/accounting';
 import { Badge } from '../../components/ui/badge';
 
+import { useNavigate, useSearchParams } from 'react-router-dom';
+
 export function JournalEntryView() {
     const { entries, loading: loadingEntries, refresh } = useJournalEntries();
     const { accounts } = useAccounts();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
     const [showForm, setShowForm] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [editingId, setEditingId] = React.useState<string | null>(null);
+
+    // Load from URL param
+    React.useEffect(() => {
+        const editId = searchParams.get('edit');
+        if (editId && entries.length > 0 && !editingId) {
+            const entry = entries.find(e => e.id === editId);
+            if (entry) {
+                handleEdit(entry);
+                // Clear param so it doesn't trigger again on refresh
+                // searchParams.delete('edit');
+                // setSearchParams(searchParams);
+            }
+        }
+    }, [searchParams, entries]);
 
     const [formData, setFormData] = React.useState({
         date: new Date().toISOString().split('T')[0],
@@ -58,8 +77,56 @@ export function JournalEntryView() {
         setFormData(prev => ({ ...prev, items: newItems }));
     };
 
+    const handleEdit = (entry: any) => {
+        setFormData({
+            date: entry.date,
+            description: entry.description,
+            reference: entry.reference || '',
+            items: entry.items.map((item: any) => ({
+                account_id: item.account_id,
+                debit: item.debit,
+                credit: item.credit,
+                description: item.description || ''
+            }))
+        });
+        setEditingId(entry.id);
+        setShowForm(true);
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm('Apakah Anda yakin ingin menghapus jurnal ini? Tindakan ini akan mengembalikan saldo akun terkait.')) return;
+
+        try {
+            await accountingService.deleteJournalEntry(id);
+            toast({
+                title: 'Jurnal berhasil dihapus',
+                variant: 'default',
+            });
+            refresh();
+        } catch (err: any) {
+            console.error('Error deleting journal:', err);
+            toast({
+                title: 'Gagal menghapus jurnal',
+                description: err.message,
+                variant: 'destructive',
+            });
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Validate that all items have numeric values
+        const hasInvalidAmount = formData.items.some(item => isNaN(Number(item.debit)) || isNaN(Number(item.credit)));
+        if (hasInvalidAmount) {
+            toast({
+                title: 'Input tidak valid',
+                description: 'Pastikan semua angka yang dimasukkan valid.',
+                variant: 'destructive',
+            });
+            return;
+        }
+
         if (!isBalanced) {
             toast({
                 title: 'Entry tidak seimbang',
@@ -71,7 +138,6 @@ export function JournalEntryView() {
 
         try {
             setIsSubmitting(true);
-            // Map item names for display if needed or let service handle it
             const formattedItems = formData.items.map(item => {
                 const acc = accounts.find(a => a.id === item.account_id);
                 return {
@@ -83,17 +149,22 @@ export function JournalEntryView() {
                 };
             });
 
-            await accountingService.createJournalEntry({
+            const entryPayload = {
                 ...formData,
                 items: formattedItems as any,
-                created_by: 'Administrator', // Dummy for now
-            } as any);
+                created_by: 'Administrator',
+            };
 
-            toast({
-                title: 'Jurnal Umum berhasil disimpan',
-                variant: 'default',
-            });
+            if (editingId) {
+                await accountingService.updateJournalEntry(editingId, entryPayload as any);
+                toast({ title: 'Jurnal berhasil diperbarui' });
+            } else {
+                await accountingService.createJournalEntry(entryPayload as any);
+                toast({ title: 'Jurnal berhasil disimpan' });
+            }
+
             setShowForm(false);
+            setEditingId(null);
             refresh();
             setFormData({
                 date: new Date().toISOString().split('T')[0],
@@ -105,9 +176,10 @@ export function JournalEntryView() {
                 ],
             });
         } catch (err: any) {
+            console.error('Error saving Journal Entry:', err);
             toast({
                 title: 'Gagal menyimpan jurnal',
-                description: err.message,
+                description: err.message || 'Terjadi kesalahan pada server',
                 variant: 'destructive',
             });
         } finally {
@@ -123,8 +195,8 @@ export function JournalEntryView() {
                         <ArrowLeft className="w-5 h-5" />
                     </Button>
                     <div>
-                        <h2 className="text-2xl font-bold tracking-tight">Input Jurnal Umum</h2>
-                        <p className="text-muted-foreground">Catat transaksi keuangan baru</p>
+                        <h2 className="text-2xl font-bold tracking-tight">{editingId ? 'Edit Jurnal Umum' : 'Input Jurnal Umum'}</h2>
+                        <p className="text-muted-foreground">{editingId ? 'Perbarui transaksi keuangan yang ada' : 'Catat transaksi keuangan baru'}</p>
                     </div>
                 </div>
 
@@ -272,7 +344,7 @@ export function JournalEntryView() {
                                 ) : (
                                     <Save className="w-4 h-4 mr-2" />
                                 )}
-                                Simpan Jurnal
+                                {editingId ? 'Simpan Perubahan' : 'Simpan Jurnal'}
                             </Button>
                         </div>
                     </div>
@@ -290,7 +362,19 @@ export function JournalEntryView() {
                 </div>
                 <Button
                     className="bg-accounting hover:bg-accounting-dark text-white"
-                    onClick={() => setShowForm(true)}
+                    onClick={() => {
+                        setEditingId(null);
+                        setFormData({
+                            date: new Date().toISOString().split('T')[0],
+                            description: '',
+                            reference: '',
+                            items: [
+                                { account_id: '', debit: 0, credit: 0 },
+                                { account_id: '', debit: 0, credit: 0 },
+                            ],
+                        });
+                        setShowForm(true);
+                    }}
                 >
                     <Plus className="w-4 h-4 mr-2" />
                     Tambah Jurnal Baru
@@ -321,10 +405,28 @@ export function JournalEntryView() {
                                                         </p>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-3">
                                                     <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-100 capitalize">
                                                         {entry.status}
                                                     </Badge>
+                                                    <div className="flex items-center gap-1">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-gray-400 hover:text-blue-600"
+                                                            onClick={() => handleEdit(entry)}
+                                                        >
+                                                            <Edit className="w-4 h-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-gray-400 hover:text-rose-600"
+                                                            onClick={() => handleDelete(entry.id)}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             </div>
 

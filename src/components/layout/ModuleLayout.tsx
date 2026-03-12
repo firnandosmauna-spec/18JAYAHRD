@@ -23,11 +23,22 @@ import { NotificationBell } from '@/components/hrd/NotificationBell';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+}
+
+interface NavGroup {
+  group: string;
+  items: NavItem[];
+}
+
 interface ModuleLayoutProps {
   children: ReactNode;
   moduleId: ModuleType;
   title: string;
-  navItems: { label: string; href: string; icon: React.ElementType }[];
+  navItems: (NavItem | NavGroup)[];
 }
 
 const moduleConfig = {
@@ -109,7 +120,27 @@ export default function ModuleLayout({ children, moduleId, title, navItems }: Mo
   const config = moduleConfig[moduleId];
   const ModuleIcon = config.icon;
 
-
+  const renderNavItem = (item: NavItem) => {
+    const isActive = location.pathname === item.href;
+    return (
+      <button
+        key={item.href}
+        onClick={() => {
+          navigate(item.href);
+          setSidebarOpen(false);
+        }}
+        className={cn(
+          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-body text-sm transition-all text-left",
+          isActive
+            ? `${config.lightBg} ${config.textColor} font-medium shadow-sm`
+            : "text-gray-600 hover:bg-gray-100"
+        )}
+      >
+        <item.icon className={cn("w-5 h-5", isActive ? config.textColor : "text-gray-400")} />
+        {item.label}
+      </button>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#FAFAF9]">
@@ -135,8 +166,8 @@ export default function ModuleLayout({ children, moduleId, title, navItems }: Mo
                   <ModuleIcon className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="font-display font-bold text-white">{title}</h2>
-                  <p className="text-xs text-white/70 font-body">Modul Aktif</p>
+                  <h2 className="font-display font-bold text-white leading-tight">{title}</h2>
+                  <p className="text-[10px] text-white/70 font-body uppercase tracking-wider">Modul Aktif</p>
                 </div>
               </div>
               <Button
@@ -152,26 +183,18 @@ export default function ModuleLayout({ children, moduleId, title, navItems }: Mo
 
           {/* Navigation */}
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.href;
-              return (
-                <button
-                  key={item.href}
-                  onClick={() => {
-                    navigate(item.href);
-                    setSidebarOpen(false);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-body text-sm transition-all",
-                    isActive
-                      ? `${config.lightBg} ${config.textColor} font-medium`
-                      : "text-gray-600 hover:bg-gray-100"
-                  )}
-                >
-                  <item.icon className="w-5 h-5" />
-                  {item.label}
-                </button>
-              );
+            {navItems.map((itemOrGroup, idx) => {
+              if ('group' in itemOrGroup) {
+                return (
+                  <div key={idx} className="pt-4 first:pt-0 space-y-1">
+                    <p className="px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                      {itemOrGroup.group}
+                    </p>
+                    {itemOrGroup.items.map((item) => renderNavItem(item))}
+                  </div>
+                );
+              }
+              return renderNavItem(itemOrGroup as NavItem);
             })}
           </nav>
 

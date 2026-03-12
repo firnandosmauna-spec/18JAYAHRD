@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  Users, 
-  Plus, 
-  Search, 
-  Edit, 
-  Trash2, 
-  Mail, 
-  Phone, 
+import {
+  Users,
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Mail,
+  Phone,
   MapPin,
   CreditCard
 } from 'lucide-react';
@@ -14,17 +14,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useCustomers } from '@/hooks/useSales';
 import type { Customer } from '@/types/sales';
 
@@ -44,6 +51,7 @@ export function CustomerManagement() {
     tax_number: '',
     credit_limit: 0,
     payment_terms: 30,
+    preferred_payment_method: 'CASH' as 'CASH' | 'Credit',
     status: 'active'
   });
 
@@ -81,6 +89,7 @@ export function CustomerManagement() {
       tax_number: customer.tax_number || '',
       credit_limit: customer.credit_limit || 0,
       payment_terms: customer.payment_terms || 30,
+      preferred_payment_method: customer.preferred_payment_method || 'CASH',
       status: customer.status || 'active'
     });
     setShowDialog(true);
@@ -109,6 +118,7 @@ export function CustomerManagement() {
       tax_number: '',
       credit_limit: 0,
       payment_terms: 30,
+      preferred_payment_method: 'CASH',
       status: 'active'
     });
   };
@@ -180,7 +190,7 @@ export function CustomerManagement() {
                   />
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
@@ -267,13 +277,30 @@ export function CustomerManagement() {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="status"
-                  checked={formData.status === 'active'}
-                  onCheckedChange={(checked) => setFormData({ ...formData, status: checked ? 'active' : 'inactive' })}
-                />
-                <Label htmlFor="status">Pelanggan Aktif</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="preferred_payment_method">Metode Pembayaran Preferensi</Label>
+                  <Select
+                    value={formData.preferred_payment_method}
+                    onValueChange={(val) => setFormData({ ...formData, preferred_payment_method: val as 'CASH' | 'Credit' })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih metode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">CASH</SelectItem>
+                      <SelectItem value="Credit">Credit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center space-x-2 pt-8">
+                  <Switch
+                    id="status"
+                    checked={formData.status === 'active'}
+                    onCheckedChange={(checked) => setFormData({ ...formData, status: checked ? 'active' : 'inactive' })}
+                  />
+                  <Label htmlFor="status">Pelanggan Aktif</Label>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4">
@@ -345,7 +372,22 @@ export function CustomerManagement() {
                   <span>Limit: {formatCurrency(customer.credit_limit)}</span>
                 </div>
               )}
-              
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase font-bold text-gray-400">Total Hutang</p>
+                  <p className={`text-sm font-bold ${customer.total_debt && customer.total_debt > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                    {formatCurrency(customer.total_debt || 0)}
+                  </p>
+                </div>
+                <div className="space-y-1 text-right">
+                  <p className="text-[10px] uppercase font-bold text-gray-400">Saldo Deposit</p>
+                  <p className={`text-sm font-bold ${customer.deposit_balance && customer.deposit_balance > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                    {formatCurrency(customer.deposit_balance || 0)}
+                  </p>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <Button
                   size="sm"

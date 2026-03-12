@@ -13,24 +13,75 @@ import type { Product } from '@/types/sales';
 export class PurchaseService {
   // Supplier Management
   static async getSuppliers(): Promise<Supplier[]> {
-    const { data, error } = await supabase
+    const { data: suppliers, error: suppliersError } = await supabase
       .from('suppliers')
       .select('*')
       .order('name');
 
-    if (error) throw error;
-    return data || [];
+    if (suppliersError) throw suppliersError;
+
+    // Fetch unpaid invoice totals per supplier
+    const { data: invoices, error: invoicesError } = await supabase
+      .from('purchase_invoices')
+      .select('supplier_id, total_amount, paid_amount')
+      .neq('payment_status', 'paid')
+      .neq('status', 'cancelled');
+
+    if (invoicesError) {
+      console.warn('Error fetching supplier debts:', invoicesError);
+      return suppliers || [];
+    }
+
+    // Aggregate debt per supplier
+    const debtMap = (invoices || []).reduce((acc: any, inv) => {
+      const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
+      acc[inv.supplier_id] = (acc[inv.supplier_id] || 0) + debt;
+      return acc;
+    }, {});
+
+    return (suppliers || []).map(s => {
+      // Robust case-insensitive check and trimming
+      const method = (s.payment_method || '').trim().toLowerCase();
+      const isHutang = method === 'hutang';
+
+      const debtFromInvoices = debtMap[s.id] || 0;
+
+      // If the supplier has real debt in invoices, we should consider it
+      // but still respect the user's preference for 'Hutang' status.
+      return {
+        ...s,
+        total_debt: isHutang ? (debtFromInvoices || Number(s.total_debt || 0)) : (debtFromInvoices > 0 ? debtFromInvoices : 0)
+      };
+    });
   }
 
   static async getSupplier(id: string): Promise<Supplier | null> {
-    const { data, error } = await supabase
+    const { data: supplier, error } = await supabase
       .from('suppliers')
       .select('*')
       .eq('id', id)
       .single();
 
     if (error) throw error;
-    return data;
+    if (!supplier) return null;
+
+    // Fetch unpaid invoice totals for this supplier
+    const { data: invoices } = await supabase
+      .from('purchase_invoices')
+      .select('total_amount, paid_amount')
+      .eq('supplier_id', id)
+      .neq('payment_status', 'paid')
+      .neq('status', 'cancelled');
+
+    const totalDebt = (invoices || []).reduce((sum, inv) => {
+      return sum + ((inv.total_amount || 0) - (inv.paid_amount || 0));
+    }, 0);
+
+    const isHutang = supplier.payment_method?.toLowerCase() === 'hutang';
+    return {
+      ...supplier,
+      total_debt: isHutang ? totalDebt : 0
+    };
   }
 
   static async createSupplier(supplier: Omit<Supplier, 'id' | 'created_at' | 'updated_at'>): Promise<Supplier> {
@@ -158,6 +209,7 @@ export class PurchaseService {
         *,
         supplier:suppliers(*),
         purchase_order:purchase_orders(*),
+        payment_method:payment_methods(id, name),
         items:purchase_invoice_items(
           *,
           product:products(*)
@@ -176,6 +228,7 @@ export class PurchaseService {
         *,
         supplier:suppliers(*),
         purchase_order:purchase_orders(*),
+        payment_method:payment_methods(id, name),
         items:purchase_invoice_items(
           *,
           product:products(*)

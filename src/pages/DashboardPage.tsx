@@ -680,7 +680,7 @@ export default function DashboardPage() {
                     <Users className="w-6 h-6 text-[#2563EB]" />
                   </div>
                   <p className="font-medium text-sm text-gray-900">Tambah Pelanggan</p>
-                  <p className="text-xs text-gray-500">Daftar pelanggan baru</p>
+                  <p className="text-xs text-gray-500">Master pelanggan baru</p>
                 </motion.div>
               </>
             )}
@@ -742,7 +742,7 @@ export default function DashboardPage() {
                     <Package className="w-6 h-6 text-[#EA580C]" />
                   </div>
                   <p className="font-medium text-sm text-gray-900">Tambah Supplier</p>
-                  <p className="text-xs text-gray-500">Daftar supplier baru</p>
+                  <p className="text-xs text-gray-500">Master supplier baru</p>
                 </motion.div>
               </>
             )}

@@ -10,6 +10,7 @@ export interface Supplier {
   tax_number?: string;
   payment_terms?: number; // days
   deposit_balance?: number;
+  total_debt?: number;
   payment_method?: 'CASH' | 'Hutang';
   status: string;
   created_at: string;
@@ -72,6 +73,7 @@ export interface PurchaseInvoice {
   discount_amount: number;
   total_amount: number;
   paid_amount: number;
+  payment_method_id?: string;
   payment_status: 'unpaid' | 'partial' | 'paid';
   notes?: string;
   created_by: string;

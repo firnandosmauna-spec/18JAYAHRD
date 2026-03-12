@@ -9,7 +9,9 @@ import {
     FileText,
     Edit,
     Trash2,
-    MoreVertical
+    MoreVertical,
+    TrendingUp,
+    Filter
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,19 +48,58 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useProducts, useWarehouses, useStockMovements } from '@/hooks/useInventory';
-import { useToast } from '@/components/ui/use-toast';
+import { useProducts, useWarehouses, useStockMovements } from '../../hooks/useInventory';
+import { usePurchaseInvoices } from '../../hooks/usePurchase';
+import { useToast } from '../ui/use-toast';
+import { paymentMethodService, PaymentMethod } from '../../services/paymentMethodService';
+import { cn } from '../../lib/utils';
+import type { Product } from '../../lib/supabase';
+import type { PurchaseInvoice } from '@/types/purchase';
 
-export function StockInManagement() {
+interface StockMovement {
+    id: string;
+    product_id: string;
+    warehouse_id: string | null;
+    quantity: number;
+    movement_type: string;
+    reference: string | null;
+    notes: string | null;
+    unit_price: number;
+    created_at: string;
+    reference_type?: string;
+    payment_method_id?: string | null;
+    products?: any;
+    warehouses?: any;
+    payment_methods?: any;
+}
+
+export function MaterialPurchaseManagement() {
     const { products, refetch: refetchProducts } = useProducts();
     const { warehouses } = useWarehouses();
     const { movements, loading, addMovement, updateMovement, deleteMovement, refetch } = useStockMovements();
+    const { invoices } = usePurchaseInvoices();
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState('');
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [showEditDialog, setShowEditDialog] = useState(false);
-    const [editingMovement, setEditingMovement] = useState<any | null>(null);
+    const [editingMovement, setEditingMovement] = useState<StockMovement | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+
+    React.useEffect(() => {
+        const fetchPaymentMethods = async () => {
+            try {
+                const data = await paymentMethodService.getActive();
+                setPaymentMethods(data);
+                if (data.length > 0 && !formData.payment_method_id) {
+                    setFormData(prev => ({ ...prev, payment_method_id: data[0].id }));
+                }
+            } catch (error) {
+                console.error('Error fetching payment methods:', error);
+            }
+        };
+        fetchPaymentMethods();
+    }, []);
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('id-ID', {
@@ -75,13 +116,14 @@ export function StockInManagement() {
         reference: '',
         notes: '',
         unit_price: '',
+        payment_method_id: '',
     });
 
-    const stockInMovements = movements.filter(m => m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0));
+    const stockInMovements = (movements as StockMovement[]).filter(m => m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0));
 
     const filteredMovements = stockInMovements.filter(m => {
-        const productName = (m as any).products?.name || '';
-        const sku = (m as any).products?.sku || '';
+        const productName = m.products?.name || '';
+        const sku = m.products?.sku || '';
         const reference = m.reference || '';
         const search = searchQuery.toLowerCase();
         return productName.toLowerCase().includes(search) ||
@@ -103,7 +145,8 @@ export function StockInManagement() {
                 reference: formData.reference.trim() || null,
                 notes: formData.notes.trim() || null,
                 unit_price: parseFloat(formData.unit_price) || 0,
-                reference_type: 'manual_entry'
+                reference_type: 'manual_entry',
+                payment_method_id: formData.payment_method_id || null
             });
 
             toast({ title: 'Berhasil', description: 'Stok masuk berhasil dicatat' });
@@ -115,6 +158,7 @@ export function StockInManagement() {
                 reference: '',
                 notes: '',
                 unit_price: '',
+                payment_method_id: paymentMethods[0]?.id || '',
             });
             refetch();
             refetchProducts();
@@ -129,7 +173,7 @@ export function StockInManagement() {
         }
     };
 
-    const handleEdit = (movement: any) => {
+    const handleEdit = (movement: StockMovement) => {
         setEditingMovement(movement);
         setFormData({
             product_id: movement.product_id,
@@ -138,6 +182,7 @@ export function StockInManagement() {
             reference: movement.reference || '',
             notes: movement.notes || '',
             unit_price: movement.unit_price.toString(),
+            payment_method_id: movement.payment_method_id || '',
         });
         setShowEditDialog(true);
     };
@@ -155,9 +200,10 @@ export function StockInManagement() {
                 reference: formData.reference.trim() || null,
                 notes: formData.notes.trim() || null,
                 unit_price: parseFloat(formData.unit_price) || 0,
+                payment_method_id: formData.payment_method_id || null
             });
 
-            toast({ title: 'Berhasil', description: 'Stok masuk berhasil diperbarui' });
+            toast({ title: 'Berhasil', description: 'Belanja material berhasil diperbarui' });
             setShowEditDialog(false);
             setEditingMovement(null);
             refetch();
@@ -165,7 +211,7 @@ export function StockInManagement() {
         } catch (error: any) {
             toast({
                 title: 'Error',
-                description: error.message || 'Gagal memperbarui stok masuk',
+                description: error.message || 'Gagal memperbarui belanja material',
                 variant: 'destructive'
             });
         } finally {
@@ -174,17 +220,17 @@ export function StockInManagement() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Apakah Anda yakin ingin menghapus data stok masuk ini? Stok barang akan disesuaikan kembali.')) return;
+        if (!confirm('Apakah Anda yakin ingin menghapus data belanja material ini? Stok barang akan disesuaikan kembali.')) return;
 
         try {
             await deleteMovement(id);
-            toast({ title: 'Berhasil', description: 'Data stok masuk berhasil dihapus' });
+            toast({ title: 'Berhasil', description: 'Data belanja material berhasil dihapus' });
             refetch();
             refetchProducts();
         } catch (error: any) {
             toast({
                 title: 'Error',
-                description: error.message || 'Gagal menghapus data stok masuk',
+                description: error.message || 'Gagal menghapus data belanja material',
                 variant: 'destructive'
             });
         }
@@ -194,21 +240,21 @@ export function StockInManagement() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-[#1C1C1E] font-display">Stok Masuk</h2>
-                    <p className="text-muted-foreground font-body">Catat penambahan stok barang ke gudang</p>
+                    <h2 className="text-2xl font-bold text-[#1C1C1E] font-display">Belanja Material</h2>
+                    <p className="text-muted-foreground font-body">Catat penambahan material ke gudang</p>
                 </div>
                 <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
                     <DialogTrigger asChild>
                         <Button className="bg-green-600 hover:bg-green-700">
                             <Plus className="w-4 h-4 mr-2" />
-                            Tambah Stok
+                            Tambah Material
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-md">
                         <DialogHeader>
-                            <DialogTitle className="font-display">Catat Stok Masuk</DialogTitle>
+                            <DialogTitle className="font-display">Catat Belanja Material</DialogTitle>
                             <DialogDescription className="font-body">
-                                Masukkan detail penerimaan barang
+                                Masukkan detail penerimaan material
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleAdd} className="space-y-4 pt-4">
@@ -216,8 +262,8 @@ export function StockInManagement() {
                                 <Label className="font-body">Pilih Produk *</Label>
                                 <Select
                                     value={formData.product_id}
-                                    onValueChange={(val) => {
-                                        const p = products.find(prod => prod.id === val);
+                                    onValueChange={(val: string) => {
+                                        const p = (products as any[]).find((prod: any) => prod.id === val);
                                         setFormData({
                                             ...formData,
                                             product_id: val,
@@ -230,7 +276,7 @@ export function StockInManagement() {
                                         <SelectValue placeholder="Cari produk..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {products.map((p) => (
+                                        {(products as any[]).map((p: any) => (
                                             <SelectItem key={p.id} value={p.id} className="font-body">
                                                 {p.name} ({p.sku})
                                             </SelectItem>
@@ -246,7 +292,7 @@ export function StockInManagement() {
                                         type="number"
                                         placeholder="0"
                                         value={formData.quantity}
-                                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, quantity: e.target.value })}
                                         required
                                         className="font-mono"
                                     />
@@ -255,13 +301,13 @@ export function StockInManagement() {
                                     <Label className="font-body text-xs">Gudang</Label>
                                     <Select
                                         value={formData.warehouse_id}
-                                        onValueChange={(val) => setFormData({ ...formData, warehouse_id: val })}
+                                        onValueChange={(val: string) => setFormData({ ...formData, warehouse_id: val })}
                                     >
                                         <SelectTrigger className="font-body">
                                             <SelectValue placeholder="Pilih gudang" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {warehouses.map((w) => (
+                                            {(warehouses as any[]).map((w: any) => (
                                                 <SelectItem key={w.id} value={w.id} className="font-body">
                                                     {w.name}
                                                 </SelectItem>
@@ -277,7 +323,7 @@ export function StockInManagement() {
                                     type="number"
                                     placeholder="0"
                                     value={formData.unit_price}
-                                    onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, unit_price: e.target.value })}
                                     required
                                     className="font-mono"
                                 />
@@ -288,9 +334,28 @@ export function StockInManagement() {
                                 <Input
                                     placeholder="MSK-2024..."
                                     value={formData.reference}
-                                    onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, reference: e.target.value })}
                                     className="font-mono"
                                 />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="font-body text-xs">Cara Pembayaran</Label>
+                                <Select
+                                    value={formData.payment_method_id}
+                                    onValueChange={(val: string) => setFormData({ ...formData, payment_method_id: val })}
+                                >
+                                    <SelectTrigger className="font-body text-xs h-9">
+                                        <SelectValue placeholder="Pilih Cara Bayar" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {paymentMethods.map((pm: PaymentMethod) => (
+                                            <SelectItem key={pm.id} value={pm.id} className="font-body text-xs">
+                                                {pm.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
 
                             <div className="space-y-2">
@@ -298,7 +363,7 @@ export function StockInManagement() {
                                 <Input
                                     placeholder="Tambahkan catatan..."
                                     value={formData.notes}
-                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, notes: e.target.value })}
                                     className="font-body"
                                 />
                             </div>
@@ -308,7 +373,7 @@ export function StockInManagement() {
                                     Batal
                                 </Button>
                                 <Button type="submit" disabled={isSubmitting} className="bg-green-600 hover:bg-green-700 font-body">
-                                    {isSubmitting ? 'Menyimpan...' : 'Simpan Stok'}
+                                    {isSubmitting ? 'Menyimpan...' : 'Simpan Material'}
                                 </Button>
                             </DialogFooter>
                         </form>
@@ -318,9 +383,9 @@ export function StockInManagement() {
                 <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
                     <DialogContent className="max-w-md">
                         <DialogHeader>
-                            <DialogTitle className="font-display">Edit Stok Masuk</DialogTitle>
+                            <DialogTitle className="font-display">Edit Belanja Material</DialogTitle>
                             <DialogDescription className="font-body">
-                                Perbarui detail penerimaan barang
+                                Perbarui detail penerimaan material
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleUpdate} className="space-y-4 pt-4">
@@ -328,14 +393,14 @@ export function StockInManagement() {
                                 <Label className="font-body">Produk</Label>
                                 <Select
                                     value={formData.product_id}
-                                    onValueChange={(val) => setFormData({ ...formData, product_id: val })}
+                                    onValueChange={(val: string) => setFormData({ ...formData, product_id: val })}
                                     disabled
                                 >
                                     <SelectTrigger className="font-body opacity-50">
                                         <SelectValue placeholder="Produk..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {products.map((p) => (
+                                        {(products as any[]).map((p: any) => (
                                             <SelectItem key={p.id} value={p.id} className="font-body">
                                                 {p.name} ({p.sku})
                                             </SelectItem>
@@ -351,7 +416,7 @@ export function StockInManagement() {
                                         type="number"
                                         placeholder="0"
                                         value={formData.quantity}
-                                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, quantity: e.target.value })}
                                         required
                                         className="font-mono"
                                     />
@@ -360,13 +425,13 @@ export function StockInManagement() {
                                     <Label className="font-body text-xs">Gudang</Label>
                                     <Select
                                         value={formData.warehouse_id}
-                                        onValueChange={(val) => setFormData({ ...formData, warehouse_id: val })}
+                                        onValueChange={(val: string) => setFormData({ ...formData, warehouse_id: val })}
                                     >
                                         <SelectTrigger className="font-body">
                                             <SelectValue placeholder="Pilih gudang" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {warehouses.map((w) => (
+                                            {(warehouses as any[]).map((w: any) => (
                                                 <SelectItem key={w.id} value={w.id} className="font-body">
                                                     {w.name}
                                                 </SelectItem>
@@ -381,9 +446,28 @@ export function StockInManagement() {
                                 <Input
                                     placeholder="MSK-2024..."
                                     value={formData.reference}
-                                    onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, reference: e.target.value })}
                                     className="font-mono"
                                 />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="font-body text-xs">Cara Pembayaran</Label>
+                                <Select
+                                    value={formData.payment_method_id}
+                                    onValueChange={(val: string) => setFormData({ ...formData, payment_method_id: val })}
+                                >
+                                    <SelectTrigger className="font-body text-xs h-9">
+                                        <SelectValue placeholder="Pilih Cara Bayar" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {paymentMethods.map((pm: PaymentMethod) => (
+                                            <SelectItem key={pm.id} value={pm.id} className="font-body text-xs">
+                                                {pm.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
 
                             <div className="space-y-2">
@@ -391,7 +475,7 @@ export function StockInManagement() {
                                 <Input
                                     placeholder="Tambahkan catatan..."
                                     value={formData.notes}
-                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, notes: e.target.value })}
                                     className="font-body"
                                 />
                             </div>
@@ -412,13 +496,13 @@ export function StockInManagement() {
             <Card className="border-gray-200">
                 <CardHeader>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <CardTitle className="font-display text-lg">Riwayat Stok Masuk</CardTitle>
+                        <CardTitle className="font-display text-lg">Riwayat Belanja Material</CardTitle>
                         <div className="relative w-full sm:w-64">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <Input
                                 placeholder="Cari riwayat..."
                                 value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
                                 className="pl-10 font-body"
                             />
                         </div>
@@ -428,22 +512,25 @@ export function StockInManagement() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="font-body">Tanggal</TableHead>
-                                <TableHead className="font-body">Produk</TableHead>
-                                <TableHead className="font-body">Gudang</TableHead>
-                                <TableHead className="font-body">Referensi</TableHead>
-                                <TableHead className="font-body text-right">Jumlah</TableHead>
-                                <TableHead className="font-body text-right">Harga Beli</TableHead>
-                                <TableHead className="font-body text-right">Harga Jual</TableHead>
-                                <TableHead className="font-body text-right">Total Beli</TableHead>
-                                <TableHead className="font-body">Status</TableHead>
-                                <TableHead className="font-body text-right">Aksi</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">No</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Tanggal</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Produk</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">SKU</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Kategori</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Volume</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Satuan</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-right">Harga Beli</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-right">Total Harga</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Gudang</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Supplier</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Cara Bayar</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase text-right">Aksi</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={9} className="text-center py-8">
+                                    <TableCell colSpan={13} className="text-center py-8">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-4 h-4 border-2 border-inventory/30 border-t-inventory rounded-full animate-spin" />
                                             <span className="font-body text-muted-foreground">Memuat data...</span>
@@ -452,91 +539,104 @@ export function StockInManagement() {
                                 </TableRow>
                             ) : filteredMovements.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={9} className="text-center py-12">
+                                    <TableCell colSpan={13} className="text-center py-12">
                                         <ArrowDownRight className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-                                        <p className="font-body text-muted-foreground">Belum ada data stok masuk</p>
+                                        <p className="font-body text-muted-foreground">Belum ada data belanja material</p>
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredMovements.map((m) => (
-                                    <TableRow key={m.id}>
-                                        <TableCell className="font-body whitespace-nowrap">
-                                            <div className="flex items-center gap-2">
-                                                <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                                filteredMovements.map((m: StockMovement, idx: number) => {
+                                    const prod = m.products;
+                                    const inv = (invoices as PurchaseInvoice[]).find((i: PurchaseInvoice) => i.id === m.reference);
+
+                                    // Priority: 1. Linked payment method, 2. Invoice status, 3. Reference type
+                                    let caraBayar = m.payment_methods?.name;
+
+                                    if (!caraBayar) {
+                                        if (inv) {
+                                            caraBayar = inv.payment_status === 'paid' ? 'Tunai / Cash' : 'Hutang / Tempo';
+                                        } else {
+                                            caraBayar = m.reference_type === 'manual_entry' ? 'Manual' : '-';
+                                        }
+                                    }
+
+                                    return (
+                                        <TableRow key={m.id}>
+                                            <TableCell className="font-mono text-xs">{idx + 1}</TableCell>
+                                            <TableCell className="font-body whitespace-nowrap text-xs">
                                                 {new Date(m.created_at).toLocaleDateString('id-ID')}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div>
-                                                <p className="font-bold font-body text-[#1C1C1E]">{(m as any).products?.name || '-'}</p>
-                                                <p className="text-xs text-muted-foreground font-mono">{(m as any).products?.sku || '-'}</p>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="font-body">
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <Warehouse className="w-3.5 h-3.5 text-gray-400" />
-                                                {(m as any).warehouses?.name || '-'}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="font-mono text-xs">
-                                            <div className="flex items-center gap-2">
-                                                <FileText className="w-3.5 h-3.5 text-gray-400" />
-                                                {m.reference || '-'}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right font-bold font-mono text-green-600">
-                                            +{m.quantity}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono text-xs">
-                                            {formatCurrency(m.unit_price || (m as any).products?.cost || 0)}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono text-xs text-muted-foreground">
-                                            {formatCurrency((m as any).products?.price || 0)}
-                                        </TableCell>
-                                        <TableCell className="text-right font-bold text-green-600 font-mono">
-                                            {formatCurrency(m.quantity * (m.unit_price || (m as any).products?.cost || 0))}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-none">
-                                                Selesai
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="icon">
-                                                        <MoreVertical className="w-4 h-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => handleEdit(m)} className="font-body">
-                                                        <Edit className="w-4 h-4 mr-2" />
-                                                        Edit
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => handleDelete(m.id)} className="font-body text-destructive">
-                                                        <Trash2 className="w-4 h-4 mr-2" />
-                                                        Hapus
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
+                                            </TableCell>
+                                            <TableCell className="font-body font-medium text-xs">
+                                                {prod?.name || '-'}
+                                            </TableCell>
+                                            <TableCell className="font-mono text-[10px]">
+                                                {prod?.sku || '-'}
+                                            </TableCell>
+                                            <TableCell className="font-body text-xs">
+                                                {prod?.product_categories?.name || '-'}
+                                            </TableCell>
+                                            <TableCell className="font-body text-xs text-center">
+                                                {prod?.volume || '-'}
+                                            </TableCell>
+                                            <TableCell className="font-body text-xs text-center">
+                                                {prod?.unit || '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-xs">
+                                                {formatCurrency(m.unit_price || prod?.cost || 0)}
+                                            </TableCell>
+                                            <TableCell className="text-right font-bold text-green-600 font-mono text-xs">
+                                                {formatCurrency(m.quantity * (m.unit_price || prod?.cost || 0))}
+                                            </TableCell>
+                                            <TableCell className="font-body text-xs">
+                                                {m.warehouses?.name || '-'}
+                                            </TableCell>
+                                            <TableCell className="font-body text-xs">
+                                                {prod?.suppliers?.name || '-'}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge
+                                                    variant="outline"
+                                                    className={cn(
+                                                        "text-[10px] font-body",
+                                                        caraBayar?.toLowerCase().includes('cash') || caraBayar?.toLowerCase().includes('tunai') ? "text-green-600 bg-green-50" :
+                                                            caraBayar?.toLowerCase().includes('hutang') || caraBayar?.toLowerCase().includes('tempo') ? "text-orange-600 bg-orange-50" : "text-gray-600 bg-gray-50"
+                                                    )}
+                                                >
+                                                    {caraBayar}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="icon">
+                                                            <MoreVertical className="w-4 h-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => handleEdit(m)} className="font-body">
+                                                            <Edit className="w-4 h-4 mr-2" />
+                                                            Edit
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleDelete(m.id)} className="font-body text-destructive">
+                                                            <Trash2 className="w-4 h-4 mr-2" />
+                                                            Hapus
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })
                             )}
                             {filteredMovements.length > 0 && (
                                 <TableRow className="bg-gray-50/50 font-bold">
-                                    <TableCell colSpan={4} className="text-right font-display text-gray-900 px-4 py-4">
+                                    <TableCell colSpan={8} className="text-right font-display text-gray-900 px-4 py-3">
                                         TOTAL
                                     </TableCell>
                                     <TableCell className="text-right font-mono text-green-600">
-                                        +{filteredMovements.reduce((acc, m) => acc + m.quantity, 0)} unit
-                                    </TableCell>
-                                    <TableCell></TableCell>
-                                    <TableCell></TableCell>
-                                    <TableCell className="text-right font-mono text-inventory">
                                         {formatCurrency(filteredMovements.reduce((acc, m) => acc + (m.quantity * (m.unit_price || (m as any).products?.cost || 0)), 0))}
                                     </TableCell>
-                                    <TableCell colSpan={2}></TableCell>
+                                    <TableCell colSpan={4}></TableCell>
                                 </TableRow>
                             )}
                         </TableBody>

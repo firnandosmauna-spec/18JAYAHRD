@@ -17,7 +17,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { useProducts, useWarehouses } from '@/hooks/useInventory';
+import { useProducts, useWarehouses, useProjectLocations } from '@/hooks/useInventory';
 import { stockMovementService } from '@/services/inventoryService';
 import { useToast } from '@/components/ui/use-toast';
 import type { Product } from '@/lib/supabase';
@@ -38,6 +38,7 @@ export function AddStockMovementDialog({
     mode = 'in'
 }: AddStockMovementDialogProps) {
     const { warehouses } = useWarehouses();
+    const { locations } = useProjectLocations();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({
@@ -46,6 +47,8 @@ export function AddStockMovementDialog({
         reference: '',
         notes: '',
         unit_price: '',
+        project_location: '',
+        movement_category: 'Keluar',
     });
 
     useEffect(() => {
@@ -56,6 +59,8 @@ export function AddStockMovementDialog({
                 reference: '',
                 notes: '',
                 unit_price: (mode === 'in' ? product?.cost : product?.price)?.toString() || '',
+                project_location: '',
+                movement_category: 'Keluar',
             });
         }
     }, [open, product, mode]);
@@ -74,6 +79,8 @@ export function AddStockMovementDialog({
                 reference: formData.reference.trim() || null,
                 notes: formData.notes.trim() || null,
                 unit_price: parseFloat(formData.unit_price) || 0,
+                project_location: formData.project_location || null,
+                movement_category: mode === 'out' ? formData.movement_category : null,
                 reference_type: 'manual_entry'
             });
 
@@ -157,12 +164,51 @@ export function AddStockMovementDialog({
                         <Label htmlFor="reference" className="font-body">Referensi (No. PO/SJ)</Label>
                         <Input
                             id="reference"
-                            placeholder="MSK-..."
+                            placeholder={mode === 'in' ? 'MSK-...' : 'KLR-...'}
                             value={formData.reference}
                             onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
                             className="font-mono"
                         />
                     </div>
+
+                    {mode === 'out' && (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                                <Label className="font-body">Lokasi Proyek</Label>
+                                <Select
+                                    value={formData.project_location}
+                                    onValueChange={(val) => setFormData({ ...formData, project_location: val })}
+                                >
+                                    <SelectTrigger className="font-body">
+                                        <SelectValue placeholder="Pilih lokasi" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {locations.map((loc) => (
+                                            <SelectItem key={loc} value={loc} className="font-body">
+                                                {loc}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label className="font-body">Kategori *</Label>
+                                <Select
+                                    value={formData.movement_category}
+                                    onValueChange={(val) => setFormData({ ...formData, movement_category: val })}
+                                    required
+                                >
+                                    <SelectTrigger className="font-body">
+                                        <SelectValue placeholder="Pilih kategori" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Keluar">Keluar</SelectItem>
+                                        <SelectItem value="Pemakaian">Pemakaian</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid gap-2">
                         <Label htmlFor="notes" className="font-body">Keterangan</Label>

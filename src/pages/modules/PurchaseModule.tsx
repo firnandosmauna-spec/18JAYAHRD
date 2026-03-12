@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { 
-  ShoppingBag, 
-  Truck, 
-  Package, 
-  FileText, 
+import {
+  ShoppingBag,
+  Truck,
+  Package,
+  FileText,
   Receipt,
   TrendingDown,
   DollarSign,
@@ -209,11 +209,11 @@ function PurchaseDashboard() {
                   </div>
                   <div className="text-right">
                     <p className="font-medium">{formatCurrency(order.total_amount)}</p>
-                    <Badge 
+                    <Badge
                       variant={
                         order.status === 'confirmed' ? 'default' :
-                        order.status === 'received' ? 'secondary' :
-                        order.status === 'cancelled' ? 'destructive' : 'outline'
+                          order.status === 'received' ? 'secondary' :
+                            order.status === 'cancelled' ? 'destructive' : 'outline'
                       }
                       className="text-xs"
                     >
@@ -240,10 +240,10 @@ function PurchaseDashboard() {
                   </div>
                   <div className="text-right">
                     <p className="font-medium">{formatCurrency(invoice.total_amount)}</p>
-                    <Badge 
+                    <Badge
                       variant={
                         invoice.payment_status === 'paid' ? 'secondary' :
-                        invoice.payment_status === 'partial' ? 'outline' : 'destructive'
+                          invoice.payment_status === 'partial' ? 'outline' : 'destructive'
                       }
                       className="text-xs"
                     >
@@ -262,7 +262,7 @@ function PurchaseDashboard() {
 
 const navItems = [
   { label: 'Dashboard', href: '/purchase', icon: TrendingDown },
-  { label: 'Supplier', href: '/purchase/suppliers', icon: Truck },
+  { label: 'Master Supplier', href: '/purchase/suppliers', icon: Truck },
   { label: 'Purchase Order', href: '/purchase/orders', icon: ShoppingBag },
   { label: 'Invoice', href: '/purchase/invoices', icon: Receipt },
 ];

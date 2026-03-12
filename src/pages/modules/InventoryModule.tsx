@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, Reorder } from 'framer-motion';
 import ModuleLayout from '@/components/layout/ModuleLayout';
 import { useProducts, useProductCategories, useWarehouses, useStockMovements, useLowStockProducts, useInventoryUnits } from '@/hooks/useInventory';
 import { useToast } from '@/components/ui/use-toast';
+import { cn, formatCurrency } from '@/lib/utils';
 import type { Product } from '@/lib/supabase';
 import {
   Package,
@@ -25,7 +26,10 @@ import {
   Tags,
   Users,
   Box,
-  MapPin
+  MapPin,
+  Settings2,
+  GripVertical,
+  CreditCard
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -64,30 +68,54 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { SupplierManagement } from '@/components/purchase/SupplierManagement';
-import { CategoryManagement } from '@/components/inventory/CategoryManagement';
-import { WarehouseManagement } from '@/components/inventory/WarehouseManagement';
-import { UnitManagement } from '@/components/inventory/UnitManagement';
-import { VolumeManagement } from '@/components/inventory/VolumeManagement';
-import { ProjectLocationManagement } from '@/components/inventory/ProjectLocationManagement';
-import { AddProductDialog } from '@/components/inventory/AddProductDialog';
-import { StockInManagement } from '@/components/inventory/StockInManagement';
-import { StockOutManagement } from '@/components/inventory/StockOutManagement';
-import { AddStockMovementDialog } from '@/components/inventory/AddStockMovementDialog';
-import { InventoryReports } from '@/components/inventory/InventoryReports';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { SupplierManagement } from '../../components/purchase/SupplierManagement';
+import { CategoryManagement } from '../../components/inventory/CategoryManagement';
+import { WarehouseManagement } from '../../components/inventory/WarehouseManagement';
+import { UnitManagement } from '../../components/inventory/UnitManagement';
+import { ProjectLocationManagement } from '../../components/inventory/ProjectLocationManagement';
+import { AddProductDialog } from '../../components/inventory/AddProductDialog';
+import { MaterialPurchaseManagement } from '../../components/inventory/MaterialPurchaseManagement';
+import { StockOutManagement } from '../../components/inventory/StockOutManagement';
+import { AddStockMovementDialog } from '../../components/inventory/AddStockMovementDialog';
+import { InventoryReports } from '../../components/inventory/InventoryReports';
+// WatermanSalaryManagement removed as it was unused and non-existent
+import { PaymentMethodManagement } from '../../components/inventory/PaymentMethodManagement';
+import { PriceAdjustmentManagement } from '../../components/inventory/PriceAdjustmentManagement';
 
 const navItems = [
-  { label: 'Dashboard', href: '/inventory', icon: Package },
-  { label: 'Produk', href: '/inventory/products', icon: Package },
-  { label: 'Stok Masuk', href: '/inventory/stock-in', icon: ArrowDownRight },
-  { label: 'Stok Keluar', href: '/inventory/stock-out', icon: ArrowUpRight },
-  { label: 'Supplier', href: '/inventory/suppliers', icon: Truck },
-  { label: 'Satuan', href: '/inventory/units', icon: Scale },
-  { label: 'Volume', href: '/inventory/volumes', icon: Box },
-  { label: 'Lokasi Proyek', href: '/inventory/locations', icon: MapPin },
-  { label: 'Kategori', href: '/inventory/categories', icon: Tags },
-  { label: 'Gudang', href: '/inventory/warehouse', icon: Warehouse },
-  { label: 'Laporan', href: '/inventory/reports', icon: BarChart3 },
+  {
+    group: 'Utama',
+    items: [
+      { label: 'Dashboard', href: '/inventory', icon: Package },
+      { label: 'Laporan', href: '/inventory/reports', icon: BarChart3 },
+    ]
+  },
+  {
+    group: 'Operasional',
+    items: [
+      { label: 'Belanja Material', href: '/inventory/stock-in', icon: ArrowDownRight },
+      { label: 'Ending material masuk dan keluar', href: '/inventory/stock-out', icon: ArrowUpRight },
+      { label: 'Penyesuaian Harga', href: '/inventory/price-adjustments', icon: TrendingUp },
+    ]
+  },
+  {
+    group: 'Master Data',
+    items: [
+      { label: 'Master Produk', href: '/inventory/products', icon: Package },
+      { label: 'Master Supplier', href: '/inventory/suppliers', icon: Truck },
+      { label: 'Satuan', href: '/inventory/units', icon: Scale },
+      { label: 'Lokasi Proyek', href: '/inventory/locations', icon: MapPin },
+      { label: 'Kategori', href: '/inventory/categories', icon: Tags },
+      { label: 'Gudang', href: '/inventory/warehouse', icon: Warehouse },
+      { label: 'Cara Pembayaran', href: '/inventory/payment-methods', icon: CreditCard },
+    ]
+  }
 ];
 
 // Helper function to determine product status
@@ -99,14 +127,6 @@ function getProductStatus(product: Product): 'in-stock' | 'low-stock' | 'out-of-
 
 // Satuan produk (moved to useInventoryUnits hook)
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 function InventoryDashboard() {
   const { products, loading: productsLoading, addProduct, refetch: refetchProducts } = useProducts();
@@ -139,13 +159,13 @@ function InventoryDashboard() {
       warning: true
     },
     {
-      label: 'Stok Masuk',
+      label: 'Belanja Material',
       value: movements.filter(m => m.movement_type === 'in').length,
       icon: TrendingUp,
       change: '+12%'
     },
     {
-      label: 'Stok Keluar',
+      label: 'Ending material masuk dan keluar',
       value: movements.filter(m => m.movement_type === 'out').length,
       icon: TrendingDown,
       change: '+8%'
@@ -368,6 +388,82 @@ function ProductList() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
 
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const defaultCols = {
+      no: true,
+      date: true,
+      product: true,
+      sku: true,
+      category: true,
+      volume: true,
+      satuan: true,
+      warehouse: true,
+      supplier: true,
+      costPrice: true,
+      totalPrice: true,
+      actions: true
+    };
+    const saved = localStorage.getItem('inventory_product_list_cols_v3');
+    if (saved) {
+      try {
+        return { ...defaultCols, ...JSON.parse(saved) };
+      } catch (e) {
+        console.error('Failed to parse product list columns:', e);
+      }
+    }
+    return defaultCols;
+  });
+
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    const defaultOrder = ['no', 'date', 'product', 'sku', 'category', 'volume', 'satuan', 'warehouse', 'supplier', 'costPrice', 'totalPrice', 'actions'];
+    const saved = localStorage.getItem('inventory_product_list_order_v2');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Map existing columns that are still valid
+        const filtered = parsed.filter((col: string) => defaultOrder.includes(col));
+        // Find columns in defaultOrder that are missing in the saved order (e.g. newly added columns)
+        const missing = defaultOrder.filter(col => !filtered.includes(col));
+        // Return saved order + any new missing default columns at the end
+        return [...filtered, ...missing];
+      } catch (e) {
+        return defaultOrder;
+      }
+    }
+    return defaultOrder;
+  });
+
+
+  const columnLabels: Record<string, string> = {
+    no: 'No',
+    date: 'Tanggal',
+    product: 'Produk',
+    sku: 'SKU',
+    category: 'Kategori',
+    volume: 'Volume',
+    satuan: 'Satuan',
+    warehouse: 'Gudang',
+    supplier: 'Supplier',
+    costPrice: 'Harga Beli',
+    totalPrice: 'Total Harga',
+    actions: 'Aksi'
+  };
+
+  useEffect(() => {
+    localStorage.setItem('inventory_product_list_cols_v3', JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
+
+  useEffect(() => {
+    localStorage.setItem('inventory_product_list_order_v2', JSON.stringify(columnOrder));
+  }, [columnOrder]);
+
+  const toggleColumn = (column: string) => {
+    setVisibleColumns((prev: any) => ({
+      ...prev,
+      [column]: !prev[column]
+    }));
+  };
+
   const filteredProducts = (products || []).filter(product =>
     (product.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (product.sku || '').toLowerCase().includes(searchQuery.toLowerCase())
@@ -379,96 +475,116 @@ function ProductList() {
     setShowAddProductDialog(true);
   };
 
-  const renderProductTable = (items: Product[]) => (
-    <Card className="border-gray-200">
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="font-body">Produk</TableHead>
-              <TableHead className="font-body">SKU</TableHead>
-              <TableHead className="font-body">Kategori</TableHead>
-              <TableHead className="font-body">Gudang</TableHead>
-              <TableHead className="font-body">Supplier</TableHead>
-              <TableHead className="font-body">Stok</TableHead>
-              <TableHead className="font-body">Harga Beli</TableHead>
-              <TableHead className="font-body">Harga Jual</TableHead>
-              <TableHead className="font-body">Metode Bayar</TableHead>
-              <TableHead className="font-body">Status</TableHead>
-              <TableHead className="font-body text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((product) => (
-              <TableRow key={product.id}>
-                <TableCell className="font-body font-medium">{product.name}</TableCell>
-                <TableCell className="font-mono text-sm">{product.sku}</TableCell>
-                <TableCell className="font-body">{product.product_categories?.name || '-'}</TableCell>
-                <TableCell className="font-body">{product.warehouses?.name || '-'}</TableCell>
-                <TableCell className="font-body">{product.suppliers?.name || '-'}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono">{product.stock}</span>
-                    <Progress
-                      value={Math.min((product.stock / ((product as any).min_stock || 1)) * 100, 100)}
-                      className="w-16 h-2"
-                    />
-                  </div>
-                </TableCell>
-                <TableCell className="font-mono text-xs">{formatCurrency(product.cost || 0)}</TableCell>
-                <TableCell className="font-mono text-sm font-bold">{formatCurrency(product.price)}</TableCell>
-                <TableCell className="font-body">
-                  <Badge variant="outline" className="font-body bg-gray-50">
-                    {product.purchase_payment_method || 'CASH'}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={product.stock === 0 ? 'destructive' : product.stock <= ((product as any).min_stock || 5) ? 'secondary' : 'default'}
-                    className="font-body"
-                  >
-                    {product.stock === 0 ? 'Habis' : product.stock <= ((product as any).min_stock || 5) ? 'Stok Rendah' : 'Tersedia'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem className="font-body">Lihat Detail</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleEdit(product)} className="font-body">Edit</DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setShowStockInDialog(true);
-                        }}
-                        className="font-body text-green-600"
-                      >
-                        Tambah Stok (+)
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setShowStockOutDialog(true);
-                        }}
-                        className="font-body text-red-600"
-                      >
-                        Catat Keluar (-)
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDelete(product.id)} className="font-body text-destructive">Hapus</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
+  const renderProductTable = (items: Product[]) => {
+    const getColumnClass = (colId: string) => {
+      switch (colId) {
+        case 'no': return 'w-12 shrink-0';
+        case 'date': return 'w-24 shrink-0';
+        case 'product': return 'flex-1 min-w-[200px] truncate';
+        case 'sku': return 'w-32 shrink-0';
+        case 'category': return 'w-32 shrink-0';
+        case 'volume': return 'w-20 shrink-0';
+        case 'satuan': return 'w-20 shrink-0';
+        case 'warehouse': return 'w-32 shrink-0';
+        case 'supplier': return 'w-40 shrink-0';
+        case 'costPrice': return 'w-32 shrink-0';
+        case 'totalPrice': return 'w-32 shrink-0';
+        case 'actions': return 'w-16 shrink-0 text-right';
+        default: return 'flex-1';
+      }
+    };
+
+    return (
+      <Card className="border-gray-200">
+        <CardContent className="p-0 overflow-x-auto">
+          <div className="min-w-max">
+            {/* Header */}
+            <div className="bg-gray-50/50 border-b">
+              <Reorder.Group
+                axis="x"
+                values={columnOrder}
+                onReorder={setColumnOrder}
+                className="flex items-center px-4"
+              >
+                {columnOrder.map((colId) => (
+                  visibleColumns[colId] && (
+                    <Reorder.Item
+                      key={colId}
+                      value={colId}
+                      className={cn(
+                        "h-12 flex items-center gap-2 px-2 text-left font-medium text-muted-foreground cursor-grab active:cursor-grabbing hover:bg-muted/50 transition-colors select-none",
+                        getColumnClass(colId)
+                      )}
+                    >
+                      <GripVertical className="w-3 h-3 text-muted-foreground/40" />
+                      <span className="font-body text-xs uppercase tracking-wider">{columnLabels[colId]}</span>
+                    </Reorder.Item>
+                  )
+                ))}
+              </Reorder.Group>
+            </div>
+
+            {/* Body */}
+            <div className="divide-y divide-gray-100">
+              {items.map((product, index) => (
+                <div key={product.id} className="flex items-center px-4 hover:bg-gray-50/50 transition-colors">
+                  {columnOrder.map((colId) => {
+                    if (!visibleColumns[colId]) return null;
+                    const cellClass = cn("h-14 flex items-center px-2 py-3 overflow-hidden", getColumnClass(colId));
+
+                    switch (colId) {
+                      case 'no':
+                        return <div key="no" className={cn(cellClass, "font-mono text-xs text-gray-500")}>{index + 1}</div>;
+                      case 'date':
+                        return <div key="date" className={cn(cellClass, "font-body text-xs")}>{product.date ? new Date(product.date).toLocaleDateString('id-ID') : '-'}</div>;
+                      case 'product':
+                        return <div key="product" className={cn(cellClass, "font-body font-medium text-gray-900")}>{product.name}</div>;
+                      case 'sku':
+                        return <div key="sku" className={cn(cellClass, "font-mono text-xs text-gray-600")}>{product.sku}</div>;
+                      case 'category':
+                        return <div key="category" className={cn(cellClass, "font-body text-sm")}>{product.product_categories?.name || '-'}</div>;
+                      case 'volume':
+                        return <div key="volume" className={cn(cellClass, "font-body text-sm")}>{product.volume || '-'}</div>;
+                      case 'satuan':
+                        return <div key="satuan" className={cn(cellClass, "font-body text-sm")}>{product.unit || '-'}</div>;
+                      case 'warehouse':
+                        return <div key="warehouse" className={cn(cellClass, "font-body text-sm")}>{product.warehouses?.name || '-'}</div>;
+                      case 'supplier':
+                        return <div key="supplier" className={cn(cellClass, "font-body text-sm")}>{product.suppliers?.name || '-'}</div>;
+                      case 'costPrice':
+                        return <div key="costPrice" className={cn(cellClass, "font-mono text-xs")}>{formatCurrency(product.cost || 0)}</div>;
+                      case 'totalPrice':
+                        const volumeNum = Number(product.volume || 0);
+                        const total = volumeNum * (product.cost || 0);
+                        return <div key="totalPrice" className={cn(cellClass, "font-mono text-xs font-bold text-inventory-dark")}>{formatCurrency(total)}</div>;
+                      case 'actions':
+                        return (
+                          <div key="actions" className={cn(cellClass, "justify-end")}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEdit(product)} className="font-body">Edit</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDelete(product.id)} className="font-body text-destructive">Hapus</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        );
+                      default:
+                        return null;
+                    }
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   const handleDelete = async (id: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus produk ini?')) {
@@ -490,7 +606,7 @@ function ProductList() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Daftar Produk & Supplier</h1>
+          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Master Produk & Supplier</h1>
           <p className="text-muted-foreground font-body">Kelola katalog bahan baku bangunan</p>
         </div>
         <Button onClick={() => { setEditingProduct(null); setShowAddProductDialog(true); }} className="bg-inventory hover:bg-inventory-dark font-body">
@@ -516,32 +632,66 @@ function ProductList() {
             className="pl-10 font-body"
           />
         </div>
-        <Button variant="outline" className="font-body">
-          <Filter className="w-4 h-4 mr-2" />
-          Filter
-        </Button>
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="font-body">
+                <Settings2 className="w-4 h-4 mr-2" />
+                Kolom
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56" align="end">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none mb-4">Pengaturan Kolom</h4>
+                <div className="space-y-3">
+                  {Object.entries({
+                    no: 'No',
+                    date: 'Tanggal',
+                    product: 'Produk',
+                    sku: 'SKU',
+                    category: 'Kategori',
+                    volume: 'Volume',
+                    satuan: 'Satuan',
+                    warehouse: 'Gudang',
+                    supplier: 'Supplier',
+                    costPrice: 'Harga Beli',
+                    totalPrice: 'Total Harga',
+                    actions: 'Aksi'
+                  }).map(([key, label]) => (
+                    <div key={key} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`col-${key}`}
+                        checked={(visibleColumns as any)[key]}
+                        onCheckedChange={() => toggleColumn(key)}
+                      />
+                      <Label
+                        htmlFor={`col-${key}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <Button variant="outline" className="font-body">
+            <Filter className="w-4 h-4 mr-2" />
+            Filter
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="font-body">
           <TabsTrigger value="all">Semua ({filteredProducts.length})</TabsTrigger>
-          <TabsTrigger value="cash">CASH ({filteredProducts.filter(p => p.purchase_payment_method === 'CASH').length})</TabsTrigger>
-          <TabsTrigger value="debt">Hutang ({filteredProducts.filter(p => p.purchase_payment_method === 'Hutang').length})</TabsTrigger>
           <TabsTrigger value="in-stock">Tersedia</TabsTrigger>
-          <TabsTrigger value="low-stock">Stok Rendah</TabsTrigger>
-          <TabsTrigger value="out-of-stock">Habis</TabsTrigger>
         </TabsList>
 
         <TabsContent value="all" className="mt-6">
           {renderProductTable(filteredProducts)}
-        </TabsContent>
-
-        <TabsContent value="cash" className="mt-6">
-          {renderProductTable(filteredProducts.filter(p => p.purchase_payment_method === 'CASH'))}
-        </TabsContent>
-
-        <TabsContent value="debt" className="mt-6">
-          {renderProductTable(filteredProducts.filter(p => p.purchase_payment_method === 'Hutang'))}
         </TabsContent>
 
         <AddStockMovementDialog
@@ -567,7 +717,7 @@ function ProductList() {
 
         <TabsContent value="in-stock" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredProducts.filter(p => p.stock > ((p as any).min_stock || 5)).map((product) => (
+            {filteredProducts.filter(p => (p.stock || 0) > ((p as any).min_stock || 5)).map((product) => (
               <Card key={product.id} className="border-gray-200">
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
@@ -579,69 +729,8 @@ function ProductList() {
                   <h3 className="font-medium font-body text-[#1C1C1E] mb-1">{product.name}</h3>
                   <p className="text-sm text-muted-foreground font-mono mb-4">{product.sku}</p>
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-lg font-bold text-[#1C1C1E]">{product.stock} unit</span>
+                    <span className="font-mono text-lg font-bold text-[#1C1C1E]">{product.stock || 0} unit</span>
                     <span className="font-mono text-sm text-muted-foreground">{formatCurrency(product.price)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="low-stock" className="mt-6">
-          <div className="space-y-4">
-            {filteredProducts.filter(p => p.stock <= ((p as any).min_stock || 5) && p.stock > 0).map((product) => (
-              <Card key={product.id} className="border-gray-200 border-l-4 border-l-orange-500">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                        <AlertTriangle className="w-6 h-6 text-orange-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-medium font-body text-[#1C1C1E]">{product.name}</h3>
-                        <p className="text-sm text-muted-foreground font-mono">{product.sku}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="font-mono font-semibold text-orange-600">
-                          {product.stock} / {(product as any).min_stock} unit
-                        </p>
-                        <p className="text-xs text-muted-foreground font-body">Min. stok: {(product as any).min_stock}</p>
-                      </div>
-                      <Button className="bg-inventory hover:bg-inventory-dark font-body">
-                        Restok
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="out-of-stock" className="mt-6">
-          <div className="space-y-4">
-            {filteredProducts.filter(p => p.stock === 0).map((product) => (
-              <Card key={product.id} className="border-gray-200 border-l-4 border-l-red-500">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                        <Package className="w-6 h-6 text-red-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-medium font-body text-[#1C1C1E]">{product.name}</h3>
-                        <p className="text-sm text-muted-foreground font-mono">{product.sku}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <Badge variant="destructive" className="font-body">Stok Habis</Badge>
-                      <Button className="bg-red-600 hover:bg-red-700 font-body">
-                        Pesan Sekarang
-                      </Button>
-                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -667,22 +756,25 @@ function PlaceholderPage({ title }: { title: string }) {
   );
 }
 
-export default function InventoryModule() {
+function InventoryModule() {
   return (
     <ModuleLayout moduleId="inventory" title="Persediaan" navItems={navItems}>
       <Routes>
         <Route index element={<InventoryDashboard />} />
         <Route path="products" element={<ProductList />} />
-        <Route path="stock-in" element={<StockInManagement />} />
+        <Route path="stock-in" element={<MaterialPurchaseManagement />} />
         <Route path="stock-out" element={<StockOutManagement />} />
         <Route path="suppliers" element={<SupplierManagement />} />
         <Route path="units" element={<UnitManagement />} />
-        <Route path="volumes" element={<VolumeManagement />} />
         <Route path="locations" element={<ProjectLocationManagement />} />
         <Route path="categories" element={<CategoryManagement />} />
         <Route path="warehouse" element={<WarehouseManagement />} />
+        <Route path="payment-methods" element={<PaymentMethodManagement />} />
+        <Route path="price-adjustments" element={<PriceAdjustmentManagement />} />
         <Route path="reports" element={<InventoryReports />} />
       </Routes>
     </ModuleLayout>
   );
 }
+
+export default InventoryModule;

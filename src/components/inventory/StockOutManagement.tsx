@@ -50,13 +50,19 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useProducts, useWarehouses, useStockMovements } from '@/hooks/useInventory';
+import {
+    useProducts,
+    useWarehouses,
+    useStockMovements,
+    useProjectLocations
+} from '@/hooks/useInventory';
 import { useToast } from '@/components/ui/use-toast';
 
 export function StockOutManagement() {
     const { products, refetch: refetchProducts } = useProducts();
     const { warehouses } = useWarehouses();
     const { movements, loading, addMovement, updateMovement, deleteMovement, refetch } = useStockMovements();
+    const { locations } = useProjectLocations();
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState('');
     const [showAddDialog, setShowAddDialog] = useState(false);
@@ -79,28 +85,66 @@ export function StockOutManagement() {
         reference: '',
         notes: '',
         unit_price: '',
+        project_location: '',
+        movement_category: 'Keluar',
     });
 
     const selectedProduct = products.find(p => p.id === formData.product_id);
     const currentStock = selectedProduct ? selectedProduct.stock : 0;
     const isOverstock = formData.quantity ? parseFloat(formData.quantity) > currentStock : false;
 
-    const stockOutMovements = movements.filter(m => m.movement_type === 'out' || (m.movement_type === 'adjustment' && m.quantity < 0));
+    // Calculate running balances per product
+    const calculateBalances = () => {
+        // Sort all movements by created_at ascending to calculate running balance correctly
+        const sortedAllMovements = [...movements].sort((a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
 
-    const filteredMovements = stockOutMovements.filter(m => {
+        const productBalances: Record<string, number> = {};
+
+        return sortedAllMovements.map(m => {
+            const pid = m.product_id;
+            const prevBalance = productBalances[pid] || 0;
+            let currentBalance = prevBalance;
+
+            if (m.movement_type === 'in' || m.movement_type === 'adjustment') {
+                currentBalance += m.quantity;
+            } else if (m.movement_type === 'out') {
+                currentBalance -= Math.abs(m.quantity);
+            }
+
+            productBalances[pid] = currentBalance;
+
+            return {
+                ...m,
+                opening_stock: prevBalance,
+                closing_balance: currentBalance
+            };
+        }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    };
+
+    const movementsWithBalances = calculateBalances();
+
+    const filteredMovements = movementsWithBalances.filter(m => {
         const productName = (m as any).products?.name || '';
         const sku = (m as any).products?.sku || '';
         const reference = m.reference || '';
         const search = searchQuery.toLowerCase();
-        return productName.toLowerCase().includes(search) ||
-            sku.toLowerCase().includes(search) ||
-            reference.toLowerCase().includes(search);
+
+        if (searchQuery) {
+            return productName.toLowerCase().includes(search) ||
+                sku.toLowerCase().includes(search) ||
+                reference.toLowerCase().includes(search);
+        }
+        return true;
     });
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.product_id || !formData.quantity) return;
 
+        /* 
+        Removed strict blocking of overstock to allow forced recording
         if (isOverstock) {
             toast({
                 title: 'Error',
@@ -109,6 +153,7 @@ export function StockOutManagement() {
             });
             return;
         }
+        */
 
         try {
             setIsSubmitting(true);
@@ -120,10 +165,12 @@ export function StockOutManagement() {
                 reference: formData.reference.trim() || null,
                 notes: formData.notes.trim() || null,
                 unit_price: parseFloat(formData.unit_price) || 0,
+                project_location: formData.project_location || null,
+                movement_category: formData.movement_category || 'Keluar',
                 reference_type: 'manual_entry'
             });
 
-            toast({ title: 'Berhasil', description: 'Stok keluar berhasil dicatat' });
+            toast({ title: 'Berhasil', description: 'Ending material masuk dan keluar berhasil dicatat' });
             setShowAddDialog(false);
             setFormData({
                 product_id: '',
@@ -132,13 +179,15 @@ export function StockOutManagement() {
                 reference: '',
                 notes: '',
                 unit_price: '',
+                project_location: '',
+                movement_category: 'Keluar',
             });
             refetch();
             refetchProducts();
         } catch (error: any) {
             toast({
                 title: 'Error',
-                description: error.message || 'Gagal mencatat stok keluar',
+                description: error.message || 'Gagal mencatat ending material masuk dan keluar',
                 variant: 'destructive'
             });
         } finally {
@@ -151,10 +200,12 @@ export function StockOutManagement() {
         setFormData({
             product_id: movement.product_id,
             warehouse_id: movement.warehouse_id || '',
-            quantity: movement.quantity.toString(),
+            quantity: Math.abs(movement.quantity).toString(),
             reference: movement.reference || '',
             notes: movement.notes || '',
             unit_price: movement.unit_price ? movement.unit_price.toString() : '',
+            project_location: movement.project_location || '',
+            movement_category: movement.movement_category || 'Keluar',
         });
         setShowEditDialog(true);
     };
@@ -163,7 +214,8 @@ export function StockOutManagement() {
         e.preventDefault();
         if (!editingMovement || !formData.product_id || !formData.quantity) return;
 
-        // Calculate if updated quantity is more than available (considering current movement)
+        /*
+        Removed strict blocking of overstock to allow forced recording
         const currentProdStock = selectedProduct ? selectedProduct.stock : 0;
         const potentialStock = currentProdStock + editingMovement.quantity;
         if (parseFloat(formData.quantity) > potentialStock) {
@@ -174,6 +226,7 @@ export function StockOutManagement() {
             });
             return;
         }
+        */
 
         try {
             setIsSubmitting(true);
@@ -184,17 +237,29 @@ export function StockOutManagement() {
                 reference: formData.reference.trim() || null,
                 notes: formData.notes.trim() || null,
                 unit_price: parseFloat(formData.unit_price) || 0,
+                project_location: formData.project_location || null,
+                movement_category: formData.movement_category || 'Keluar',
             });
 
-            toast({ title: 'Berhasil', description: 'Stok keluar berhasil diperbarui' });
+            toast({ title: 'Berhasil', description: 'Ending material masuk dan keluar berhasil diperbarui' });
             setShowEditDialog(false);
             setEditingMovement(null);
+            setFormData({
+                product_id: '',
+                warehouse_id: '',
+                quantity: '',
+                reference: '',
+                notes: '',
+                unit_price: '',
+                project_location: '',
+                movement_category: 'Keluar',
+            });
             refetch();
             refetchProducts();
         } catch (error: any) {
             toast({
                 title: 'Error',
-                description: error.message || 'Gagal memperbarui stok keluar',
+                description: error.message || 'Gagal memperbarui ending material masuk dan keluar',
                 variant: 'destructive'
             });
         } finally {
@@ -203,17 +268,17 @@ export function StockOutManagement() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Apakah Anda yakin ingin menghapus data stok keluar ini? Stok barang akan disesuaikan kembali.')) return;
+        if (!confirm('Apakah Anda yakin ingin menghapus data ending material masuk dan keluar ini? Stok barang akan disesuaikan kembali.')) return;
 
         try {
             await deleteMovement(id);
-            toast({ title: 'Berhasil', description: 'Data stok keluar berhasil dihapus' });
+            toast({ title: 'Berhasil', description: 'Data ending material masuk dan keluar berhasil dihapus' });
             refetch();
             refetchProducts();
         } catch (error: any) {
             toast({
                 title: 'Error',
-                description: error.message || 'Gagal menghapus data stok keluar',
+                description: error.message || 'Gagal menghapus data ending material masuk dan keluar',
                 variant: 'destructive'
             });
         }
@@ -223,21 +288,21 @@ export function StockOutManagement() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-[#1C1C1E] font-display">Stok Keluar</h2>
-                    <p className="text-muted-foreground font-body">Catat pengeluaran barang dari gudang</p>
+                    <h2 className="text-2xl font-bold text-[#1C1C1E] font-display">Ending material masuk dan keluar</h2>
+                    <p className="text-muted-foreground font-body">Catat pengeluaran material dari gudang</p>
                 </div>
                 <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
                     <DialogTrigger asChild>
                         <Button variant="destructive">
                             <Plus className="w-4 h-4 mr-2" />
-                            Catat Pengeluaran
+                            Catat Ending material masuk dan keluar
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-md">
                         <DialogHeader>
-                            <DialogTitle className="font-display">Catat Stok Keluar</DialogTitle>
+                            <DialogTitle className="font-display">Catat Ending material masuk dan keluar</DialogTitle>
                             <DialogDescription className="font-body">
-                                Masukkan detail pengeluaran barang
+                                Masukkan detail pengeluaran material
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleAdd} className="space-y-4 pt-4">
@@ -332,6 +397,43 @@ export function StockOutManagement() {
                                 />
                             </div>
 
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="font-body text-xs">Lokasi Proyek</Label>
+                                    <Select
+                                        value={formData.project_location}
+                                        onValueChange={(val) => setFormData({ ...formData, project_location: val })}
+                                    >
+                                        <SelectTrigger className="font-body">
+                                            <SelectValue placeholder="Pilih lokasi" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {locations.map((loc) => (
+                                                <SelectItem key={loc} value={loc} className="font-body">
+                                                    {loc}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="font-body text-xs">Kategori *</Label>
+                                    <Select
+                                        value={formData.movement_category}
+                                        onValueChange={(val) => setFormData({ ...formData, movement_category: val })}
+                                        required
+                                    >
+                                        <SelectTrigger className="font-body">
+                                            <SelectValue placeholder="Pilih kategori" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Keluar">Keluar (Penjualan/Lainnya)</SelectItem>
+                                            <SelectItem value="Pemakaian">Pemakaian (Internal Proyek)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
                             <div className="space-y-2">
                                 <Label className="font-body text-xs">Keterangan</Label>
                                 <Input
@@ -348,10 +450,10 @@ export function StockOutManagement() {
                                 </Button>
                                 <Button
                                     type="submit"
-                                    disabled={isSubmitting || isOverstock}
+                                    disabled={isSubmitting}
                                     className="bg-red-600 hover:bg-red-700 font-body"
                                 >
-                                    {isSubmitting ? 'Menyimpan...' : 'Catat Pengeluaran'}
+                                    {isSubmitting ? 'Menyimpan...' : 'Catat Ending material masuk dan keluar'}
                                 </Button>
                             </DialogFooter>
                         </form>
@@ -361,9 +463,9 @@ export function StockOutManagement() {
                 <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
                     <DialogContent className="max-w-md">
                         <DialogHeader>
-                            <DialogTitle className="font-display">Edit Stok Keluar</DialogTitle>
+                            <DialogTitle className="font-display">Edit Ending material masuk dan keluar</DialogTitle>
                             <DialogDescription className="font-body">
-                                Perbarui detail pengeluaran barang
+                                Perbarui detail pengeluaran material
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleUpdate} className="space-y-4 pt-4">
@@ -455,6 +557,43 @@ export function StockOutManagement() {
                                 />
                             </div>
 
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="font-body text-xs">Lokasi Proyek</Label>
+                                    <Select
+                                        value={formData.project_location}
+                                        onValueChange={(val) => setFormData({ ...formData, project_location: val })}
+                                    >
+                                        <SelectTrigger className="font-body">
+                                            <SelectValue placeholder="Pilih lokasi" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {locations.map((loc) => (
+                                                <SelectItem key={loc} value={loc} className="font-body">
+                                                    {loc}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="font-body text-xs">Kategori *</Label>
+                                    <Select
+                                        value={formData.movement_category}
+                                        onValueChange={(val) => setFormData({ ...formData, movement_category: val })}
+                                        required
+                                    >
+                                        <SelectTrigger className="font-body">
+                                            <SelectValue placeholder="Pilih kategori" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Keluar">Keluar (Penjualan/Lainnya)</SelectItem>
+                                            <SelectItem value="Pemakaian">Pemakaian (Internal Proyek)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
                             <div className="space-y-2">
                                 <Label className="font-body text-xs">Keterangan</Label>
                                 <Input
@@ -485,7 +624,7 @@ export function StockOutManagement() {
             <Card className="border-gray-200">
                 <CardHeader>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <CardTitle className="font-display text-lg">Riwayat Stok Keluar</CardTitle>
+                        <CardTitle className="font-display text-lg">Riwayat Ending material masuk dan keluar</CardTitle>
                         <div className="relative w-full sm:w-64">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <Input
@@ -501,22 +640,24 @@ export function StockOutManagement() {
                     <Table>
                         <TableHeader>
                             <TableRow>
+                                <TableHead className="font-body">No</TableHead>
                                 <TableHead className="font-body">Tanggal</TableHead>
                                 <TableHead className="font-body">Produk</TableHead>
+                                <TableHead className="font-body">Stok Awal</TableHead>
+                                <TableHead className="font-body text-inventory">Masuk</TableHead>
+                                <TableHead className="font-body text-red-600">Keluar</TableHead>
+                                <TableHead className="font-body text-orange-600">Pemakaian</TableHead>
+                                <TableHead className="font-body">Lokasi Proyek</TableHead>
                                 <TableHead className="font-body">Gudang</TableHead>
-                                <TableHead className="font-body">Referensi</TableHead>
-                                <TableHead className="font-body text-right">Jumlah</TableHead>
-                                <TableHead className="font-body text-right">Harga Beli</TableHead>
-                                <TableHead className="font-body text-right">Harga Jual</TableHead>
-                                <TableHead className="font-body text-right">Total Jual</TableHead>
-                                <TableHead className="font-body">Status</TableHead>
-                                <TableHead className="font-body text-right">Aksi</TableHead>
+                                <TableHead className="font-body">Saldo Stok Akhir</TableHead>
+                                <TableHead className="font-body">Keterangan</TableHead>
+                                <TableHead className="font-body">Aksi</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={9} className="text-center py-8">
+                                    <TableCell colSpan={12} className="text-center py-8">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-4 h-4 border-2 border-inventory/30 border-t-inventory rounded-full animate-spin" />
                                             <span className="font-body text-muted-foreground">Memuat data...</span>
@@ -525,56 +666,48 @@ export function StockOutManagement() {
                                 </TableRow>
                             ) : filteredMovements.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={9} className="text-center py-12">
+                                    <TableCell colSpan={12} className="text-center py-12">
                                         <ArrowUpRight className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-                                        <p className="font-body text-muted-foreground">Belum ada data stok keluar</p>
+                                        <p className="font-body text-muted-foreground">Belum ada data ending material masuk dan keluar</p>
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredMovements.map((m) => (
+                                filteredMovements.map((m, index) => (
                                     <TableRow key={m.id}>
+                                        <TableCell className="font-body text-xs text-muted-foreground">{index + 1}</TableCell>
                                         <TableCell className="font-body whitespace-nowrap">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 text-xs">
                                                 <Calendar className="w-3.5 h-3.5 text-gray-400" />
                                                 {new Date(m.created_at).toLocaleDateString('id-ID')}
                                             </div>
                                         </TableCell>
                                         <TableCell>
                                             <div>
-                                                <p className="font-bold font-body text-[#1C1C1E]">{(m as any).products?.name || '-'}</p>
-                                                <p className="text-xs text-muted-foreground font-mono">{(m as any).products?.sku || '-'}</p>
+                                                <p className="font-bold font-body text-xs text-[#1C1C1E]">{(m as any).products?.name || '-'}</p>
+                                                <p className="text-[10px] text-muted-foreground font-mono">{(m as any).products?.sku || '-'}</p>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="font-body">
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <Warehouse className="w-3.5 h-3.5 text-gray-400" />
-                                                {(m as any).warehouses?.name || '-'}
-                                            </div>
+                                        <TableCell className="font-mono text-xs">{(m as any).opening_stock || 0}</TableCell>
+                                        <TableCell className="font-mono text-xs text-inventory font-bold">
+                                            {m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0) ? `+${m.quantity}` : '-'}
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs">
-                                            <div className="flex items-center gap-2">
-                                                <FileText className="w-3.5 h-3.5 text-gray-400" />
-                                                {m.reference || '-'}
-                                            </div>
+                                        <TableCell className="font-mono text-xs text-red-600 font-bold">
+                                            {m.movement_type === 'out' && (m.movement_category === 'Keluar' || !m.movement_category) ? `-${Math.abs(m.quantity)}` : '-'}
                                         </TableCell>
-                                        <TableCell className="text-right font-bold font-mono text-red-600">
-                                            -{m.quantity}
+                                        <TableCell className="font-mono text-xs text-orange-600 font-bold">
+                                            {m.movement_type === 'out' && m.movement_category === 'Pemakaian' ? `-${Math.abs(m.quantity)}` : '-'}
                                         </TableCell>
-                                        <TableCell className="text-right font-mono text-xs text-muted-foreground">
-                                            {formatCurrency((m as any).products?.cost || 0)}
+                                        <TableCell className="font-body text-xs">
+                                            {m.project_location || '-'}
                                         </TableCell>
-                                        <TableCell className="text-right font-mono text-xs">
-                                            {formatCurrency(m.unit_price || (m as any).products?.price || 0)}
+                                        <TableCell className="font-body text-xs">
+                                            {(m as any).warehouses?.name || '-'}
                                         </TableCell>
-                                        <TableCell className="text-right font-bold text-blue-600 font-mono">
-                                            {formatCurrency(m.quantity * (m.unit_price || (m as any).products?.price || 0))}
+                                        <TableCell className="font-mono text-xs font-bold">{(m as any).closing_balance || 0}</TableCell>
+                                        <TableCell className="font-body text-xs max-w-[150px] truncate">
+                                            {m.notes || '-'}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge className="bg-red-50 text-red-700 hover:bg-red-50 border-none">
-                                                Keluar
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="ghost" size="icon">
@@ -598,15 +731,15 @@ export function StockOutManagement() {
                             )}
                             {filteredMovements.length > 0 && (
                                 <TableRow className="bg-gray-50/50 font-bold">
-                                    <TableCell colSpan={4} className="text-right font-display text-gray-900 px-4 py-4">
+                                    <TableCell colSpan={4} className="font-display text-gray-900 px-4 py-4">
                                         TOTAL
                                     </TableCell>
-                                    <TableCell className="text-right font-mono text-red-600">
+                                    <TableCell className="font-mono text-red-600">
                                         -{filteredMovements.reduce((acc, m) => acc + m.quantity, 0)} unit
                                     </TableCell>
                                     <TableCell></TableCell>
                                     <TableCell></TableCell>
-                                    <TableCell className="text-right font-mono text-inventory">
+                                    <TableCell className="font-mono text-inventory">
                                         {formatCurrency(filteredMovements.reduce((acc, m) => acc + (m.quantity * (m.unit_price || (m as any).products?.price || 0)), 0))}
                                     </TableCell>
                                     <TableCell colSpan={2}></TableCell>

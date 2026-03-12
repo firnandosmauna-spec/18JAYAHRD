@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Truck,
   Plus,
@@ -13,7 +13,9 @@ import {
   History,
   ArrowUpCircle,
   ArrowDownCircle,
-  Undo2
+  Undo2,
+  AlertTriangle,
+  Settings2
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -38,6 +40,12 @@ import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PurchaseService } from '@/services/purchaseService';
 import { formatCurrency } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import type { Supplier, SupplierDeposit } from '@/types/purchase';
 
 export function SupplierManagement() {
@@ -71,24 +79,52 @@ export function SupplierManagement() {
   const { products } = useProducts();
   const [activeTab, setActiveTab] = useState('all');
 
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const saved = localStorage.getItem('purchase_supplier_list_cols_v2');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse supplier list columns:', e);
+      }
+    }
+    return {
+      code: true,
+      status: true,
+      email: true,
+      phone: true,
+      location: true,
+      terms: true,
+      deposit: true,
+      debt: true,
+      actions: true
+    };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('purchase_supplier_list_cols_v2', JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
+
+  const toggleColumn = (column: string) => {
+    setVisibleColumns((prev: any) => ({
+      ...prev,
+      [column]: !prev[column]
+    }));
+  };
+
   const filteredSuppliers = suppliers.filter(supplier => {
     const matchesSearch = supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       supplier.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       supplier.email?.toLowerCase().includes(searchQuery.toLowerCase());
 
+    // Base filter: search match
     if (!matchesSearch) return false;
 
+    // Tab filter
     if (activeTab === 'all') return true;
 
-    // Filter suppliers by their own payment method if set, fallback to product check
-    if (supplier.payment_method) {
-      return supplier.payment_method.toLowerCase() === activeTab.toLowerCase();
-    }
-
-    const supplierProducts = products.filter(p => p.supplier_id === supplier.id);
-    const paymentMethod = activeTab === 'cash' ? 'CASH' : 'Hutang';
-
-    return supplierProducts.some(p => p.purchase_payment_method === paymentMethod);
+    // Filter suppliers by their own payment method
+    return supplier.payment_method?.toLowerCase() === activeTab.toLowerCase();
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -179,7 +215,8 @@ export function SupplierManagement() {
       postal_code: '',
       tax_number: '',
       payment_terms: 30,
-      status: 'active'
+      status: 'active',
+      payment_method: 'CASH'
     });
   };
 
@@ -202,7 +239,7 @@ export function SupplierManagement() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Manajemen Supplier</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Master Supplier</h2>
           <p className="text-gray-600">Kelola data supplier dan informasi kontak</p>
         </div>
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
@@ -360,7 +397,7 @@ export function SupplierManagement() {
       </div>
 
       {/* Search */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 flex-1">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
@@ -370,10 +407,49 @@ export function SupplierManagement() {
             className="pl-10"
           />
         </div>
-        <Badge variant="outline" className="px-3 py-1">
-          {filteredSuppliers.length} supplier {activeTab !== 'all' ? `(${activeTab.toUpperCase()})` : ''}
-        </Badge>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="icon" className="h-10 w-10">
+              <Settings2 className="w-4 h-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56" align="end">
+            <div className="space-y-2">
+              <h4 className="font-medium leading-none mb-4">Pengaturan Tampilan</h4>
+              <div className="space-y-3">
+                {Object.entries({
+                  code: 'Kode Supplier',
+                  status: 'Status',
+                  email: 'Email',
+                  phone: 'Telepon',
+                  location: 'Lokasi (Kota)',
+                  terms: 'Termin',
+                  deposit: 'Saldo Deposit',
+                  debt: 'Total Hutang',
+                  actions: 'Tombol Aksi'
+                }).map(([key, label]) => (
+                  <div key={key} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`sup-col-${key}`}
+                      checked={(visibleColumns as any)[key]}
+                      onCheckedChange={() => toggleColumn(key)}
+                    />
+                    <Label
+                      htmlFor={`sup-col-${key}`}
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      {label}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
+      <Badge variant="outline" className="px-3 py-1">
+        {filteredSuppliers.length} supplier {activeTab !== 'all' ? `(${activeTab.toUpperCase()})` : ''}
+      </Badge>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="font-body">
@@ -391,80 +467,88 @@ export function SupplierManagement() {
               <div className="flex items-start justify-between">
                 <div>
                   <CardTitle className="text-lg">{supplier.name}</CardTitle>
-                  <CardDescription className="font-mono">{supplier.code}</CardDescription>
+                  {visibleColumns.code && <CardDescription className="font-mono">{supplier.code}</CardDescription>}
                 </div>
-                <Badge variant={supplier.status === 'active' ? 'default' : 'secondary'}>
-                  {supplier.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                </Badge>
+                {visibleColumns.status && (
+                  <Badge variant={supplier.status === 'active' ? 'default' : 'secondary'}>
+                    {supplier.status === 'active' ? 'Aktif' : 'Nonaktif'}
+                  </Badge>
+                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {supplier.email && (
+              {visibleColumns.email && supplier.email && (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Mail className="w-4 h-4" />
                   <span className="truncate">{supplier.email}</span>
                 </div>
               )}
-              {supplier.phone && (
+              {visibleColumns.phone && supplier.phone && (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Phone className="w-4 h-4" />
                   <span>{supplier.phone}</span>
                 </div>
               )}
-              {supplier.city && (
+              {visibleColumns.location && supplier.city && (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <MapPin className="w-4 h-4" />
                   <span>{supplier.city}</span>
                 </div>
               )}
-              {supplier.payment_terms && (
+              {visibleColumns.terms && supplier.payment_terms && (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Calendar className="w-4 h-4" />
                   <span>Termin: {supplier.payment_terms} hari</span>
                 </div>
               )}
 
-              <div className={`mt-4 p-3 rounded-lg ${isInventory ? 'bg-inventory/5' : 'bg-orange-50'} border border-dashed ${isInventory ? 'border-inventory/20' : 'border-orange-200'}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
-                    <Wallet className="w-3 h-3" />
-                    Saldo Deposit
-                  </span>
-                  <Badge variant="outline" className={`text-xs font-mono font-bold ${isInventory ? 'text-inventory-dark' : 'text-orange-700'}`}>
-                    {formatCurrency(supplier.deposit_balance || 0)}
-                  </Badge>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`w-full h-7 text-[10px] mt-2 ${isInventory ? 'hover:bg-inventory/10 text-inventory' : 'hover:bg-orange-100 text-orange-600'}`}
-                  onClick={() => {
-                    setSelectedSupplierForDeposit(supplier);
-                    setShowDepositDialog(true);
-                  }}
-                >
-                  <History className="w-3 h-3 mr-1" />
-                  Kelola & Riwayat
-                </Button>
-              </div>
+              {(visibleColumns.deposit || visibleColumns.debt) && (
+                <div className={`mt-4 p-3 rounded-lg ${isInventory ? 'bg-inventory/5' : 'bg-orange-50'} border border-dashed ${isInventory ? 'border-inventory/20' : 'border-orange-200'}`}>
+                  {visibleColumns.deposit && (
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                        <Wallet className="w-3 h-3" />
+                        Saldo Deposit
+                      </span>
+                      <Badge variant="outline" className={`text-xs font-mono font-bold ${isInventory ? 'text-inventory-dark' : 'text-orange-700'}`}>
+                        {formatCurrency(supplier.deposit_balance || 0)}
+                      </Badge>
+                    </div>
+                  )}
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleEdit(supplier)}
-                >
-                  <Edit className="w-4 h-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleDelete(supplier.id)}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
+                  {visibleColumns.debt && (
+                    <div className={`flex items-center justify-between mb-1 ${visibleColumns.deposit ? 'pt-2 border-t border-gray-100 mt-2' : ''}`}>
+                      <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 text-red-500" />
+                        Total Hutang
+                      </span>
+                      <Badge variant="outline" className="text-xs font-mono font-bold text-red-600 bg-red-50 border-red-100">
+                        {formatCurrency(supplier.total_debt || 0)}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {visibleColumns.actions && (
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleEdit(supplier)}
+                  >
+                    <Edit className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDelete(supplier.id)}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}

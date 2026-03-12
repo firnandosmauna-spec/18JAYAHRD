@@ -77,9 +77,18 @@ function AccountingDashboard() {
     const { entries, loading: loadingEntries } = useJournalEntries();
 
     // Calculate Cash Balance
-    const cashBalance = accounts
-        .filter(acc => acc.type === 'asset' && (acc.name.toLowerCase().includes('kas') || acc.name.toLowerCase().includes('bank')))
-        .reduce((sum, acc) => sum + acc.balance, 0);
+    const cashAccounts = accounts.filter(acc =>
+        acc.type === 'asset' &&
+        (acc.name.toLowerCase().includes('kas') ||
+            acc.name.toLowerCase().includes('bank') ||
+            acc.name.toLowerCase().includes('cash') ||
+            acc.code.startsWith('10') ||
+            acc.code.startsWith('11') ||
+            acc.code.startsWith('1-0') ||
+            acc.code.startsWith('1-1'))
+    );
+
+    const cashBalance = cashAccounts.reduce((sum, acc) => sum + acc.balance, 0);
 
     const stats = [
         {
@@ -91,6 +100,7 @@ function AccountingDashboard() {
             trend: 'Real-time',
             isPositive: true,
         },
+        // ... (rest of stats)
         {
             label: 'Pendapatan (YTD)',
             value: pl?.total_revenue || 0,
@@ -124,17 +134,21 @@ function AccountingDashboard() {
     const recentTransactions = entries.flatMap(entry => {
         return (entry.items || [])
             .filter(item => {
-                const acc = accounts.find(a => a.id === item.account_id);
-                return acc?.type === 'asset' && (acc.name.toLowerCase().includes('kas') || acc.name.toLowerCase().includes('bank'));
+                return cashAccounts.some(ca => ca.id === item.account_id);
             })
             .map(item => ({
                 id: `${entry.id}-${item.account_id}`,
                 date: entry.date,
+                created_at: entry.created_at,
                 description: item.description || entry.description,
                 amount: item.debit - item.credit,
                 account_name: item.account_name
             }));
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+    }).sort((a, b) => {
+        const dateCompare = new Date(b.date).getTime() - new Date(a.date).getTime();
+        if (dateCompare !== 0) return dateCompare;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }).slice(0, 5);
 
     return (
         <div className="space-y-8">

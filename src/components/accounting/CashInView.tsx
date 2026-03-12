@@ -33,7 +33,7 @@ export function CashInView() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.destination_account_id || !formData.source_account_id || formData.amount <= 0) {
+        if (!formData.destination_account_id || !formData.source_account_id || formData.amount <= 0 || isNaN(Number(formData.amount))) {
             toast({
                 title: 'Input tidak valid',
                 description: 'Mohon lengkapi semua data dan pastikan jumlah lebih dari 0.',
@@ -90,9 +90,10 @@ export function CashInView() {
             });
             refresh();
         } catch (err: any) {
+            console.error('Error recording Cash In:', err);
             toast({
                 title: 'Gagal mencatat kas masuk',
-                description: err.message,
+                description: err.message || 'Terjadi kesalahan pada server (400)',
                 variant: 'destructive',
             });
         } finally {
@@ -170,6 +171,14 @@ export function CashInView() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {formData.destination_account_id && (
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Saldo Sekarang:</span>
+                                        <span className="text-xs font-bold text-accounting">
+                                            {formatCurrency(accounts.find(a => a.id === formData.destination_account_id)?.balance || 0)}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label>Sumber Dana (Akun Kredit)</Label>
@@ -188,6 +197,14 @@ export function CashInView() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {formData.source_account_id && (
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Saldo Sekarang:</span>
+                                        <span className="text-xs font-bold text-gray-700">
+                                            {formatCurrency(accounts.find(a => a.id === formData.source_account_id)?.balance || 0)}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

@@ -149,6 +149,11 @@ export interface Database {
         Insert: Omit<StockMovement, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<StockMovement, 'id' | 'created_at'>>
       }
+      product_price_history: {
+        Row: ProductPriceHistory
+        Insert: Omit<ProductPriceHistory, 'id' | 'created_at'>
+        Update: Partial<Omit<ProductPriceHistory, 'id' | 'created_at'>>
+      }
       positions: {
         Row: Position
         Insert: Omit<Position, 'id' | 'created_at' | 'updated_at'>
@@ -188,6 +193,11 @@ export interface Database {
         Row: ConsumerProfile
         Insert: Omit<ConsumerProfile, 'id' | 'created_at'>
         Update: Partial<Omit<ConsumerProfile, 'id' | 'created_at'>>
+      }
+      payment_methods: {
+        Row: any // Simplified for now
+        Insert: any
+        Update: any
       }
     }
   }
@@ -471,14 +481,16 @@ export interface Product {
   max_stock?: number
   unit: string
   price: number
+  initial_price?: number
   cost?: number
+  initial_cost?: number
   warehouse_id?: string
   status: 'active' | 'inactive' | 'discontinued'
   image_url?: string
   barcode?: string
   volume?: string
   project_location?: string
-  purchase_payment_method?: 'CASH' | 'Hutang'
+  date?: string
   supplier_id?: string
   suppliers?: {
     id: string
@@ -506,9 +518,27 @@ export interface StockMovement {
   reference_type?: string
   notes?: string
   unit_price: number
+  payment_method_id?: string
+  project_location?: string
+  movement_category?: string
   created_by?: string
   created_at: string
   updated_at: string
+}
+
+export interface ProductPriceHistory {
+  id: string;
+  product_id: string;
+  old_cost?: number;
+  new_cost?: number;
+  old_price?: number;
+  new_price?: number;
+  adjustment_type: 'percentage' | 'fixed';
+  adjustment_value: number;
+  target_field: 'cost' | 'price' | 'both';
+  notes?: string;
+  created_at: string;
+  created_by?: string;
 }
 
 export interface Position {

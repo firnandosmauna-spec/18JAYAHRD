@@ -18,7 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { useProductCategories, useWarehouses, useInventoryUnits, useInventoryVolumes, useProjectLocations } from '@/hooks/useInventory';
+import { useProductCategories, useWarehouses, useInventoryUnits, useProjectLocations } from '@/hooks/useInventory';
 import { useSuppliers } from '@/hooks/usePurchase';
 import { useToast } from '@/components/ui/use-toast';
 import { productService } from '@/services/inventoryService';
@@ -34,7 +34,6 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
     const { categories } = useProductCategories();
     const { warehouses } = useWarehouses();
     const { units } = useInventoryUnits();
-    const { volumes } = useInventoryVolumes();
     const { locations } = useProjectLocations();
     const { suppliers } = useSuppliers();
     const { toast } = useToast();
@@ -54,8 +53,8 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
         barcode: '',
         volume: '',
         project_location: '',
-        purchase_payment_method: 'CASH',
         supplier_id: '',
+        date: new Date().toISOString().slice(0, 10),
     });
 
     useEffect(() => {
@@ -74,8 +73,8 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                 barcode: existingProduct.barcode || '',
                 volume: existingProduct.volume || '',
                 project_location: existingProduct.project_location || '',
-                purchase_payment_method: existingProduct.purchase_payment_method || 'CASH',
                 supplier_id: existingProduct.supplier_id || existingProduct.suppliers?.id || '',
+                date: existingProduct.date || new Date().toISOString().slice(0, 10),
             });
         } else {
             resetForm();
@@ -97,8 +96,8 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
             barcode: '',
             volume: '',
             project_location: '',
-            purchase_payment_method: 'CASH',
             supplier_id: '',
+            date: new Date().toISOString().slice(0, 10),
         });
     };
 
@@ -115,13 +114,19 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                 finalSku = `PRD-${date}-${random}`;
             }
 
+            const parseSafeFloat = (val: any) => {
+                if (val === null || val === undefined || val === '') return 0;
+                const parsed = parseFloat(val.toString().replace(/[^0-9.-]/g, ''));
+                return isNaN(parsed) ? 0 : parsed;
+            };
+
             const payload: any = {
                 name: formData.name.trim() || 'Produk Tanpa Nama',
                 sku: finalSku,
-                stock: formData.stock ? parseFloat(formData.stock) : 0,
-                min_stock: formData.min_stock ? parseFloat(formData.min_stock) : 0,
-                price: formData.price ? parseFloat(formData.price) : 0,
-                cost: formData.cost ? parseFloat(formData.cost) : 0,
+                cost: parseSafeFloat(formData.cost),
+                price: parseSafeFloat(formData.price) || 0,
+                stock: parseSafeFloat(formData.stock) || 0,
+                min_stock: parseSafeFloat(formData.min_stock) || 0,
                 unit: formData.unit || 'Unit',
                 category_id: formData.category_id || null,
                 warehouse_id: formData.warehouse_id || null,
@@ -129,8 +134,8 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                 barcode: formData.barcode.trim() || null,
                 volume: formData.volume || null,
                 project_location: formData.project_location || null,
-                purchase_payment_method: formData.purchase_payment_method,
                 supplier_id: formData.supplier_id || null,
+                date: formData.date || new Date().toISOString().slice(0, 10),
                 status: 'active'
             };
 
@@ -146,10 +151,15 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
             onOpenChange(false);
             resetForm();
         } catch (error: any) {
-            console.error('Save product error:', error);
+            console.error('Save product error details:', error);
+            const errorMsg = error.message || 'Gagal menyimpan produk';
+            const details = error.details || '';
+            const hint = error.hint || '';
+            const code = error.code || 'No Code';
+
             toast({
                 title: 'Error',
-                description: error.message || 'Gagal menyimpan produk',
+                description: `${errorMsg} (Code: ${code}) ${details} ${hint}`,
                 variant: 'destructive'
             });
         } finally {
@@ -169,14 +179,28 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4 py-4">
-                    <div className="grid gap-2">
-                        <Label htmlFor="name" className="font-body">Nama Produk</Label>
-                        <Input
-                            id="name"
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            className="font-body"
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="date" className="font-body">Tanggal *</Label>
+                            <Input
+                                id="date"
+                                type="date"
+                                value={formData.date}
+                                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                                className="font-body"
+                                required
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="name" className="font-body">Nama Produk *</Label>
+                            <Input
+                                id="name"
+                                value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                className="font-body"
+                                required
+                            />
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -187,7 +211,7 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                                 value={formData.sku}
                                 onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
                                 className="font-mono"
-                                placeholder="Auto-generate jika kosong"
+                                placeholder="Auto-generate"
                             />
                         </div>
                         <div className="grid gap-2">
@@ -212,40 +236,18 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="stock" className="font-body">Stok Awal</Label>
+                            <Label htmlFor="cost" className="font-body">Harga Beli *</Label>
                             <Input
-                                id="stock"
+                                id="cost"
                                 type="number"
-                                value={formData.stock}
-                                onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                                value={formData.cost}
+                                onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
                                 className="font-mono"
+                                required
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="minStock" className="font-body">Min. Stok</Label>
-                            <Input
-                                id="minStock"
-                                type="number"
-                                value={formData.min_stock}
-                                onChange={(e) => setFormData({ ...formData, min_stock: e.target.value })}
-                                className="font-mono"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="price" className="font-body">Harga Jual</Label>
-                            <Input
-                                id="price"
-                                type="number"
-                                value={formData.price}
-                                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                                className="font-mono"
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="unit" className="font-body">Satuan</Label>
+                            <Label className="font-body">Satuan</Label>
                             <Select
                                 value={formData.unit}
                                 onValueChange={(value) => setFormData({ ...formData, unit: value })}
@@ -283,63 +285,17 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="cost" className="font-body">Harga Beli</Label>
-                            <Input
-                                id="cost"
-                                type="number"
-                                value={formData.cost}
-                                onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
-                                className="font-mono"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="payment_method" className="font-body">Metode Pembayaran (Beli)</Label>
-                            <Select
-                                value={formData.purchase_payment_method}
-                                onValueChange={(value) => setFormData({ ...formData, purchase_payment_method: value as 'CASH' | 'Hutang' })}
-                            >
-                                <SelectTrigger className="font-body">
-                                    <SelectValue placeholder="Pilih metode" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="CASH" className="font-body">CASH</SelectItem>
-                                    <SelectItem value="Hutang" className="font-body">Hutang</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="barcode" className="font-body">Barcode</Label>
-                            <Input
-                                id="barcode"
-                                value={formData.barcode}
-                                onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                                className="font-mono"
-                            />
-                        </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="grid gap-2">
                             <Label htmlFor="volume" className="font-body">Volume</Label>
-                            <Select
+                            <Input
+                                id="volume"
                                 value={formData.volume}
-                                onValueChange={(value) => setFormData({ ...formData, volume: value })}
-                            >
-                                <SelectTrigger className="font-body">
-                                    <SelectValue placeholder="Pilih volume" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {volumes.map((v) => (
-                                        <SelectItem key={v} value={v} className="font-body">
-                                            {v}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                onChange={(e) => setFormData({ ...formData, volume: e.target.value })}
+                                className="font-body"
+                            />
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="location" className="font-body">Lokasi Proyek</Label>
@@ -361,23 +317,39 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                         </div>
                     </div>
 
-                    <div className="grid gap-2">
-                        <Label htmlFor="supplier" className="font-body">Supplier</Label>
-                        <Select
-                            value={formData.supplier_id}
-                            onValueChange={(value) => setFormData({ ...formData, supplier_id: value })}
-                        >
-                            <SelectTrigger className="font-body">
-                                <SelectValue placeholder="Pilih supplier (opsional)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {suppliers.map((s) => (
-                                    <SelectItem key={s.id} value={s.id} className="font-body">
-                                        {s.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="barcode" className="font-body">Barcode</Label>
+                            <Input
+                                id="barcode"
+                                value={formData.barcode}
+                                onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                                className="font-mono"
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="supplier" className="font-body">Supplier</Label>
+                            <Select
+                                value={formData.supplier_id}
+                                onValueChange={(value) => {
+                                    setFormData({
+                                        ...formData,
+                                        supplier_id: value
+                                    });
+                                }}
+                            >
+                                <SelectTrigger className="font-body">
+                                    <SelectValue placeholder="Pilih supplier (opsional)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {suppliers.map((s) => (
+                                        <SelectItem key={s.id} value={s.id} className="font-body">
+                                            {s.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
 
                     <div className="grid gap-2">
@@ -387,7 +359,7 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                             value={formData.description}
                             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                             className="font-body"
-                            placeholder="Tambahkan keterangan tambahan..."
+                            placeholder="Keterangan..."
                         />
                     </div>
 
@@ -410,7 +382,7 @@ export function AddProductDialog({ open, onOpenChange, onSuccess, existingProduc
                         </Button>
                     </DialogFooter>
                 </form>
-            </DialogContent>
-        </Dialog>
+            </DialogContent >
+        </Dialog >
     );
 }
