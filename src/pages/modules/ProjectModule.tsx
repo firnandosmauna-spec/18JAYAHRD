@@ -1074,6 +1074,7 @@ function ProjectDashboard() {
   );
 }
 function ProjectManageDetail({ projectId, onBack }: { projectId: string; onBack: () => void }) {
+  const navigate = useNavigate();
   const { project, loading: projectLoading, refetch: refetchProject } = useProject(projectId);
   const { logs, refetch: refetchLogs, loading: logsLoading } = useProjectProgressLogs(projectId);
   const { materials, loading: materialsLoading } = useProjectMaterials(projectId);
