@@ -463,6 +463,7 @@ function ProjectDashboard() {
   const { locations } = useProjectLocations();
   
   // Dashboard Logic
+  const [activeWorkersCount, setActiveWorkersCount] = useState(0);
   const [selectedProjectForLog, setSelectedProjectForLog] = useState<any>(null);
   const [projectFormData, setProjectFormData] = useState({
     name: '',
@@ -508,13 +509,26 @@ function ProjectDashboard() {
     }
   }, [editingProject]);
 
+  useEffect(() => {
+    const fetchActiveWorkers = async () => {
+      try {
+        let total = 0;
+        const activeProjectsList = projects.filter(p => p.status === 'in-progress');
+        for (const p of activeProjectsList) {
+          const workers = await projectService.getWorkers(p.id);
+          total += workers.length;
+        }
+        setActiveWorkersCount(total);
+      } catch (err) {
+        console.error("Failed to fetch active workers", err);
+      }
+    };
+    if (projects.length > 0) fetchActiveWorkers();
+  }, [projects]);
+
   const activeProjects = projects.filter(p => p.status === 'in-progress').length;
   const completedProjects = projects.filter(p => p.status === 'completed').length;
   const totalBudget = projects.reduce((acc, p) => acc + (p.budget || 0), 0);
-
-  // Note: 'workers' count is not available in simple project list, would need separate query or join
-  // Placeholder for now
-  const activeWorkersCount = 0;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -926,7 +940,8 @@ function ProjectDashboard() {
                 <TableHead className="font-body">Klien</TableHead>
                 <TableHead className="font-body">Status</TableHead>
                 <TableHead className="font-body">Progress</TableHead>
-                <TableHead className="font-body">Budget</TableHead>
+                <TableHead className="font-body">Gaji Tukang</TableHead>
+                <TableHead className="font-body">Sisa Budget</TableHead>
                 <TableHead className="font-body">Target</TableHead>
                 <TableHead className="font-body"></TableHead>
               </TableRow>
@@ -934,7 +949,7 @@ function ProjectDashboard() {
             <TableBody>
               {projects.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     Belum ada proyek. Silakan buat proyek baru.
                   </TableCell>
                 </TableRow>
@@ -968,16 +983,33 @@ function ProjectDashboard() {
                         <Progress value={project.progress} className="h-2" />
                       </div>
                     </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                         <div className="text-right">
+                           <p className="font-mono font-bold text-sm text-[#E76F51]">
+                             Rp {((project.spent || 0) / 1000000).toFixed(1)}jt
+                           </p>
+                           <p className="text-[10px] text-muted-foreground uppercase font-medium">Labor Cost</p>
+                         </div>
+                         <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-[#E76F51] hover:bg-[#E76F51]/10 rounded-full"
+                          title="Kelola Gaji"
+                          onClick={() => navigate(`/hrd/payroll-tukang?projectId=${project.id}`)}
+                         >
+                           <Hammer className="h-4 w-4" />
+                         </Button>
+                      </div>
+                    </TableCell>
                     <TableCell className="font-mono text-sm">
                       <div>
-                        <p className="font-medium">Rp {(project.budget / 1000000).toFixed(0)}jt</p>
-                        <p className="text-xs text-muted-foreground">
-                          Terpakai: Rp {((project.spent || 0) / 1000000).toFixed(0)}jt
-                        </p>
+                        <p className="font-medium">Rp {((project.budget - (project.spent || 0)) / 1000000).toFixed(1)}jt</p>
+                        <p className="text-[10px] text-muted-foreground uppercase">Budget: Rp {(project.budget / 1000000).toFixed(0)}jt</p>
                       </div>
                     </TableCell>
                     <TableCell className="font-body text-sm">
-                      {project.end_date ? new Date(project.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                      {project.end_date ? new Date(project.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '-'}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -992,6 +1024,12 @@ function ProjectDashboard() {
                             onClick={() => navigate(`/projects/active?projectId=${project.id}`)}
                           >
                             Lihat Detail
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="font-body"
+                            onClick={() => navigate(`/hrd/payroll-tukang?projectId=${project.id}`)}
+                          >
+                            Penggajian Tukang
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="font-body"
@@ -1069,10 +1107,11 @@ function ProjectManageDetail({ projectId, onBack }: { projectId: string; onBack:
       </div>
 
       <Tabs defaultValue="progress" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 max-w-md">
+        <TabsList className="grid w-full grid-cols-5 max-w-lg">
           <TabsTrigger value="progress" className="font-body">Progress</TabsTrigger>
           <TabsTrigger value="materials" className="font-body">Material</TabsTrigger>
           <TabsTrigger value="workers" className="font-body">Pekerja</TabsTrigger>
+          <TabsTrigger value="payroll" className="font-body">Gaji</TabsTrigger>
           <TabsTrigger value="info" className="font-body">Info</TabsTrigger>
         </TabsList>
 
@@ -1181,6 +1220,28 @@ function ProjectManageDetail({ projectId, onBack }: { projectId: string; onBack:
                   ))}
                   {workers.length === 0 && <p className="col-span-full text-center text-muted-foreground py-8">Belum ada pekerja ditugaskan.</p>}
                 </div>
+             </CardContent>
+           </Card>
+        </TabsContent>
+
+        <TabsContent value="payroll" className="mt-6">
+           <Card>
+             <CardHeader className="flex flex-row items-center justify-between">
+               <div>
+                <CardTitle className="font-display">Riwayat Penggajian</CardTitle>
+                <CardDescription>Catatan pembayaran gaji tukang untuk proyek ini.</CardDescription>
+               </div>
+               <Button 
+                size="sm" 
+                variant="outline" 
+                className="border-[#E76F51] text-[#E76F51] hover:bg-[#E76F51]/10"
+                onClick={() => navigate(`/hrd/payroll-tukang?projectId=${projectId}`)}
+               >
+                 Kelola Penggajian
+               </Button>
+             </CardHeader>
+             <CardContent>
+                <ProjectPayrollSummary projectId={projectId} />
              </CardContent>
            </Card>
         </TabsContent>
@@ -1360,6 +1421,65 @@ const getProjectLabel = (p: any) => {
   }
   return p.name;
 };
+
+// --- Sub-components for Project Details ---
+
+function ProjectPayrollSummary({ projectId }: { projectId: string }) {
+  const { payments, loading: paymentsLoading } = useProjectWorkerPayments(projectId);
+  const { workers } = useProjectWorkers(projectId);
+  const { employees } = useEmployees();
+  const navigate = useNavigate();
+
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0
+    }).format(val);
+  };
+
+  if (paymentsLoading) return <div className="py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-300" /></div>;
+
+  return (
+    <div className="space-y-4">
+      {payments.length === 0 ? (
+        <div className="text-center py-12 border-2 border-dashed rounded-xl border-slate-100 font-body text-sm text-slate-500">
+          Belum ada riwayat penggajian untuk proyek ini.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {payments.map((p) => {
+            const worker = workers.find(w => w.id === p.worker_id);
+            const emp = employees.find(e => e.id === worker?.employee_id);
+            return (
+              <div key={p.id} className="p-3 border rounded-xl bg-slate-50/50 hover:bg-white transition-colors group">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-bold text-sm text-slate-800">{emp?.name || 'Tukang'}</p>
+                    <p className="text-[10px] text-slate-400 font-mono uppercase mt-0.5">
+                      {new Date(p.payment_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono font-bold text-sm text-[#E76F51]">{formatCurrency(p.amount)}</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-medium">{p.working_days} Hari Kerja</p>
+                  </div>
+                </div>
+                {p.activity_detail && (
+                  <div className="mt-2 pt-2 border-t border-slate-200/50">
+                    <p className="text-xs text-slate-600 line-clamp-2 italic" title={p.activity_detail}>
+                      "{p.activity_detail}"
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ProjectModule() {
   const [selectedProjectId, setSelectedProjectId] = useState('');

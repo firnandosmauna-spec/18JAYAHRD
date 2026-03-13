@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Label } from '@/components/ui/label';
 import {
@@ -47,10 +47,12 @@ import { useProjectLocations } from '@/hooks/useInventory';
 import { projectService } from '@/services/projectService';
 
 export function WorkerPayrollManagement() {
-    const { projects, loading: projectsLoading } = useProjects('in-progress');
+    const { projects, loading: projectsLoading } = useProjects();
     const { employees } = useEmployees();
     const { locations, projectNames, loading: locationsLoading } = useProjectLocations();
     const { toast } = useToast();
+    const [searchParams] = useSearchParams();
+    const initialProjectId = searchParams.get('projectId');
 
     // State
     const [selectedLocation, setSelectedLocation] = useState<string>('');
@@ -58,23 +60,50 @@ export function WorkerPayrollManagement() {
     const [showAddForm, setShowAddForm] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Initial project selection from query param
+    useEffect(() => {
+        if (initialProjectId && projects.length > 0) {
+            const project = projects.find(p => p.id === initialProjectId);
+            if (project) {
+                // If it's an initial ID, we prioritize it and set location as well
+                setSelectedLocation(project.location || project.name);
+                setSelectedProjectId(project.id!);
+            }
+        }
+    }, [initialProjectId, projects]);
+
     // Auto-map location to project_id (Background Sync)
     useEffect(() => {
         if (selectedLocation) {
+            const searchLoc = selectedLocation.trim().toLowerCase();
+            
             // Find project that matches either by name or location field
-            const matchedProject = projects.find(p => 
-                p.name === selectedLocation || p.location === selectedLocation
-            );
+            const matchedProject = projects.find(p => {
+                const pName = (p.name || '').trim().toLowerCase();
+                const pLoc = (p.location || '').trim().toLowerCase();
+                return pName === searchLoc || pLoc === searchLoc;
+            });
             
             if (matchedProject) {
                 setSelectedProjectId(matchedProject.id!);
+            } else if (initialProjectId && projects.some(p => p.id === initialProjectId)) {
+                // If we have an initial ID but loc doesn't match, check if it's the same project
+                const initialProj = projects.find(p => p.id === initialProjectId);
+                const ipName = (initialProj?.name || '').trim().toLowerCase();
+                const ipLoc = (initialProj?.location || '').trim().toLowerCase();
+                
+                if (ipName === searchLoc || ipLoc === searchLoc) {
+                    setSelectedProjectId(initialProjectId);
+                } else {
+                    setSelectedProjectId('');
+                }
             } else {
                 setSelectedProjectId('');
             }
         } else {
             setSelectedProjectId('');
         }
-    }, [selectedLocation, projects]);
+    }, [selectedLocation, projects, initialProjectId]);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -232,7 +261,7 @@ export function WorkerPayrollManagement() {
                 </div>
                 <div className="flex flex-col items-end gap-2">
                     <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col gap-2">
                             <Select value={selectedLocation} onValueChange={setSelectedLocation} disabled={locationsLoading}>
                                 <SelectTrigger className="w-[350px]">
                                     <div className="flex items-center gap-2">
@@ -264,13 +293,34 @@ export function WorkerPayrollManagement() {
                                     })}
                                 </SelectContent>
                             </Select>
+
+                            {!selectedProjectId && selectedLocation && (
+                                <div className="flex items-center gap-2 animate-in slide-in-from-left-2 fade-in duration-300">
+                                    <div className="text-[10px] text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded border border-orange-100 flex items-center gap-1.5 whitespace-nowrap">
+                                        <AlertCircle className="w-3 h-3" />
+                                        HUBUNGKAN MANUAL:
+                                    </div>
+                                    <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                                        <SelectTrigger className="h-7 text-[11px] w-[220px] bg-white border-orange-200 focus:ring-orange-500">
+                                            <SelectValue placeholder="Pilih Proyek Sistem..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {projects.map(p => (
+                                                <SelectItem key={p.id} value={p.id!} className="text-[11px]">
+                                                    {p.location || p.name} ({p.status})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
                         </div>
                         <Button 
                             onClick={() => {
                                 if (!selectedProjectId) {
                                     toast({
-                                        title: "Bukan Proyek Sistem",
-                                        description: "Lokasi ini tidak terhubung ke proyek pembangunan.",
+                                        title: "Gagal Menghubungkan Proyek",
+                                        description: "Lokasi ini tidak terdeteksi otomatis. Silakan pilih 'Hubungkan Manual' di bawah lokasi.",
                                         variant: "destructive"
                                     });
                                     return;
