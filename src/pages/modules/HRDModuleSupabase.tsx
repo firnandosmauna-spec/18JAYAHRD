@@ -85,7 +85,8 @@ import { RewardManagement } from '@/components/hrd/RewardManagement';
 import PositionsPage from '@/pages/hrd/PositionsPage';
 import DepartmentsPage from '@/pages/hrd/DepartmentsPage';
 import SettingsPage from '@/pages/hrd/SettingsPage'; // Import Settings Page
-import { Settings as SettingsIcon } from 'lucide-react'; // Rename to avoid conflict if Settings is already imported
+import { Settings as SettingsIcon, Hammer } from 'lucide-react'; // Rename to avoid conflict if Settings is already imported
+import { WorkerPayrollManagement } from '@/components/hrd/WorkerPayrollManagement';
 import { NotificationProvider, useNotificationsContext } from '@/contexts/NotificationContext';
 
 // Supabase Hooks
@@ -2178,6 +2179,7 @@ export default function HRDModuleSupabase() {
     ...(checkAccess('Cuti & Izin') !== 'none' ? [{ label: 'Cuti & Izin', href: '/hrd/leave', icon: Calendar }] : []),
     ...(checkAccess('Absensi') !== 'none' ? [{ label: 'Absensi', href: '/hrd/attendance', icon: Clock }] : []),
     ...(checkAccess('Penggajian') !== 'none' ? [{ label: 'Penggajian', href: '/hrd/payroll', icon: DollarSign }] : []),
+    { label: 'Penggajian Tukang', href: '/hrd/payroll-tukang', icon: Hammer },
     ...(checkAccess('Kasbon') !== 'none' ? [{ label: 'Kasbon', href: '/hrd/loans', icon: Wallet }] : []),
     ...(checkAccess('Reward') !== 'none' ? [{ label: 'Reward', href: '/hrd/rewards', icon: Award }] : []),
     ...(checkAccess('Pengaturan') !== 'none' ? [{ label: 'Pengaturan', href: '/hrd/settings', icon: SettingsIcon }] : [])
@@ -2326,6 +2328,7 @@ export default function HRDModuleSupabase() {
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="recruitment" element={['staff', 'marketing'].includes(user?.role || '') ? <Navigate to="/hrd" replace /> : <PlaceholderPage title="Rekrutmen" />} />
           <Route path="attendance" element={<AttendanceManagement />} />
+          <Route path="payroll-tukang" element={<WorkerPayrollManagement />} />
           <Route path="payroll" element={<PayrollManagement />} />
           <Route path="loans" element={<LoanManagement />} />
           <Route path="rewards" element={<RewardManagement />} />

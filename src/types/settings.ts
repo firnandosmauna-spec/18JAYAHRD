@@ -21,6 +21,7 @@ export interface AttendanceSettings {
     office_wifi_ssid: string;
     is_auto_nik: boolean;
     restrict_off_hours_access: boolean;
+    attendance_holidays: string[]; // Dates in YYYY-MM-DD format
 }
 
 export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
@@ -38,6 +39,7 @@ export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
     office_wifi_ssid: '',
     is_auto_nik: true,
     restrict_off_hours_access: false,
+    attendance_holidays: [],
 };
 
 export interface LeaveSettings {

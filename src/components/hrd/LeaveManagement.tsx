@@ -58,6 +58,7 @@ import { useLeaveRequests, useEmployees, useLeaveQuota } from '@/hooks/useSupaba
 import { useAuth } from '@/contexts/AuthContext';
 import type { LeaveRequest } from '@/lib/supabase';
 import { attendanceService } from '@/services/supabaseService';
+import { settingsService } from '@/services/settingsService';
 
 // Types
 type LeaveStatus = 'pending' | 'approved' | 'rejected';
@@ -111,6 +112,28 @@ function calculateDays(startDate: string, endDate: string): number {
   const diffTime = Math.abs(end.getTime() - start.getTime());
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   return diffDays;
+}
+
+// Fungsi untuk menghitung hari kerja (termasuk Sabtu, kecuali Minggu dan Libur)
+function calculateWorkingDaysBetween(startDate: Date, endDate: Date, holidays: string[]): number {
+  let count = 0;
+  const current = new Date(startDate);
+  current.setHours(0, 0, 0, 0);
+  const target = new Date(endDate);
+  target.setHours(0, 0, 0, 0);
+
+  while (current < target) {
+    const day = current.getDay();
+    const dateStr = current.toISOString().split('T')[0];
+
+    // Cek jika bukan Minggu (0) dan bukan hari libur manual
+    if (day !== 0 && !holidays.includes(dateStr)) {
+      count++;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  return count;
 }
 
 // Fungsi untuk mengecek apakah karyawan terlambat kembali dari cuti
@@ -188,6 +211,19 @@ export function LeaveManagement() {
   const [isEditing, setIsEditing] = useState(false);
   const { quotas: allQuotas, refetch: refetchQuota } = useLeaveQuota();
   const [lateReturns, setLateReturns] = useState<Record<string, { isLate: boolean; returnDate?: string }>>({});
+  const [holidays, setHolidays] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchHolidays = async () => {
+      try {
+        const settings = await settingsService.getAttendanceSettings();
+        setHolidays(settings.attendance_holidays || []);
+      } catch (err) {
+        console.error('Failed to fetch holidays:', err);
+      }
+    };
+    fetchHolidays();
+  }, []);
 
   const [formData, setFormData] = useState<LeaveFormData>({
     employee_id: '',
@@ -245,6 +281,19 @@ export function LeaveManagement() {
       if (!formData.employee_id || !formData.start_date || !formData.end_date || !formData.reason) {
         alert('Mohon lengkapi semua field yang wajib diisi');
         return;
+      }
+
+      // Validasi Lead Time 14 Hari Kerja (Kecuali cuti sakit/duka/situasional yang mendadak)
+      const nonLeadTimeTypes = ['sick', 'bereavement', 'situational'];
+      if (!nonLeadTimeTypes.includes(formData.leave_type)) {
+        const today = new Date();
+        const start = new Date(formData.start_date);
+        const workingDaysLead = calculateWorkingDaysBetween(today, start, holidays);
+
+        if (workingDaysLead < 14) {
+          alert(`Peringatan: Pengajuan cuti ${leaveTypeLabels[formData.leave_type]} minimal dilakukan 14 hari kerja sebelum tanggal mulai. Saat ini hanya tersisa ${workingDaysLead} hari kerja.`);
+          return;
+        }
       }
 
       const days = calculateDays(formData.start_date, formData.end_date);
@@ -758,10 +807,32 @@ export function LeaveManagement() {
             </div>
 
             {formData.start_date && formData.end_date && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm font-body text-blue-800">
-                  Durasi: {calculateDays(formData.start_date, formData.end_date)} hari
-                </p>
+              <div className="space-y-2">
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm font-body text-blue-800">
+                    Durasi Cuti: {calculateDays(formData.start_date, formData.end_date)} hari
+                  </p>
+                </div>
+                
+                {!['sick', 'bereavement', 'situational'].includes(formData.leave_type) && (
+                  <div className={`p-3 border rounded-lg ${
+                    calculateWorkingDaysBetween(new Date(), new Date(formData.start_date), holidays) >= 14
+                      ? 'bg-green-50 border-green-200 text-green-800'
+                      : 'bg-orange-50 border-orange-200 text-orange-800'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      <p className="text-xs font-body">
+                        Lead Time: {calculateWorkingDaysBetween(new Date(), new Date(formData.start_date), holidays)} Hari Kerja
+                      </p>
+                    </div>
+                    {calculateWorkingDaysBetween(new Date(), new Date(formData.start_date), holidays) < 14 && (
+                      <p className="text-[10px] mt-1 opacity-80 font-body">
+                        * Minimal pengajuan adalah 14 hari kerja (termasuk Sabtu).
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

@@ -220,6 +220,15 @@ export function useProjectWorkers(projectId?: string) {
         }
     }
 
+    const deleteWorker = async (id: string) => {
+        try {
+            await projectService.deleteWorker(id)
+            setWorkers(prev => prev.filter(w => w.id !== id))
+        } catch (err) {
+            throw err
+        }
+    }
+
     useEffect(() => {
         fetchWorkers()
     }, [projectId])
@@ -229,6 +238,220 @@ export function useProjectWorkers(projectId?: string) {
         loading,
         error,
         refetch: fetchWorkers,
-        addWorker
+        addWorker,
+        deleteWorker
     }
+}
+
+// Project Worker Payments Hook
+export function useProjectWorkerPayments(projectId?: string) {
+    const [payments, setPayments] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    const fetchPayments = async () => {
+        if (!projectId) return
+        try {
+            setLoading(true)
+            setError(null)
+            const data = await projectService.getWorkerPayments(projectId)
+            setPayments(data)
+        } catch (err) {
+            setError(handleSupabaseError(err))
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const addPayment = async (payment: any) => {
+        try {
+            const newPayment = await projectService.addWorkerPayment(payment)
+            setPayments(prev => [newPayment, ...prev])
+            return newPayment
+        } catch (err) {
+            const errorMsg = handleSupabaseError(err)
+            setError(errorMsg)
+            throw new Error(errorMsg)
+        }
+    }
+
+    const deletePayment = async (id: string) => {
+        try {
+            await projectService.deleteWorkerPayment(id)
+            setPayments(prev => prev.filter(p => p.id !== id))
+        } catch (err) {
+            const errorMsg = handleSupabaseError(err)
+            setError(errorMsg)
+            throw new Error(errorMsg)
+        }
+    }
+
+    useEffect(() => {
+        fetchPayments()
+    }, [projectId])
+
+    return {
+        payments,
+        loading,
+        error,
+        refetch: fetchPayments,
+        addPayment,
+        deletePayment
+    }
+}
+
+// Project Labor Rates Hook
+export function useProjectLaborRates() {
+    const [rates, setRates] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    const fetchRates = async () => {
+        try {
+            setLoading(true)
+            const data = await projectService.getLaborRates()
+            setRates(data)
+        } catch (err) {
+            setError(handleSupabaseError(err))
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const addRate = async (rate: any) => {
+        try {
+            const newRate = await projectService.addLaborRate(rate)
+            setRates(prev => [newRate, ...prev])
+            return newRate
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
+    const updateRate = async (id: string, updates: any) => {
+        try {
+            const updatedRate = await projectService.updateLaborRate(id, updates)
+            setRates(prev => prev.map(r => r.id === id ? updatedRate : r))
+            return updatedRate
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
+    const deleteRate = async (id: string) => {
+        try {
+            await projectService.deleteLaborRate(id)
+            setRates(prev => prev.filter(r => r.id !== id))
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
+    useEffect(() => {
+        fetchRates()
+    }, [])
+
+    return { rates, loading, error, refetch: fetchRates, addRate, updateRate, deleteRate }
+}
+
+// Project Worker Activities Hook
+export function useProjectWorkerActivities(projectId?: string) {
+    const [activities, setActivities] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    const fetchActivities = async () => {
+        if (!projectId) return
+        try {
+            setLoading(true)
+            const data = await projectService.getWorkerActivities(projectId)
+            setActivities(data)
+        } catch (err) {
+            setError(handleSupabaseError(err))
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const addActivity = async (activity: any) => {
+        try {
+            const newActivity = await projectService.addWorkerActivity(activity)
+            // Fetch again to get joined data or manually fetch if needed
+            fetchActivities()
+            return newActivity
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
+    const deleteActivity = async (id: string) => {
+        try {
+            await projectService.deleteWorkerActivity(id)
+            setActivities(prev => prev.filter(a => a.id !== id))
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
+    useEffect(() => {
+        fetchActivities()
+    }, [projectId])
+
+    return { activities, loading, error, refetch: fetchActivities, addActivity, deleteActivity }
+}
+
+// Project Progress Logs Hook
+export function useProjectProgressLogs(projectId?: string) {
+    const [logs, setLogs] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    const fetchLogs = async () => {
+        if (!projectId) return
+        try {
+            setLoading(true)
+            const data = await projectService.getProjectLogs(projectId)
+            setLogs(data)
+        } catch (err) {
+            setError(handleSupabaseError(err))
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const addLog = async (log: { project_id: string, progress_percentage: number, description: string, photos?: string[] }) => {
+        try {
+            const newLog = await projectService.addProjectLog(log)
+            setLogs(prev => [newLog, ...prev])
+            return newLog
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
+    const updateLog = async (id: string, updates: { progress_percentage?: number, description?: string, photos?: string[] }) => {
+        if (!projectId) return;
+        try {
+            const updatedLog = await projectService.updateProjectLog(id, projectId, updates);
+            setLogs(prev => prev.map(l => l.id === id ? updatedLog : l));
+            return updatedLog;
+        } catch (err) {
+            throw new Error(handleSupabaseError(err));
+        }
+    }
+
+    const deleteLog = async (id: string) => {
+        try {
+            await projectService.deleteProjectLog(id);
+            setLogs(prev => prev.filter(l => l.id !== id));
+        } catch (err) {
+            throw new Error(handleSupabaseError(err));
+        }
+    }
+
+    useEffect(() => {
+        fetchLogs()
+    }, [projectId])
+
+    return { logs, loading, error, refetch: fetchLogs, addLog, updateLog, deleteLog }
 }

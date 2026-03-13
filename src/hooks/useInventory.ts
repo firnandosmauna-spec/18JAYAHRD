@@ -520,7 +520,10 @@ export function useProjectLocations() {
       let projects: string[] = []
       try {
         const projectData = await projectService.getAll('in-progress')
-        projects = projectData.map(p => p.name)
+        // Include project names AND project location fields if they exist
+        const names = projectData.map(p => p.name)
+        const locs = projectData.map(p => p.location).filter(l => l && l.trim() !== '')
+        projects = Array.from(new Set([...names, ...locs]))
       } catch (e) {
         console.error('Failed to fetch projects for locations:', e)
       }

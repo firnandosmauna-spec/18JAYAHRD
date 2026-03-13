@@ -57,7 +57,8 @@ export const settingsService = {
             'office_radius',
             'office_wifi_ssid',
             'is_auto_nik',
-            'restrict_off_hours_access'
+            'restrict_off_hours_access',
+            'attendance_holidays'
         ];
         const settings = await this.getSettings(keys);
 
@@ -90,6 +91,15 @@ export const settingsService = {
                 result.is_auto_nik = setting.value === 'true' || setting.value === true;
             } else if (setting.key === 'restrict_off_hours_access') {
                 result.restrict_off_hours_access = setting.value === 'true' || setting.value === true;
+            } else if (setting.key === 'attendance_holidays') {
+                try {
+                    result.attendance_holidays = Array.isArray(setting.value) 
+                        ? setting.value 
+                        : JSON.parse(setting.value);
+                } catch (e) {
+                    console.error('Error parsing attendance_holidays:', e);
+                    result.attendance_holidays = [];
+                }
             }
         });
 

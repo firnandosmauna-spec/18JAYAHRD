@@ -210,6 +210,15 @@ export const projectService = {
         return data
     },
 
+    async deleteWorker(id: string) {
+        const { error } = await supabase
+            .from('project_workers')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
     // Progress Logs
     async getProjectLogs(projectId: string) {
         const { data, error } = await supabase
@@ -241,5 +250,152 @@ export const projectService = {
         await this.update(log.project_id, { progress: log.progress_percentage });
 
         return data;
+    },
+
+    async updateProjectLog(id: string, projectId: string, updates: { progress_percentage?: number, description?: string, photos?: string[] }) {
+        const { data, error } = await supabase
+            .from('project_progress_logs')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // If progress percentage was updated, update the main project too
+        if (updates.progress_percentage !== undefined) {
+            await this.update(projectId, { progress: updates.progress_percentage });
+        }
+
+        return data;
+    },
+
+    async deleteProjectLog(id: string) {
+        const { error } = await supabase
+            .from('project_progress_logs')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
+    // Worker Payments
+    async getWorkerPayments(projectId: string) {
+        const { data, error } = await supabase
+            .from('project_worker_payments')
+            .select(`
+                *,
+                project_workers (
+                    role,
+                    employees (
+                        name
+                    )
+                )
+            `)
+            .eq('project_id', projectId)
+            .order('payment_date', { ascending: false });
+
+        if (error) {
+            if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+                return [];
+            }
+            throw error;
+        }
+        return data || [];
+    },
+
+    async addWorkerPayment(payment: any) {
+        const { data, error } = await supabase
+            .from('project_worker_payments')
+            .insert(payment)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteWorkerPayment(id: string) {
+        const { error } = await supabase
+            .from('project_worker_payments')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
+    // Labor Rates (Master Gaji)
+    async getLaborRates() {
+        const { data, error } = await supabase
+            .from('project_labor_rates')
+            .select('*')
+            .order('name');
+        if (error) throw error;
+        return data || [];
+    },
+
+    async addLaborRate(rate: any) {
+        const { data, error } = await supabase
+            .from('project_labor_rates')
+            .insert(rate)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async updateLaborRate(id: string, updates: any) {
+        const { data, error } = await supabase
+            .from('project_labor_rates')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteLaborRate(id: string) {
+        const { error } = await supabase
+            .from('project_labor_rates')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+    },
+
+    // Worker Activities (Rincian Kegiatan)
+    async getWorkerActivities(projectId: string) {
+        const { data, error } = await supabase
+            .from('project_worker_activities')
+            .select(`
+                *,
+                project_workers (
+                    role,
+                    employees (name)
+                ),
+                project_labor_rates (name)
+            `)
+            .eq('project_id', projectId)
+            .order('activity_date', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async addWorkerActivity(activity: any) {
+        const { data, error } = await supabase
+            .from('project_worker_activities')
+            .insert(activity)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteWorkerActivity(id: string) {
+        const { error } = await supabase
+            .from('project_worker_activities')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
     }
 }

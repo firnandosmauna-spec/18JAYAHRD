@@ -56,7 +56,6 @@ export default function PositionsPage() {
             const { data, error } = await supabase
                 .from("positions")
                 .select("*")
-                .select("*")
                 .order("department");
 
             if (error) throw error;
@@ -76,22 +75,24 @@ export default function PositionsPage() {
 
     const handleSave = async () => {
         try {
-            if (!currentPosition.department || !currentPosition.level) {
+            if (!currentPosition.department) {
                 toast({
                     title: "Validation Error",
-                    description: "Mohon isi semua field yang wajib (Departemen, Posisi)",
+                    description: "Mohon isi field Departemen yang wajib (Departemen)",
                     variant: "destructive",
                 });
                 return;
             }
 
-            // Auto-generate title: "{Level} - {Department}"
-            const generatedTitle = `${currentPosition.level} - ${currentPosition.department}`;
+            // Auto-generate title: "{Level} - {Department}" or just "{Department}" if level is empty
+            const generatedTitle = currentPosition.level 
+                ? `${currentPosition.level} - ${currentPosition.department}`
+                : currentPosition.department;
 
             const positionData = {
                 title: generatedTitle,
                 department: currentPosition.department,
-                level: currentPosition.level,
+                level: currentPosition.level || "",
                 gaji_pokok: 0, // Default to 0 as requested
                 job_desc: "", // Empty as requested
             };
@@ -272,7 +273,7 @@ export default function PositionsPage() {
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="level">Posisi <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="level">Posisi</Label>
                             <Input
                                 id="level"
                                 value={currentPosition.level || ""}

@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Search, Wallet, ArrowUpRight, ArrowDownRight, Filter, Download, Loader2, Trash2, Edit } from 'lucide-react';
+import { Search, Wallet, ArrowUpRight, ArrowDownRight, Filter, Download, Loader2, Trash2, Edit, ChevronUp, ChevronDown } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
@@ -20,6 +20,7 @@ export function CashBookView() {
     const [searchTerm, setSearchTerm] = React.useState('');
     const [selectedAccountId, setSelectedAccountId] = React.useState<string>('all');
     const [filterType, setFilterType] = React.useState<'all' | 'in' | 'out'>('all');
+    const [sortOrder, setSortOrder] = React.useState<'desc' | 'asc'>('desc');
 
     const handleDelete = async (id: string) => {
         if (!confirm('Apakah Anda yakin ingin menghapus transaksi ini?')) return;
@@ -46,62 +47,74 @@ export function CashBookView() {
 
     const totalCashBalance = cashAccounts.reduce((sum, acc) => sum + acc.balance, 0);
 
-    // Get journal items related to these cash accounts
-    const cashTransactionsRaw = entries.flatMap(entry => {
-        return (entry.items || [])
-            .filter(item => {
-                const isCashAcc = cashAccounts.some(ca => ca.id === item.account_id);
-                const matchesSelection = selectedAccountId === 'all' || item.account_id === selectedAccountId;
-                return isCashAcc && matchesSelection;
-            })
-            .map(item => ({
-                id: `${entry.id}-${item.account_id}`,
-                journal_id: entry.id,
-                account_id: item.account_id,
-                date: entry.date,
-                reference: entry.reference,
-                description: item.description || entry.description,
-                account_name: item.account_name,
-                debit: item.debit,   // Cash In
-                credit: item.credit, // Cash Out
-                fullEntry: entry,
-                created_at: entry.created_at
-            }));
-    }).sort((a, b) => {
-        const dateCompare = new Date(b.date).getTime() - new Date(a.date).getTime();
-        if (dateCompare !== 0) return dateCompare;
-        // If same date, use created_at as tie-breaker (DESC)
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
+    // Simplified and robust transaction processing
+    const cashTransactions = React.useMemo(() => {
+        // 1. Map entries to items and filter by cash accounts
+        const raw = entries.flatMap(entry => 
+            (entry.items || [])
+                .filter(item => {
+                    const isCashAcc = cashAccounts.some(ca => ca.id === item.account_id);
+                    const matchesSelection = selectedAccountId === 'all' || item.account_id === selectedAccountId;
+                    return isCashAcc && matchesSelection;
+                })
+                .map(item => ({
+                    id: `${entry.id}-${item.id || item.account_id}`,
+                    journal_id: entry.id,
+                    account_id: item.account_id,
+                    date: entry.date,
+                    reference: entry.reference,
+                    description: item.description || entry.description,
+                    account_name: item.account_name,
+                    debit: Number(item.debit || 0),
+                    credit: Number(item.credit || 0),
+                    status: entry.status || 'posted',
+                    created_at: entry.created_at
+                }))
+        ).sort((a, b) => {
+            const dateCompare = new Date(b.date).getTime() - new Date(a.date).getTime();
+            if (dateCompare !== 0) return dateCompare;
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
 
-    // Calculate running balance working backwards from current balance
-    const accountBalancesMap = new Map<string, number>();
-    cashAccounts.forEach(acc => accountBalancesMap.set(acc.id, acc.balance));
+        // 2. Calculate running balance backwards from current account balances
+        const balancesMap = new Map<string, number>();
+        cashAccounts.forEach(acc => balancesMap.set(acc.id, Number(acc.balance || 0)));
 
-    const cashTransactions = cashTransactionsRaw.map(tx => {
-        const currentBalance = accountBalancesMap.get(tx.account_id) || 0;
-        const txWithBalance = { ...tx, running_balance: currentBalance };
+        return raw.map(tx => {
+            const currentBalance = balancesMap.get(tx.account_id) || 0;
+            const entryWithBalance = { ...tx, running_balance: currentBalance };
 
-        // Only 'posted' transactions should impact the running balance
-        if (tx.fullEntry.status === 'posted') {
-            const newBalance = currentBalance - (tx.debit - tx.credit);
-            accountBalancesMap.set(tx.account_id, newBalance);
-        }
+            // Only posted entries should have affected the stored balance
+            if (tx.status === 'posted') {
+                const diff = tx.debit - tx.credit;
+                balancesMap.set(tx.account_id, currentBalance - diff);
+            }
 
-        return txWithBalance;
-    });
+            return entryWithBalance;
+        });
+    }, [entries, cashAccounts, selectedAccountId]);
 
-    const filteredTransactions = cashTransactions.filter(tx => {
-        const matchesSearch = tx.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            tx.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            tx.account_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const filteredTransactions = React.useMemo(() => {
+        const filtered = cashTransactions.filter(tx => {
+            const matchesSearch = tx.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                tx.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                tx.account_name?.toLowerCase().includes(searchTerm.toLowerCase());
 
-        const matchesType = filterType === 'all' ||
-            (filterType === 'in' && tx.debit > 0) ||
-            (filterType === 'out' && tx.credit > 0);
+            const matchesType = filterType === 'all' ||
+                (filterType === 'in' && tx.debit > 0) ||
+                (filterType === 'out' && tx.credit > 0);
 
-        return matchesSearch && matchesType;
-    });
+            return matchesSearch && matchesType;
+        });
+
+        // Apply sort order for display
+        return [...filtered].sort((a, b) => {
+            const factor = sortOrder === 'desc' ? 1 : -1;
+            const dateCompare = (new Date(b.date).getTime() - new Date(a.date).getTime()) * factor;
+            if (dateCompare !== 0) return dateCompare;
+            return (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) * factor;
+        });
+    }, [cashTransactions, searchTerm, filterType, sortOrder]);
 
     // Calculate totals for currently filtered view
     const viewTotalDebit = filteredTransactions.reduce((sum, tx) => sum + tx.debit, 0);
@@ -203,58 +216,76 @@ export function CashBookView() {
                     </div>
                 </div>
 
-                <Card className="border-none shadow-sm overflow-hidden min-h-[400px]">
+                <Card className="border-none shadow-sm overflow-hidden min-h-[400px] bg-white rounded-xl">
                     <CardContent className="p-0">
                         <div className="overflow-x-auto">
                             <Table>
-                                <TableHeader className="bg-gray-50/50">
-                                    <TableRow>
-                                        <TableHead className="px-6 font-semibold">Tanggal</TableHead>
-                                        <TableHead className="px-6 font-semibold">Akun</TableHead>
-                                        <TableHead className="px-6 font-semibold">Keterangan</TableHead>
-                                        <TableHead className="px-6 font-semibold text-right">Debit (+)</TableHead>
-                                        <TableHead className="px-6 font-semibold text-right">Kredit (-)</TableHead>
-                                        <TableHead className="px-6 font-semibold text-right">Saldo</TableHead>
-                                        <TableHead className="px-6 font-semibold text-center">Aksi</TableHead>
+                                <TableHeader className="bg-slate-50">
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead className="w-[60px] px-6 text-slate-500 font-bold uppercase text-[11px] tracking-wider">No</TableHead>
+                                        <TableHead className="w-[120px] px-6 text-slate-500 font-bold uppercase text-[11px] tracking-wider">
+                                            <button 
+                                                className="flex items-center gap-1 hover:text-slate-900 transition-colors"
+                                                onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                                            >
+                                                Tanggal
+                                                {sortOrder === 'desc' ? (
+                                                    <ChevronDown className="w-3 h-3" />
+                                                ) : (
+                                                    <ChevronUp className="w-3 h-3" />
+                                                )}
+                                            </button>
+                                        </TableHead>
+                                        <TableHead className="px-6 text-slate-500 font-bold uppercase text-[11px] tracking-wider">Keterangan</TableHead>
+                                        <TableHead className="w-[140px] px-6 text-slate-500 font-bold uppercase text-[11px] tracking-wider text-right">Debit</TableHead>
+                                        <TableHead className="w-[140px] px-6 text-slate-500 font-bold uppercase text-[11px] tracking-wider text-right">Kredit</TableHead>
+                                        <TableHead className="w-[160px] px-6 text-slate-500 font-bold uppercase text-[11px] tracking-wider text-right">Saldo</TableHead>
+                                        <TableHead className="w-[80px] px-6 text-slate-500 font-bold uppercase text-[11px] tracking-wider text-center">Aksi</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {loadingEntries ? (
                                         <TableRow>
                                             <TableCell colSpan={7} className="h-64 text-center">
-                                                <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500" />
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                                                    <span className="text-sm text-slate-400 font-body">Memuat data transaksi...</span>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ) : filteredTransactions.length > 0 ? (
-                                        filteredTransactions.map((tx) => (
-                                            <TableRow key={tx.id} className="hover:bg-gray-50/50 transition-colors">
-                                                <TableCell className="px-6 text-sm text-gray-600">
+                                        filteredTransactions.map((tx, idx) => (
+                                            <TableRow key={tx.id} className="hover:bg-slate-50/50 transition-colors border-slate-100 group">
+                                                <TableCell className="px-6 font-mono text-[13px] text-slate-400">
+                                                    {idx + 1}
+                                                </TableCell>
+                                                <TableCell className="px-6 text-[13px] font-medium text-slate-600">
                                                     {new Date(tx.date).toLocaleDateString('id-ID')}
                                                 </TableCell>
-                                                <TableCell className="px-6">
-                                                    <span className="text-sm font-medium text-gray-900">{tx.account_name}</span>
-                                                </TableCell>
-                                                <TableCell className="px-6">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm text-gray-900 line-clamp-1">{tx.description}</span>
-                                                        {tx.reference && <span className="text-xs text-gray-500 font-mono">{tx.reference}</span>}
+                                                <TableCell className="px-6 py-4">
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="text-sm font-semibold text-slate-900 line-clamp-2 leading-snug font-body">{tx.description}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono font-medium">{tx.account_name}</span>
+                                                            {tx.reference && <span className="text-[10px] text-blue-400 font-mono italic">#{tx.reference}</span>}
+                                                        </div>
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="px-6 text-right text-sm font-mono text-green-600 font-bold">
+                                                <TableCell className="px-6 text-right font-mono text-[14px] text-emerald-600 font-bold">
                                                     {tx.debit > 0 ? formatCurrency(tx.debit) : '-'}
                                                 </TableCell>
-                                                <TableCell className="px-6 text-right text-sm font-mono text-rose-600 font-bold">
-                                                    {tx.credit > 0 ? `(${formatCurrency(tx.credit)})` : '-'}
+                                                <TableCell className="px-6 text-right font-mono text-[14px] text-rose-500 font-bold">
+                                                    {tx.credit > 0 ? formatCurrency(tx.credit) : '-'}
                                                 </TableCell>
-                                                <TableCell className="px-6 text-right text-sm font-mono text-gray-900 font-bold">
+                                                <TableCell className="px-6 text-right font-mono text-[14px] text-slate-900 font-black">
                                                     {formatCurrency(tx.running_balance)}
                                                 </TableCell>
-                                                <TableCell className="px-6 text-center">
-                                                    <div className="flex items-center justify-center gap-1">
+                                                <TableCell className="px-6">
+                                                    <div className="flex items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
-                                                            className="h-8 w-8 text-gray-400 hover:text-blue-600"
+                                                            className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
                                                             onClick={() => navigate(`/accounting/journal?edit=${tx.journal_id}`)}
                                                         >
                                                             <Edit className="w-4 h-4" />
@@ -262,7 +293,7 @@ export function CashBookView() {
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
-                                                            className="h-8 w-8 text-gray-400 hover:text-rose-600"
+                                                            className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
                                                             onClick={() => handleDelete(tx.journal_id)}
                                                         >
                                                             <Trash2 className="w-4 h-4" />
@@ -273,8 +304,13 @@ export function CashBookView() {
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="h-64 text-center text-gray-500 underline decoration-gray-200">
-                                                Tidak ada transaksi kas ditemukan.
+                                            <TableCell colSpan={7} className="h-64 text-center items-center py-12">
+                                                <div className="flex flex-col items-center gap-3">
+                                                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
+                                                        <Search className="w-8 h-8 text-slate-200" />
+                                                    </div>
+                                                    <p className="text-sm text-slate-400 font-body">Tidak ada mutasi kas untuk filter ini.</p>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     )}

@@ -147,31 +147,40 @@ let LATE_TOLERANCE_MINUTES = 5;
 const MAX_LATE_PER_MONTH = 5;
 
 // Fungsi untuk mendapatkan jam kerja berdasarkan tanggal
-function getWorkSchedule(dateString?: string): { start: string; end: string } {
-  if (!dateString) return { start: WORK_START_WEEKDAY, end: WORK_END_WEEKDAY };
+function getWorkSchedule(dateString?: string, holidays: string[] = []): { start: string; end: string; isHoliday: boolean } {
+  const defaultSchedule = { start: WORK_START_WEEKDAY, end: WORK_END_WEEKDAY, isHoliday: false };
+  if (!dateString) return defaultSchedule;
 
   const date = new Date(dateString);
   const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const dateFormatted = dateString.split('T')[0];
 
-  // Sabtu
-  if (day === 6) {
-    return { start: WORK_START_SATURDAY, end: WORK_END_SATURDAY };
+  // Check manual holidays
+  if (holidays.includes(dateFormatted)) {
+    return { ...defaultSchedule, isHoliday: true };
   }
 
-  // Minggu
+  // Minggu (Sunday) is usually holiday
   if (day === 0) {
-    return { start: WORK_START_WEEKDAY, end: WORK_END_WEEKDAY }; // Atau libur? Asumsi default
+    return { ...defaultSchedule, isHoliday: true };
+  }
+
+  // Sabtu (Saturday)
+  if (day === 6) {
+    return { start: WORK_START_SATURDAY, end: WORK_END_SATURDAY, isHoliday: false };
   }
 
   // Senin - Jumat
-  return { start: WORK_START_WEEKDAY, end: WORK_END_WEEKDAY };
+  return defaultSchedule;
 }
 
 // Fungsi untuk menentukan status berdasarkan jam check in
-function determineAttendanceStatus(checkIn?: string, dateString?: string): 'present' | 'late' {
+function determineAttendanceStatus(checkIn?: string, dateString?: string, holidays: string[] = []): 'present' | 'late' | 'holiday' {
+  const schedule = getWorkSchedule(dateString, holidays);
+  
+  if (schedule.isHoliday) return 'holiday';
   if (!checkIn) return 'present';
 
-  const schedule = getWorkSchedule(dateString);
   const [checkInHour, checkInMinute] = checkIn.split(':').map(Number);
   const [workHour, workMinute] = schedule.start.split(':').map(Number);
 
@@ -275,6 +284,8 @@ export function AttendanceManagement() {
   const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
   const [payrollSettings, setPayrollSettings] = useState<PayrollSettings | null>(null);
   const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState<string>('all');
+  const [showHolidayDialog, setShowHolidayDialog] = useState(false);
+  const [isUpdatingHolidays, setIsUpdatingHolidays] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -342,7 +353,10 @@ export function AttendanceManagement() {
   });
 
   // Calculate employees who haven't clocked in at all today
-  const notPresentToday = employees.filter(emp =>
+  // Modified: Logic to exclude holidays
+  const isTodayHoliday = getWorkSchedule(today, attendanceSettings?.attendance_holidays || []).isHoliday;
+
+  const notPresentToday = isTodayHoliday ? [] : employees.filter(emp =>
     !todayAttendance.some(att => att.employee_id === emp.id)
   );
 
@@ -351,7 +365,8 @@ export function AttendanceManagement() {
     totalEmployees: employees.length,
     presentToday: todayAttendance.filter(att => ['present', 'late'].includes(att.status)).length,
     lateToday: todayAttendance.filter(att => att.status === 'late').length,
-    absentToday: todayAttendance.filter(att => att.status === 'absent').length,
+    absentToday: isTodayHoliday ? 0 : todayAttendance.filter(att => att.status === 'absent').length,
+    isHoliday: isTodayHoliday,
     notYetPresentToday: notPresentToday.length,
     attendanceRate: employees.length > 0 ?
       Math.round((todayAttendance.filter(att => ['present', 'late'].includes(att.status)).length / employees.length) * 100) : 0
@@ -417,6 +432,43 @@ export function AttendanceManagement() {
         description: 'Gagal menambah data absensi',
         variant: 'destructive'
       });
+    }
+  };
+
+  // Handle holidays
+  const handleAddHoliday = async (date: string) => {
+    try {
+      if (!date) return;
+      if (attendanceSettings?.attendance_holidays.includes(date)) {
+        toast({ title: 'Info', description: 'Tanggal ini sudah ada di daftar libur' });
+        return;
+      }
+
+      setIsUpdatingHolidays(true);
+      const newHolidays = [...(attendanceSettings?.attendance_holidays || []), date];
+      await settingsService.updateSetting('attendance_holidays', JSON.stringify(newHolidays));
+      
+      setAttendanceSettings(prev => prev ? { ...prev, attendance_holidays: newHolidays } : null);
+      toast({ title: 'Berhasil', description: 'Hari libur ditambahkan' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'Gagal menambah hari libur', variant: 'destructive' });
+    } finally {
+      setIsUpdatingHolidays(false);
+    }
+  };
+
+  const handleRemoveHoliday = async (date: string) => {
+    try {
+      setIsUpdatingHolidays(true);
+      const newHolidays = (attendanceSettings?.attendance_holidays || []).filter(d => d !== date);
+      await settingsService.updateSetting('attendance_holidays', JSON.stringify(newHolidays));
+      
+      setAttendanceSettings(prev => prev ? { ...prev, attendance_holidays: newHolidays } : null);
+      toast({ title: 'Berhasil', description: 'Hari libur dihapus' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'Gagal menghapus hari libur', variant: 'destructive' });
+    } finally {
+      setIsUpdatingHolidays(false);
     }
   };
 
@@ -686,16 +738,26 @@ export function AttendanceManagement() {
           <p className="text-muted-foreground font-body">Kelola kehadiran dan absensi karyawan</p>
         </div>
         {user?.role !== 'staff' && (
-          <Button
-            className="bg-hrd hover:bg-hrd-dark font-body"
-            onClick={() => {
-              resetForm();
-              setShowAddDialog(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Catat Absensi
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="border-purple-200 text-purple-700 hover:bg-purple-50 font-body"
+              onClick={() => setShowHolidayDialog(true)}
+            >
+              <Calendar className="w-4 h-4 mr-2" />
+              Atur Hari Libur
+            </Button>
+            <Button
+              className="bg-hrd hover:bg-hrd-dark font-body"
+              onClick={() => {
+                resetForm();
+                setShowAddDialog(true);
+              }}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Catat Absensi
+            </Button>
+          </div>
         )}
       </div>
 
@@ -1591,6 +1653,93 @@ export function AttendanceManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div >
+
+      {/* Holiday Management Dialog */}
+      <Dialog open={showHolidayDialog} onOpenChange={setShowHolidayDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Pengaturan Hari Libur</DialogTitle>
+            <DialogDescription className="font-body">
+              Pilih tanggal libur agar tidak terdeteksi sebagai mangkir
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                id="new-holiday-date"
+                className="font-mono flex-1"
+                defaultValue={today}
+              />
+              <Button 
+                className="bg-purple-600 hover:bg-purple-700"
+                disabled={isUpdatingHolidays}
+                onClick={() => {
+                  const input = document.getElementById('new-holiday-date') as HTMLInputElement;
+                  handleAddHoliday(input.value);
+                }}
+              >
+                Tambah
+              </Button>
+            </div>
+            
+            <div className="border rounded-lg overflow-hidden">
+              <ScrollArea className="h-[200px]">
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className="font-body text-xs">Tanggal Libur</TableHead>
+                      <TableHead className="text-right font-body text-xs">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(attendanceSettings?.attendance_holidays || []).length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={2} className="text-center py-4 text-xs text-muted-foreground">
+                          Belum ada hari libur manual
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      [...(attendanceSettings?.attendance_holidays || [])]
+                        .sort((a, b) => b.localeCompare(a))
+                        .map(date => (
+                        <TableRow key={date}>
+                          <TableCell className="font-mono text-sm py-2">
+                            {formatDate(date)}
+                          </TableCell>
+                          <TableCell className="text-right py-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-red-500"
+                              disabled={isUpdatingHolidays}
+                              onClick={() => handleRemoveHoliday(date)}
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </div>
+            
+            <Alert className="bg-purple-50 border-purple-100 py-2">
+              <AlertCircle className="h-4 w-4 text-purple-600" />
+              <AlertDescription className="text-[11px] text-purple-800 font-body">
+                Hari Minggu secara otomatis terdeteksi sebagai hari libur oleh sistem.
+              </AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHolidayDialog(false)} className="font-body">
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

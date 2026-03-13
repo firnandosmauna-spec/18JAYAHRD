@@ -172,7 +172,7 @@ export class DataMigration {
         ]
 
         for (const dept of initialDepartments) {
-          await departmentService.create(dept)
+          await supabase.from('departments').upsert(dept, { onConflict: 'name' });
         }
 
         console.log('Initial departments seeded successfully')
