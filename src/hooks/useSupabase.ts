@@ -433,6 +433,28 @@ export function useAttendance(startDate?: string, endDate?: string) {
         setError(errorMsg)
         throw new Error(errorMsg)
       }
+    },
+    approveManualAttendance: async (id: string, approvedBy: string) => {
+      try {
+        const updatedRecord = await attendanceService.approveManualAttendance(id, approvedBy)
+        setAttendance(prev => prev.map(record => record.id === id ? updatedRecord : record))
+        return updatedRecord
+      } catch (err) {
+        const errorMsg = handleSupabaseError(err)
+        setError(errorMsg)
+        throw new Error(errorMsg)
+      }
+    },
+    rejectManualAttendance: async (id: string, approvedBy: string) => {
+      try {
+        const updatedRecord = await attendanceService.rejectManualAttendance(id, approvedBy)
+        setAttendance(prev => prev.map(record => record.id === id ? updatedRecord : record))
+        return updatedRecord
+      } catch (err) {
+        const errorMsg = handleSupabaseError(err)
+        setError(errorMsg)
+        throw new Error(errorMsg)
+      }
     }
   }
 }

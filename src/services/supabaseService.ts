@@ -299,7 +299,7 @@ export const attendanceService = {
       .from('attendance')
       .select(`
         *,
-        employees (
+        employees!employee_id (
           id,
           name,
           position
@@ -360,6 +360,40 @@ export const attendanceService = {
     const { data, error } = await supabase
       .from('attendance')
       .update({ status: 'present' })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async approveManualAttendance(id: string, approvedBy: string) {
+    const { data, error } = await supabase
+      .from('attendance')
+      .update({
+        manual_status: 'approved',
+        status: 'present', // Set to present when approved
+        approved_by: approvedBy,
+        approved_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async rejectManualAttendance(id: string, approvedBy: string) {
+    const { data, error } = await supabase
+      .from('attendance')
+      .update({
+        manual_status: 'rejected',
+        status: 'absent', // Set to absent if rejected (or leave as is?)
+        approved_by: approvedBy,
+        approved_at: new Date().toISOString()
+      })
       .eq('id', id)
       .select()
       .single()
@@ -952,7 +986,7 @@ export const leaveQuotaService = {
 
 // Utility function to handleSupabaseError
 export const handleSupabaseError = (error: any) => {
-  console.error('Supabase error:', error)
+  console.error('Supabase error:', error.message || error, error.code || '')
 
   if (error.code === 'PGRST116') {
     return 'Data tidak ditemukan'

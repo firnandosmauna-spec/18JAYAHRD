@@ -260,7 +260,8 @@ export function AttendanceManagement() {
   const [startDate, setStartDate] = useState(firstDay.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(today);
 
-  const { attendance, loading, error, addAttendance, refetch, deleteAttendance } = useAttendance(startDate, endDate);
+  const { attendance, loading, error, addAttendance, refetch, deleteAttendance, approveManualAttendance, rejectManualAttendance } = useAttendance(startDate, endDate);
+
   const { employees } = useEmployees();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -274,7 +275,8 @@ export function AttendanceManagement() {
   // Uncomment below to see on UI if needed, but for now just log
 
 
-  const [activeTab, setActiveTab] = useState<'today' | 'history' | 'summary'>('today');
+  const [activeTab, setActiveTab] = useState<'today' | 'history' | 'summary' | 'manual'>('today');
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
@@ -705,6 +707,28 @@ export function AttendanceManagement() {
     }
   };
 
+  const handleApproveManual = async (id: string) => {
+    try {
+      if (!user?.employee_id) return;
+      await approveManualAttendance(id, user.employee_id);
+      toast({ title: 'Berhasil', description: 'Absensi manual disetujui' });
+      refetch();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleRejectManual = async (id: string) => {
+    try {
+      if (!user?.employee_id) return;
+      await rejectManualAttendance(id, user.employee_id);
+      toast({ title: 'Berhasil', description: 'Absensi manual ditolak' });
+      refetch();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
@@ -890,7 +914,7 @@ export function AttendanceManagement() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
-        <TabsList className={`grid w-full ${user?.role === 'staff' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        <TabsList className={`grid w-full ${user?.role === 'staff' ? 'grid-cols-2' : 'grid-cols-4'}`}>
           <TabsTrigger value="today" className="font-body">
             {user?.role === 'staff' ? 'Absensi Hari Ini' : 'Hari Ini'}
           </TabsTrigger>
@@ -898,9 +922,19 @@ export function AttendanceManagement() {
             Riwayat
           </TabsTrigger>
           {user?.role !== 'staff' && (
-            <TabsTrigger value="summary" className="font-body">
-              Ringkasan
-            </TabsTrigger>
+            <>
+              <TabsTrigger value="summary" className="font-body">
+                Ringkasan
+              </TabsTrigger>
+              <TabsTrigger value="manual" className="font-body relative">
+                Persetujuan
+                {attendance.filter(a => a.is_manual && a.manual_status === 'pending').length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center animate-pulse">
+                    {attendance.filter(a => a.is_manual && a.manual_status === 'pending').length}
+                  </span>
+                )}
+              </TabsTrigger>
+            </>
           )}
         </TabsList>
 
@@ -1322,6 +1356,88 @@ export function AttendanceManagement() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+        )}
+
+        {user?.role !== 'staff' && (
+          <TabsContent value="manual" className="mt-6">
+            <Card className="border-gray-200">
+              <CardHeader>
+                <CardTitle className="font-display">Persetujuan Absensi Manual</CardTitle>
+                <CardDescription className="font-body">Permintaan absensi di luar jam kerja atau kegiatan luar</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="font-body">Karyawan</TableHead>
+                      <TableHead className="font-body">Tanggal</TableHead>
+                      <TableHead className="font-body">Waktu</TableHead>
+                      <TableHead className="font-body">Alasan</TableHead>
+                      <TableHead className="font-body text-right">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {attendance.filter(a => a.is_manual && a.manual_status === 'pending').length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground font-body">
+                          Tidak ada permintaan persetujuan pending.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      attendance.filter(a => a.is_manual && a.manual_status === 'pending').map((att) => {
+                        const employee = employees.find(e => e.id === att.employee_id);
+                        return (
+                          <TableRow key={att.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="w-8 h-8">
+                                  <AvatarFallback className="bg-hrd/20 text-hrd font-body text-xs">
+                                    {employee?.name.split(' ').map(n => n[0]).join('') || 'N/A'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="font-medium font-body">{employee?.name || 'Unknown'}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-body text-sm">
+                              {formatDate(att.date)}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {att.check_in || '--:--'} - {att.check_out || '--:--'}
+                            </TableCell>
+                            <TableCell className="font-body text-sm max-w-[200px] truncate" title={att.manual_reason}>
+                              {att.manual_reason}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-green-200 text-green-700 hover:bg-green-50 font-body"
+                                  onClick={() => handleApproveManual(att.id)}
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-1" />
+                                  Setujui
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-red-200 text-red-700 hover:bg-red-50 font-body"
+                                  onClick={() => handleRejectManual(att.id)}
+                                >
+                                  <XCircle className="w-4 h-4 mr-1" />
+                                  Tolak
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           </TabsContent>
         )}
       </Tabs>

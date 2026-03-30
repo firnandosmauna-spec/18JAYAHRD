@@ -302,6 +302,11 @@ export interface AttendanceRecord {
   work_hours?: string
   location?: string
   notes?: string
+  is_manual?: boolean
+  manual_status?: 'pending' | 'approved' | 'rejected'
+  manual_reason?: string
+  approved_by?: string
+  approved_at?: string
   created_at: string
   updated_at: string
 }

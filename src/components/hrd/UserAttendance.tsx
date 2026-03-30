@@ -10,7 +10,9 @@ import {
     CheckCircle,
     Calendar,
     Loader2,
-    ShieldCheck
+    ShieldCheck,
+    ClipboardEdit,
+    ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -30,6 +32,15 @@ import { useAttendance, useEmployees } from '@/hooks/useSupabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { AttendanceRecord } from '@/lib/supabase';
 import { settingsService } from '@/services/settingsService';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
 
 // Helper to format time
 function formatTime(date: Date) {
@@ -89,6 +100,11 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     } | null>(null);
     const [checkInReason, setCheckInReason] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Manual request states
+    const [showManualDialog, setShowManualDialog] = useState(false);
+    const [manualType, setManualType] = useState<'outside_hours' | 'early_leave' | 'external_activity'>('external_activity');
+    const [manualReason, setManualReason] = useState('');
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -357,6 +373,56 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
         }
     };
 
+    const handleManualRequest = async () => {
+        if (!user?.employee_id) return;
+        if (!manualReason.trim()) {
+            toast({ title: 'Alasan Wajib Diisi', variant: 'destructive' });
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            const now = new Date();
+            const timeStr = now.toTimeString().slice(0, 5);
+            
+            // If it's early leave, we might want to update today's record if it exists
+            if (manualType === 'early_leave' && todayRecord) {
+                await updateAttendance(todayRecord.id, {
+                    check_out: timeStr,
+                    is_manual: true,
+                    manual_status: 'pending',
+                    manual_reason: manualReason,
+                    notes: `${todayRecord.notes || ''}. [REQUEST EARLY LEAVE] ${manualReason}`.trim()
+                });
+            } else {
+                // Otherwise create a new record (e.g. for outside hours or activity)
+                await addAttendance({
+                    employee_id: user.employee_id,
+                    date: today,
+                    check_in: manualType === 'outside_hours' ? timeStr : (todayRecord?.check_in || timeStr),
+                    check_out: manualType === 'early_leave' ? timeStr : (todayRecord?.check_out || null),
+                    status: 'present',
+                    is_manual: true,
+                    manual_status: 'pending',
+                    manual_reason: manualReason,
+                    notes: `[MANUAL REQUEST: ${manualType}] ${manualReason}`
+                });
+            }
+
+            toast({ 
+                title: 'Permintaan Dikirim', 
+                description: 'Permintaan absensi manual Anda sedang menunggu persetujuan manajer.' 
+            });
+            setShowManualDialog(false);
+            setManualReason('');
+            refetch();
+        } catch (error: any) {
+            toast({ title: 'Gagal Mengirim Permintaan', description: error.message, variant: 'destructive' });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <AnimatePresence>
@@ -439,6 +505,15 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                     {todayRecord.check_out ? 'Absensi Selesai' : 'Pulang Kerja'}
                                 </Button>
                             )}
+
+                            <Button
+                                variant="outline"
+                                className="w-full h-10 rounded-xl text-sm font-semibold border-hrd/20 text-hrd hover:bg-hrd/5"
+                                onClick={() => setShowManualDialog(true)}
+                            >
+                                <ClipboardEdit className="w-4 h-4 mr-2" />
+                                Absen Manual / Luar Kantor
+                            </Button>
 
                             <p className="text-[10px] text-center text-muted-foreground font-body">
                                 Jadwal: <span className="font-bold">{attendanceSettings ? (new Date().getDay() === 6 ? attendanceSettings.work_start_time_saturday : attendanceSettings.work_start_time_weekday) : '07:30'} - {attendanceSettings ? (new Date().getDay() === 6 ? attendanceSettings.work_end_time_saturday : attendanceSettings.work_end_time_weekday) : '17:00'}</span> • Denda: Rp {(penaltyRate || 1000).toLocaleString('id-ID')}/mnt
@@ -591,6 +666,61 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                         >
                             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <LogIn className="w-4 h-4 mr-2" />}
                             Kirim & Absen
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Manual Attendance Request Dialog */}
+            <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Pengaturan Absen Manual</DialogTitle>
+                        <DialogDescription>
+                            Gunakan fitur ini jika Anda bekerja di luar jam kantor, dinas luar, atau perlu pulang lebih awal karena kegiatan perusahaan.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Jenis Kehadiran</Label>
+                            <Select value={manualType} onValueChange={(v: any) => setManualType(v)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Pilih jenis" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="external_activity">Kegiatan Luar / Dinas</SelectItem>
+                                    <SelectItem value="outside_hours">Luar Jam Kerja / Lembur</SelectItem>
+                                    <SelectItem value="early_leave">Pulang Lebih Awal (Tugas Luar)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Alasan & Keterangan <span className="text-red-500">*</span></Label>
+                            <Textarea
+                                placeholder="Jelaskan alasan atau kegiatan Anda..."
+                                value={manualReason}
+                                onChange={(e) => setManualReason(e.target.value)}
+                                className="min-h-[100px]"
+                            />
+                        </div>
+                        <Alert className="bg-blue-50 border-blue-100">
+                            <ShieldCheck className="h-4 w-4 text-blue-600" />
+                            <AlertDescription className="text-xs text-blue-700">
+                                Absensi manual akan masuk ke sistem sebagai <strong>Pending</strong> dan memerlukan persetujuan Manajer/Supervisor.
+                            </AlertDescription>
+                        </Alert>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowManualDialog(false)}>
+                            Batal
+                        </Button>
+                        <Button
+                            onClick={handleManualRequest}
+                            disabled={isSubmitting || !manualReason.trim()}
+                            className="bg-hrd hover:bg-hrd-dark"
+                        >
+                            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                            Kirim Permintaan
                         </Button>
                     </DialogFooter>
                 </DialogContent>
