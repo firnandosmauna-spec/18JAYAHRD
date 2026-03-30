@@ -210,8 +210,8 @@ export function WorkerManagement() {
         await updateEmployee(workerForm.id, {
           name: workerForm.name,
           position: workerForm.position,
-          phone: workerForm.phone,
-          email: workerForm.email,
+          phone: workerForm.phone || null,
+          email: workerForm.email || null,
           join_date: workerForm.join_date,
           status: workerForm.status
         });
@@ -225,8 +225,8 @@ export function WorkerManagement() {
           status: workerForm.status,
           join_date: workerForm.join_date,
           salary: 0, // Workers usually paid by labor rates
-          phone: workerForm.phone,
-          email: workerForm.email,
+          phone: workerForm.phone || null,
+          email: workerForm.email || null,
           address: '',
           bank: '',
           bank_account: '',
