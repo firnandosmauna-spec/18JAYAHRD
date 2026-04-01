@@ -49,18 +49,30 @@ export default function AccountingModule() {
             navItems={navItems}
         >
             <div className="p-6 md:p-8 space-y-8 print:p-0 print:m-0">
-                <Routes>
-                    <Route index element={<AccountingDashboard />} />
-                    <Route path="cash-book" element={<CashBookView />} />
-                    <Route path="cash-in" element={<CashInView />} />
-                    <Route path="cash-out" element={<CashOutView />} />
-                    <Route path="coa" element={<CoAView />} />
-                    <Route path="ledger" element={<LedgerView />} />
-                    <Route path="journal" element={<JournalEntryView />} />
-                    <Route path="reports" element={<ReportsView />} />
-                    {/* Catch all for accounting sub-routes */}
-                    <Route path="*" element={<Navigate to="" replace />} />
-                </Routes>
+                {(() => {
+                    const savedPath = localStorage.getItem('lastPath_accounting');
+                    console.log('🔍 AccountingModule: savedPath from localStorage:', savedPath);
+                    
+                    return (
+                        <Routes>
+                            <Route index element={
+                                savedPath && savedPath !== '/accounting' && savedPath.startsWith('/accounting') ? (
+                                    <Navigate to={savedPath} replace />
+                                ) : (
+                                    <AccountingDashboard />
+                                )
+                            } />
+                            <Route path="cash-book" element={<CashBookView />} />
+                            <Route path="cash-in" element={<CashInView />} />
+                            <Route path="cash-out" element={<CashOutView />} />
+                            <Route path="coa" element={<CoAView />} />
+                            <Route path="ledger" element={<LedgerView />} />
+                            <Route path="journal" element={<JournalEntryView />} />
+                            <Route path="reports" element={<ReportsView />} />
+                            <Route path="*" element={<Navigate to="/accounting" replace />} />
+                        </Routes>
+                    );
+                })()}
             </div>
         </ModuleLayout>
     );

@@ -1,5 +1,5 @@
 import { useState, createContext, useContext, ReactNode, useEffect } from 'react';
-import { useNavigate, Routes, Route, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, Routes, Route, useParams, useSearchParams, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ModuleLayout from '@/components/layout/ModuleLayout';
 import { useProjects, useProjectWorkers, useProjectWorkerPayments, useProjectLaborRates, useProjectWorkerActivities, useProject, useProjectMaterials, useProjectProgressLogs } from '@/hooks/useProject';
@@ -1484,12 +1484,20 @@ function ProjectPayrollSummary({ projectId }: { projectId: string }) {
 
 export default function ProjectModule() {
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const savedPath = localStorage.getItem('lastPath_projects');
+  console.log('🔍 ProjectModule: savedPath from localStorage (lastPath_projects):', savedPath);
 
   return (
     <ProjectNotificationProvider>
       <ModuleLayout moduleId="project" title="Proyek" navItems={navItems}>
         <Routes>
-          <Route index element={<ProjectDashboard />} />
+          <Route index element={
+            savedPath && savedPath !== '/projects' && savedPath.startsWith('/projects') ? (
+              <Navigate to={savedPath} replace />
+            ) : (
+              <ProjectDashboard />
+            )
+          } />
           <Route path="active" element={<ActiveProjectsPage selectedProjectId={selectedProjectId} setSelectedProjectId={setSelectedProjectId} />} />
           <Route path="planning" element={<PlanningPage />} />
           <Route path="materials" element={<MaterialsPage />} />

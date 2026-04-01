@@ -49,6 +49,10 @@ export default function MarketingModule() {
         };
     }, []);
 
+    // Determine the last visited sub-path for Marketing
+    const savedPath = localStorage.getItem('lastPath_marketing');
+    console.log('%c 🔍 [RESTORE] MarketingModule savedPath:', 'background: #222; color: #3498db', savedPath);
+
     return (
         <ModuleLayout
             moduleId="marketing"
@@ -62,7 +66,13 @@ export default function MarketingModule() {
             ]}
         >
             <Routes>
-                <Route path="/" element={<Navigate to="master" replace />} />
+                <Route index element={
+                    savedPath && savedPath !== '/marketing' && savedPath.startsWith('/marketing') ? (
+                        <Navigate to={savedPath} replace />
+                    ) : (
+                        <Navigate to="/marketing/master" replace />
+                    )
+                } />
                 <Route path="master" element={<ConsumerDatabaseView />} />
                 <Route path="followup" element={<FollowUpView />} /> {/* Added */}
                 <Route path="pemberkasan" element={<PemberkasanView />} />

@@ -282,7 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       await supabase.auth.signOut();
       updateAuthState(null, null, null);
-      sessionStorage.removeItem('lastVisitedPath');
+      localStorage.removeItem('lastVisitedPath');
       await authService.signIn({ email, password });
       return true;
     } catch (error) {
@@ -338,7 +338,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       setSession(null);
       setStashedSession(null);
-      sessionStorage.removeItem('lastVisitedPath');
+      localStorage.removeItem('lastVisitedPath');
       sessionStorage.removeItem('admin_session_stash');
       await authService.signOut();
     } catch (error) {

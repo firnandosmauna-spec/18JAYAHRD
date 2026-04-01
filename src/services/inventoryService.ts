@@ -527,7 +527,7 @@ export const stockMovementService = {
         .eq('id', movement.payment_method_id)
         .single();
 
-      if (pm?.name?.toLowerCase().trim() === 'deposit') {
+      if (pm?.name?.toLowerCase().includes('deposit')) {
         const { data: prod } = await supabase
           .from('products')
           .select('supplier_id, name')

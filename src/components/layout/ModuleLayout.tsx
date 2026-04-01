@@ -210,7 +210,17 @@ export default function ModuleLayout({ children, moduleId, title, navItems }: Mo
                     key={module.id}
                     onClick={() => {
                       if (!isCurrentModule) {
-                        navigate(module.route);
+                        const storageKey = `lastPath_${module.id.replace('project', 'projects')}`;
+                        const savedPath = localStorage.getItem(storageKey);
+                        
+                        console.log(`%c 🖱️ [SIDEBAR SWITCH] Module: ${module.id}`, 'background: #333; color: #ffeb3b', {
+                          id: module.id,
+                          storageKey,
+                          savedPath,
+                          defaultRoute: module.route
+                        });
+
+                        navigate(savedPath || module.route);
                         setSidebarOpen(false);
                       }
                     }}

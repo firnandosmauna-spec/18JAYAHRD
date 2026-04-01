@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Filter, Phone, Mail, User, MapPin, Plus, Loader2, Briefcase, Heart, Users, LayoutGrid, List, Pencil, Trash, CheckCircle2 } from 'lucide-react';
+import { Search, Filter, Phone, Mail, User, MapPin, Plus, Loader2, Briefcase, Heart, Users, LayoutGrid, List, Pencil, Trash, CheckCircle2, Upload, X, FileText, Eye as EyeIcon, Download } from 'lucide-react';
 import { ConsumerPemberkasan } from './ConsumerPemberkasan';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -53,13 +53,16 @@ export default function ConsumerDatabaseView() {
         family_phone: '',
         family_address: '',
         source: '',
-        bank_process: ''
+        bank_process: '',
+        document_urls: []
     });
     const [submitting, setSubmitting] = useState(false);
     const [activeTab, setActiveTab] = useState('data-diri');
     const [marketingStaff, setMarketingStaff] = useState<any[]>([]);
     const { locations: projectLocations, loading: loadingProjects } = useProjectLocations();
     const [projectList, setProjectList] = useState<string[]>([]);
+    const [uploading, setUploading] = useState(false);
+    const [tempFiles, setTempFiles] = useState<{name: string, url: string}[]>([]);
 
     const fetchConsumers = async () => {
         setLoading(true);
@@ -153,7 +156,8 @@ export default function ConsumerDatabaseView() {
             family_phone: consumer.family_phone,
             family_address: consumer.family_address,
             source: consumer.source || '',
-            bank_process: consumer.bank_process || ''
+            bank_process: consumer.bank_process || '',
+            document_urls: consumer.document_urls || []
         });
         setEditingId(consumer.id);
         setIsAddDialogOpen(true);
@@ -202,6 +206,65 @@ export default function ConsumerDatabaseView() {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+
+        const files = Array.from(e.target.files);
+        setUploading(true);
+
+        try {
+            const uploadPromises = files.map(async (file) => {
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${Math.random().toString(36).substring(2, 9)}_${Date.now()}.${fileExt}`;
+                const filePath = `consumers/${fileName}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('pipeline-uploads')
+                    .upload(filePath, file);
+
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage
+                    .from('pipeline-uploads')
+                    .getPublicUrl(filePath);
+
+                return { name: file.name, url: data.publicUrl };
+            });
+
+            const uploadedFiles = await Promise.all(uploadPromises);
+            
+            const newUrls = uploadedFiles.map(f => f.url);
+            setFormData(prev => ({
+                ...prev,
+                document_urls: [...(prev.document_urls || []), ...newUrls]
+            }));
+            
+            setTempFiles(prev => [...prev, ...uploadedFiles]);
+
+            toast({
+                title: "Berhasil",
+                description: `${files.length} file berhasil diunggah`,
+            });
+        } catch (error: any) {
+            console.error('Error uploading files:', error);
+            toast({
+                title: "Upload Gagal",
+                description: error.message,
+                variant: 'destructive'
+            });
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const removeFile = (url: string) => {
+        setFormData(prev => ({
+            ...prev,
+            document_urls: (prev.document_urls || []).filter(u => u !== url)
+        }));
+        setTempFiles(prev => prev.filter(f => f.url !== url));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
@@ -223,7 +286,7 @@ export default function ConsumerDatabaseView() {
             safeAdd('address', formData.address);
             safeAdd('phone', formData.phone);
             safeAdd('email', formData.email);
-            safeAdd('id_card_number', formData.id_card_number); // Missing field!
+            safeAdd('id_card_number', formData.id_card_number);
             safeAdd('sales_person', formData.sales_person);
             safeAdd('sales_person_id', formData.sales_person_id);
             safeAdd('housing_project', formData.housing_project);
@@ -254,6 +317,7 @@ export default function ConsumerDatabaseView() {
             safeAdd('family_address', formData.family_address);
             safeAdd('source', formData.source);
             safeAdd('bank_process', formData.bank_process);
+            safeAdd('document_urls', formData.document_urls);
 
             // 2. Database Operation
             if (editingId) {
@@ -292,6 +356,7 @@ export default function ConsumerDatabaseView() {
                 email: '',
                 sales_person: '',
                 sales_person_id: null,
+                housing_project: '',
                 npwp: '',
                 company_id_number: '',
                 booking_remarks: '',
@@ -312,7 +377,8 @@ export default function ConsumerDatabaseView() {
                 family_phone: '',
                 family_address: '',
                 source: '',
-                bank_process: ''
+                bank_process: '',
+                document_urls: []
             });
             setActiveTab('data-diri');
             fetchConsumers();
@@ -465,11 +531,12 @@ export default function ConsumerDatabaseView() {
 
                             <form onSubmit={handleSubmit} className="space-y-6 mt-4">
                                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                                    <TabsList className="grid w-full grid-cols-4 mb-4">
+                                    <TabsList className="grid w-full grid-cols-5 mb-4">
                                         <TabsTrigger value="data-diri">Data Diri</TabsTrigger>
                                         <TabsTrigger value="pekerjaan">Pekerjaan</TabsTrigger>
                                         <TabsTrigger value="pasangan">Pasangan</TabsTrigger>
                                         <TabsTrigger value="keluarga">Keluarga</TabsTrigger>
+                                        <TabsTrigger value="lampiran">Lampiran</TabsTrigger>
                                     </TabsList>
 
                                     <div className="max-h-[60vh] overflow-y-auto pr-2">
@@ -723,6 +790,80 @@ export default function ConsumerDatabaseView() {
 
                                             </div>
                                         </TabsContent>
+
+                                        {/* LAMPIRAN */}
+                                        <TabsContent value="lampiran" className="space-y-4">
+                                            <div className="space-y-4">
+                                                <div className="p-6 border-2 border-dashed rounded-xl border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-100 transition-colors relative">
+                                                    <input 
+                                                        type="file" 
+                                                        multiple 
+                                                        className="absolute inset-0 opacity-0 cursor-pointer" 
+                                                        onChange={handleFileUpload}
+                                                        disabled={uploading}
+                                                    />
+                                                    <div className="bg-white p-3 rounded-full shadow-sm mb-3">
+                                                        <Upload className="w-6 h-6 text-blue-600" />
+                                                    </div>
+                                                    <p className="font-medium text-slate-700">
+                                                        {uploading ? 'Sedang mengunggah...' : 'Klik atau seret file ke sini'}
+                                                    </p>
+                                                    <p className="text-xs text-slate-500 mt-1">
+                                                        Mendukung Gambar (JPG, PNG) atau Dokumen (PDF)
+                                                    </p>
+                                                </div>
+
+                                                {formData.document_urls && formData.document_urls.length > 0 && (
+                                                    <div className="space-y-2">
+                                                        <Label>File Terlampir ({formData.document_urls.length})</Label>
+                                                        <div className="grid grid-cols-1 gap-2">
+                                                            {formData.document_urls.map((url, idx) => {
+                                                                const fileName = url.split('/').pop()?.split('_').slice(1).join('_') || 'Dokumen';
+                                                                const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(url);
+                                                                
+                                                                return (
+                                                                    <div key={idx} className="flex items-center justify-between p-3 bg-white border rounded-lg shadow-sm">
+                                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                                            {isImage ? (
+                                                                                <img src={url} alt="Preview" className="w-10 h-10 object-cover rounded border" />
+                                                                            ) : (
+                                                                                <div className="w-10 h-10 bg-slate-100 flex items-center justify-center rounded border">
+                                                                                    <FileText className="w-5 h-5 text-slate-400" />
+                                                                                </div>
+                                                                            )}
+                                                                            <div className="overflow-hidden">
+                                                                                <p className="text-sm font-medium text-slate-700 truncate max-w-[200px]">{fileName}</p>
+                                                                                <p className="text-[10px] text-slate-400">Lampiran {idx + 1}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1">
+                                                                            <Button 
+                                                                                type="button" 
+                                                                                variant="ghost" 
+                                                                                size="icon" 
+                                                                                className="h-8 w-8 text-slate-400 hover:text-blue-600"
+                                                                                onClick={() => window.open(url, '_blank')}
+                                                                            >
+                                                                                <EyeIcon className="w-4 h-4" />
+                                                                            </Button>
+                                                                            <Button 
+                                                                                type="button" 
+                                                                                variant="ghost" 
+                                                                                size="icon" 
+                                                                                className="h-8 w-8 text-slate-400 hover:text-red-500"
+                                                                                onClick={() => removeFile(url)}
+                                                                            >
+                                                                                <X className="w-4 h-4" />
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </TabsContent>
                                     </div>
 
                                     <div className="flex justify-end gap-2 pt-4 border-t mt-4">
@@ -761,11 +902,12 @@ export default function ConsumerDatabaseView() {
                     {selectedConsumer && (
                         <>
                             <Tabs defaultValue="data-diri" className="w-full mt-4">
-                                <TabsList className="grid w-full grid-cols-4 mb-4">
+                                <TabsList className="grid w-full grid-cols-5 mb-4">
                                     <TabsTrigger value="data-diri">Data Diri</TabsTrigger>
                                     <TabsTrigger value="pekerjaan">Pekerjaan</TabsTrigger>
                                     <TabsTrigger value="pasangan">Pasangan</TabsTrigger>
                                     <TabsTrigger value="keluarga">Keluarga</TabsTrigger>
+                                    <TabsTrigger value="lampiran">Lampiran</TabsTrigger>
                                 </TabsList>
 
                                 <TabsContent value="data-diri" className="space-y-4">
@@ -903,6 +1045,63 @@ export default function ConsumerDatabaseView() {
                                     <div className="pt-4 border-t">
                                         <Label className="text-slate-500 text-xs">Sales / Marketing</Label>
                                         <p className="font-medium">{selectedConsumer.sales_person || '-'}</p>
+                                    </div>
+                                </TabsContent>
+
+                                <TabsContent value="lampiran" className="space-y-4">
+                                    <div className="space-y-4">
+                                        {selectedConsumer.document_urls && selectedConsumer.document_urls.length > 0 ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {selectedConsumer.document_urls.map((url, idx) => {
+                                                    const fileName = url.split('/').pop()?.split('_').slice(1).join('_') || 'Dokumen';
+                                                    const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(url);
+                                                    
+                                                    return (
+                                                        <div key={idx} className="flex items-center justify-between p-3 bg-white border rounded-lg shadow-sm">
+                                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                                {isImage ? (
+                                                                    <div className="flex-shrink-0">
+                                                                        <img 
+                                                                            src={url} 
+                                                                            alt="Preview" 
+                                                                            className="w-12 h-12 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity" 
+                                                                            onClick={() => window.open(url, '_blank')}
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                        <div className="w-12 h-12 bg-slate-50 flex items-center justify-center rounded border">
+                                                                        <FileText className="w-6 h-6 text-slate-400" />
+                                                                    </div>
+                                                                )}
+                                                                <div className="overflow-hidden">
+                                                                    <p className="text-sm font-medium text-slate-700 truncate max-w-[150px]" title={fileName}>{fileName}</p>
+                                                                    <p className="text-[10px] text-slate-400">Lampiran {idx + 1}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-1">
+                                                                <Button 
+                                                                    type="button" 
+                                                                    variant="outline" 
+                                                                    size="sm" 
+                                                                    className="h-8 px-2 text-xs flex items-center gap-1"
+                                                                    onClick={() => window.open(url, '_blank')}
+                                                                >
+                                                                    <EyeIcon className="w-3.5 h-3.5" />
+                                                                    Lihat
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                <div className="bg-white p-3 rounded-full shadow-sm w-fit mx-auto mb-3">
+                                                    <FileText className="w-6 h-6 text-slate-300" />
+                                                </div>
+                                                <p className="text-slate-500 text-sm">Tidak ada lampiran dokumen</p>
+                                            </div>
+                                        )}
                                     </div>
                                 </TabsContent>
                             </Tabs>

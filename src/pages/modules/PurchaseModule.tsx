@@ -281,14 +281,38 @@ const navItems = [
   { label: 'Invoice', href: '/purchase/invoices', icon: Receipt },
 ];
 
+function PlaceholderPage({ title }: { title: string }) {
+  return (
+    <div className="flex items-center justify-center h-[60vh]">
+      <div className="text-center">
+        <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <ShoppingBag className="w-8 h-8 text-orange-600" />
+        </div>
+        <h2 className="font-display text-xl font-bold text-[#1C1C1E] mb-2">{title}</h2>
+        <p className="text-muted-foreground font-body">Halaman ini sedang dalam pengembangan</p>
+      </div>
+    </div>
+  );
+}
+
 export default function PurchaseModule() {
+  const savedPath = localStorage.getItem('lastPath_purchase');
+  console.log('🔍 PurchaseModule: savedPath from localStorage:', savedPath);
+
   return (
     <ModuleLayout moduleId="purchase" title="Pembelian" navItems={navItems}>
       <Routes>
-        <Route index element={<PurchaseDashboard />} />
+        <Route index element={
+          savedPath && savedPath !== '/purchase' && savedPath.startsWith('/purchase') ? (
+            <Navigate to={savedPath} replace />
+          ) : (
+            <PurchaseDashboard />
+          )
+        } />
         <Route path="suppliers" element={<SupplierManagement />} />
         <Route path="orders" element={<PurchaseOrderManagement />} />
         <Route path="invoices" element={<PurchaseInvoiceManagement />} />
+        <Route path="reports" element={<PlaceholderPage title="Laporan Pembelian" />} />
         <Route path="*" element={<Navigate to="/purchase" replace />} />
       </Routes>
     </ModuleLayout>

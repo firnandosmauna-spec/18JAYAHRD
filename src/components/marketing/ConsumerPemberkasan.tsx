@@ -35,34 +35,50 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
     const fetchPemberkasan = async () => {
         try {
             setLoading(true);
-            const { data: pemberkasan, error } = await supabase
+            
+            // First, try a simple select without .single() to avoid 406 errors on 0 rows in some environments
+            const { data: results, error } = await supabase
                 .from('consumer_pemberkasan')
                 .select('*')
-                .eq('consumer_id', consumerId)
-                .single();
+                .eq('consumer_id', consumerId);
 
-            if (error && error.code !== 'PGRST116') throw error; // PGRST116 is code for no rows found
+            if (error) throw error;
 
-            if (!pemberkasan) {
-                // If not found, insert default
+            if (!results || results.length === 0) {
+                // If not found, attempt to insert (upsert is safer)
                 const { data: newData, error: insertError } = await supabase
                     .from('consumer_pemberkasan')
-                    .insert([{ consumer_id: consumerId }])
+                    .upsert({ consumer_id: consumerId }, { onConflict: 'consumer_id' })
                     .select()
                     .single();
 
-                if (insertError) throw insertError;
-                setData(newData);
+                // If another process inserted it in the meantime, just fetch it again
+                if (insertError && insertError.code === '23505') {
+                    const { data: retryData, error: retryError } = await supabase
+                        .from('consumer_pemberkasan')
+                        .select('*')
+                        .eq('consumer_id', consumerId)
+                        .single();
+                    if (retryError) throw retryError;
+                    setData(retryData);
+                } else if (insertError) {
+                    throw insertError;
+                } else {
+                    setData(newData);
+                }
             } else {
-                setData(pemberkasan);
+                setData(results[0]);
             }
         } catch (error: any) {
             console.error('Error fetching pemberkasan:', error);
-            toast({
-                title: "Error",
-                description: "Gagal memuat data pemberkasan",
-                variant: 'destructive'
-            });
+            // Only show toast if it's not a harmless duplicate key error we already handled
+            if (error.code !== '23505') {
+                toast({
+                    title: "Error",
+                    description: "Gagal memuat data pemberkasan. Pastikan tabel 'consumer_pemberkasan' sudah tersedia di database.",
+                    variant: 'destructive'
+                });
+            }
         } finally {
             setLoading(false);
         }

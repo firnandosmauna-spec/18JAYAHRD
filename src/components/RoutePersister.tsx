@@ -18,8 +18,22 @@ export function RoutePersister() {
         }
 
         const fullPath = location.pathname + location.search;
-        // console.log('📍 Saving route:', fullPath);
-        sessionStorage.setItem('lastVisitedPath', fullPath);
+        console.log('%c 📍 [PERSIST] Current Path:', 'background: #222; color: #bada55', fullPath);
+        
+        try {
+            localStorage.setItem('lastVisitedPath', fullPath);
+            const pathSegments = location.pathname.split('/').filter(Boolean);
+            if (pathSegments.length > 0) {
+                const moduleName = pathSegments[0];
+                const knownModules = ['hrd', 'accounting', 'inventory', 'customer', 'projects', 'marketing', 'sales', 'purchase', 'dashboard'];
+                if (knownModules.includes(moduleName)) {
+                    console.log(`%c 💾 [SAVE] lastPath_${moduleName} =`, 'background: #222; color: #00ff00', fullPath);
+                    localStorage.setItem(`lastPath_${moduleName}`, fullPath);
+                }
+            }
+        } catch (e) {
+            console.error('❌ Error saving to localStorage:', e);
+        }
     }, [location]);
 
     return null;

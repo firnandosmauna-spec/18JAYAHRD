@@ -121,6 +121,10 @@ function App() {
 
   return (
     <AuthProvider>
+      {/* Version Tag for Debugging */}
+      <div className="fixed bottom-0 left-0 z-[9999] bg-black/80 text-white text-[8px] px-2 py-0.5 pointer-events-none font-mono">
+        v1.0.1-LOCALSTORAGE-LOGS
+      </div>
       <RoutePersister />
       <SopOverlay />
       <ErrorBoundary>

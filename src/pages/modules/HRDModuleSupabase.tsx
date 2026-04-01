@@ -2275,6 +2275,14 @@ export default function HRDModuleSupabase() {
     );
   }
 
+  // Determine the last visited sub-path for HRD
+  const savedPathHRD = localStorage.getItem('lastPath_hrd');
+  console.log('🔍 HRDModule: savedPath from localStorage:', savedPathHRD);
+  
+  // Default logic: Staff/Marketing goes to portal, others to dashboard (index)
+  const isWorker = user?.role === 'Staff' || user?.role === 'Marketing';
+  const defaultRoute = isWorker ? "/hrd/portal" : "/hrd/dashboard";
+
   return (
     <>
       {/* Administrative Session Switcher Overlay - Only show when testing non-admin accounts */}
@@ -2315,10 +2323,13 @@ export default function HRDModuleSupabase() {
       <ModuleLayout moduleId="hrd" title="HRD" navItems={filteredNavItems}>
         <Routes>
           <Route index element={
-            ['staff', 'marketing'].includes(user?.role || '')
-              ? <Navigate to="/hrd/portal" replace />
-              : <HRDDashboard />
+            savedPathHRD && savedPathHRD !== '/hrd' && savedPathHRD.startsWith('/hrd') ? (
+              <Navigate to={savedPathHRD} replace />
+            ) : (
+              <Navigate to={defaultRoute} replace />
+            )
           } />
+          <Route path="dashboard" element={<HRDDashboard />} />
           <Route path="portal" element={<ESSPortal />} />
           <Route path="employees" element={<EmployeeListSupabase />} />
           <Route

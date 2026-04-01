@@ -270,10 +270,19 @@ const navItems = [
 ];
 
 export default function SalesModule() {
+  const savedPath = localStorage.getItem('lastPath_sales');
+  console.log('🔍 SalesModule: savedPath from localStorage:', savedPath);
+
   return (
     <ModuleLayout moduleId="sales" title="Penjualan" navItems={navItems}>
       <Routes>
-        <Route index element={<SalesDashboard />} />
+        <Route index element={
+          savedPath && savedPath !== '/sales' && savedPath.startsWith('/sales') ? (
+            <Navigate to={savedPath} replace />
+          ) : (
+            <SalesDashboard />
+          )
+        } />
         <Route path="customers" element={<CustomerManagement />} />
         <Route path="products" element={<ProductManagement />} />
         <Route path="orders" element={<SalesOrderManagement />} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { motion, Reorder } from 'framer-motion';
 import ModuleLayout from '@/components/layout/ModuleLayout';
 import { useProducts, useProductCategories, useWarehouses, useStockMovements, useLowStockProducts, useInventoryUnits } from '@/hooks/useInventory';
@@ -760,10 +760,19 @@ function PlaceholderPage({ title }: { title: string }) {
 }
 
 function InventoryModule() {
+  const savedPath = localStorage.getItem('lastPath_inventory');
+  console.log('🔍 InventoryModule: savedPath from localStorage:', savedPath);
+
   return (
     <ModuleLayout moduleId="inventory" title="Persediaan" navItems={navItems}>
       <Routes>
-        <Route index element={<InventoryDashboard />} />
+        <Route index element={
+          savedPath && savedPath !== '/inventory' && savedPath.startsWith('/inventory') ? (
+            <Navigate to={savedPath} replace />
+          ) : (
+            <InventoryDashboard />
+          )
+        } />
         <Route path="products" element={<ProductList />} />
         <Route path="stock-in" element={<MaterialPurchaseManagement />} />
         <Route path="stock-out" element={<StockOutManagement />} />
@@ -776,6 +785,7 @@ function InventoryModule() {
         <Route path="price-adjustments" element={<PriceAdjustmentManagement />} />
         <Route path="supplier-debt" element={<SupplierDebtManagement />} />
         <Route path="reports" element={<InventoryReports />} />
+        <Route path="*" element={<Navigate to="/inventory" replace />} />
       </Routes>
     </ModuleLayout>
   );

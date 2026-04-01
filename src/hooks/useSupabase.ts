@@ -361,8 +361,8 @@ export function useAttendance(startDate?: string, endDate?: string) {
       const fetchPromise = startDate && endDate
         ? attendanceService.getByDateRange(startDate, endDate)
         : attendanceService.getByDateRange(
-          new Date().toISOString().split('T')[0],
-          new Date().toISOString().split('T')[0]
+          new Date().toLocaleDateString('en-CA'), // en-CA gives YYYY-MM-DD
+          new Date().toLocaleDateString('en-CA')
         );
 
       const timeoutPromise = new Promise((_, reject) =>

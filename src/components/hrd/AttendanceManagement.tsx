@@ -123,7 +123,7 @@ function formatDate(dateString: string) {
 }
 
 function calculateWorkHours(checkIn?: string, checkOut?: string): string {
-  if (!checkIn || !checkOut) return '-';
+  if (!checkIn || !checkOut || typeof checkIn !== 'string' || typeof checkOut !== 'string' || !checkIn.includes(':') || !checkOut.includes(':')) return '-';
 
   const [inHour, inMinute] = checkIn.split(':').map(Number);
   const [outHour, outMinute] = checkOut.split(':').map(Number);
@@ -179,10 +179,10 @@ function determineAttendanceStatus(checkIn?: string, dateString?: string, holida
   const schedule = getWorkSchedule(dateString, holidays);
   
   if (schedule.isHoliday) return 'holiday';
-  if (!checkIn) return 'present';
+  if (!checkIn || typeof checkIn !== 'string' || !checkIn.includes(':')) return 'present';
 
   const [checkInHour, checkInMinute] = checkIn.split(':').map(Number);
-  const [workHour, workMinute] = schedule.start.split(':').map(Number);
+  const [workHour, workMinute] = (schedule.start || '08:00').split(':').map(Number);
 
   const checkInTotalMinutes = checkInHour * 60 + checkInMinute;
   const workStartTotalMinutes = workHour * 60 + workMinute;
@@ -538,10 +538,10 @@ export function AttendanceManagement() {
     }
 
     // --- Late Penalty ---
-    if (status === 'late' && record.check_in && penaltyRate > 0) {
+    if (status === 'late' && record.check_in && typeof record.check_in === 'string' && record.check_in.includes(':') && penaltyRate > 0) {
       const schedule = getWorkSchedule(record.date);
       const [checkInHour, checkInMinute] = record.check_in.split(':').map(Number);
-      const [workHour, workMinute] = schedule.start.split(':').map(Number);
+      const [workHour, workMinute] = (schedule.start || '08:00').split(':').map(Number);
 
       const checkInTotalMinutes = checkInHour * 60 + checkInMinute;
       const workStartTotalMinutes = workHour * 60 + workMinute;

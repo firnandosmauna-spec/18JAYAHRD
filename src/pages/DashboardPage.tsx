@@ -353,7 +353,17 @@ export default function DashboardPage() {
 
   const handleModuleClick = (module: ModuleConfig) => {
     if (hasModuleAccess(module.id)) {
-      navigate(module.route);
+      const storageKey = `lastPath_${module.id.replace('project', 'projects')}`;
+      const savedPath = localStorage.getItem(storageKey);
+      
+      console.log(`%c 🖱️ [DASHBOARD CLICK] Module: ${module.id}`, 'background: #333; color: #ffeb3b', {
+        id: module.id,
+        storageKey,
+        savedPath,
+        defaultRoute: module.route
+      });
+
+      navigate(savedPath || module.route);
     }
   };
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ModuleLayout from '@/components/layout/ModuleLayout';
 import { 
@@ -621,10 +621,19 @@ function PlaceholderPage({ title }: { title: string }) {
 }
 
 export default function CustomerServiceModule() {
+  const savedPath = localStorage.getItem('lastPath_customer');
+  console.log('🔍 CustomerServiceModule: savedPath from localStorage:', savedPath);
+
   return (
-    <ModuleLayout moduleId="customer" title="Pelayanan Konsumen" navItems={navItems}>
+    <ModuleLayout moduleId="customer" title="Customer Service" navItems={navItems}>
       <Routes>
-        <Route index element={<CustomerServiceDashboard />} />
+        <Route index element={
+          savedPath && savedPath !== '/customer' && savedPath.startsWith('/customer') ? (
+            <Navigate to={savedPath} replace />
+          ) : (
+            <CustomerServiceDashboard />
+          )
+        } />
         <Route path="tickets" element={<TicketList />} />
         <Route path="customers" element={<CustomerList />} />
         <Route path="feedback" element={<PlaceholderPage title="Feedback Pelanggan" />} />

@@ -97,6 +97,7 @@ export interface ConsumerProfile {
     // Data Sumber
     source?: string; // Sumber Konsumen
     bank_process?: string; // Proses Bank
+    document_urls?: string[]; // Lampiran Dokumen
 }
 
 export interface ConsumerFollowUp {

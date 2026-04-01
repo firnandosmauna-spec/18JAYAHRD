@@ -64,15 +64,31 @@ function formatDate(dateString: string) {
 export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }) {
     const { user } = useAuth();
     const { toast } = useToast();
-    const today = new Date().toISOString().split('T')[0];
+    // Helper to get local YYYY-MM-DD
+    const getLocalYYYYMMDD = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const today = getLocalYYYYMMDD();
 
     // Helper to get week range
     const getWeekRange = () => {
         const now = new Date();
-        const day = now.getDay(); // 0 (Sun) - 6 (Sat)
-        const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-        const monday = new Date(now.setDate(diff));
-        const sunday = new Date(now.setDate(diff + 6));
+        const monday = new Date(now);
+        // Adjust to Monday of the current week
+        const day = now.getDay();
+        const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+        monday.setDate(diff);
+        monday.setHours(0, 0, 0, 0);
+
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        sunday.setHours(23, 59, 59, 999);
+
         return {
             start: monday.toISOString().split('T')[0],
             end: sunday.toISOString().split('T')[0]
@@ -134,6 +150,12 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
         const date = new Date(dateStr);
         const day = date.getDay();
         const startTime = day === 6 ? attendanceSettings.work_start_time_saturday : attendanceSettings.work_start_time_weekday;
+        
+        // Null-safe split
+        if (!startTime || typeof startTime !== 'string' || !startTime.includes(':')) {
+            return 8 * 60; // Default 08:00
+        }
+        
         const [h, m] = startTime.split(':').map(Number);
         return h * 60 + m;
     };
@@ -230,8 +252,16 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     }, []);
 
     const handleCheckIn = async () => {
+        console.log('Checking In...', { employee_id: user?.employee_id, loading, todayRecord });
         if (!user?.employee_id) {
             toast({ title: 'Akun Belum Terhubung', description: 'Hubungi Admin HRD.', variant: 'destructive' });
+            return;
+        }
+
+        // Prevent duplicate check-in while loading or if record already exists
+        if (loading || todayRecord) {
+            console.log('Check-in blocked:', { loading, todayRecord });
+            toast({ title: 'Info', description: 'Data absensi sedang diproses atau sudah ada.', variant: 'default' });
             return;
         }
 
@@ -262,20 +292,21 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             const workStartMinutes = getWorkStartMinutes(today);
             const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
+            const tolerance = attendanceSettings?.attendance_late_tolerance || 5;
+            const isLate = currentMinutes > (workStartMinutes + tolerance);
+            const status = isLate ? 'late' : 'present';
+
             // Check if it's too early to clock in (start time - 30 mins)
-            const earliestAllowableMinutes = workStartMinutes - 30; // Allowing 30 mins before 07:30
+            const earliestAllowableMinutes = workStartMinutes - 60; // Allowing 60 mins before to be safe
             if (currentMinutes < earliestAllowableMinutes) {
+                const startTimeStr = now.getDay() === 6 ? attendanceSettings.work_start_time_saturday : attendanceSettings.work_start_time_weekday;
                 toast({
                     title: 'Terlalu Awal',
-                    description: `Absensi baru bisa dimulai pukul ${attendanceSettings.work_start_time_weekday} (atau 30 menit sebelumnya).`,
+                    description: `Absensi baru bisa dilakukan 1 jam sebelum jam masuk (${startTimeStr || '08:00'}).`,
                     variant: 'destructive'
                 });
                 return;
             }
-
-            const tolerance = attendanceSettings?.attendance_late_tolerance || 5;
-            const isLate = currentMinutes > (workStartMinutes + tolerance);
-            const status = isLate ? 'late' : 'present';
 
             if (distance > officeRadius) {
                 // Bypass dialog as requested, but still log the reason automatically
@@ -354,7 +385,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             const checkOutTime = now.toTimeString().slice(0, 5);
 
             let workHours = '';
-            if (todayRecord.check_in) {
+            if (todayRecord.check_in && typeof todayRecord.check_in === 'string' && todayRecord.check_in.includes(':')) {
                 const [inH, inM] = todayRecord.check_in.split(':').map(Number);
                 const [outH, outM] = checkOutTime.split(':').map(Number);
                 const diff = (outH * 60 + outM) - (inH * 60 + inM);
@@ -490,18 +521,18 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                 <Button
                                     className="w-full h-14 bg-hrd hover:bg-hrd-dark text-white rounded-2xl text-lg font-bold shadow-lg shadow-hrd/20 transition-all hover:scale-[1.02] active:scale-95"
                                     onClick={handleCheckIn}
-                                    disabled={gettingLocation}
+                                    disabled={gettingLocation || loading || !!todayRecord}
                                 >
-                                    {gettingLocation ? <Loader2 className="w-6 h-6 animate-spin mr-2" /> : <LogIn className="w-6 h-6 mr-2" />}
+                                    {gettingLocation || loading ? <Loader2 className="w-6 h-6 animate-spin mr-2" /> : <LogIn className="w-6 h-6 mr-2" />}
                                     Masuk Kerja
                                 </Button>
                             ) : (
                                 <Button
                                     className={`w-full h-14 rounded-2xl text-lg font-bold transition-all shadow-lg ${todayRecord.check_out ? 'bg-gray-200 text-gray-500 cursor-not-allowed opacity-60' : 'bg-white border-2 border-red-500 text-red-500 hover:bg-red-50 shadow-red-100 hover:scale-[1.02] active:scale-95'}`}
                                     onClick={handleCheckOut}
-                                    disabled={!!todayRecord.check_out}
+                                    disabled={isSubmitting || !!todayRecord.check_out}
                                 >
-                                    <LogOut className="w-6 h-6 mr-2" />
+                                    {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin mr-2" /> : <LogOut className="w-6 h-6 mr-2" />}
                                     {todayRecord.check_out ? 'Absensi Selesai' : 'Pulang Kerja'}
                                 </Button>
                             )}

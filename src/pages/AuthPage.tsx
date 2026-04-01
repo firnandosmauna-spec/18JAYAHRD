@@ -13,7 +13,7 @@ export function AuthPage() {
   const sessionCheckRef = useRef(false);
 
   // Get the intended destination from location state, OR sessionStorage, default to dashboard
-  const savedPath = sessionStorage.getItem('lastVisitedPath');
+  const savedPath = localStorage.getItem('lastVisitedPath');
   const from = location.state?.from?.pathname || savedPath || '/dashboard';
 
   const [searchParams] = useSearchParams();
