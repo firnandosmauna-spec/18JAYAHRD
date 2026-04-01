@@ -1,6 +1,13 @@
 import { supabase } from '@/lib/supabase'
 import type { Project, ProjectPhase, ProjectMaterial, ProjectWorker } from '@/lib/supabase'
 
+export interface EmployeeWorkerType {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at?: string;
+}
+
 export const projectService = {
     // Projects
     async getAll(status?: string) {
@@ -338,7 +345,7 @@ export const projectService = {
         const { data, error } = await supabase
             .from('project_labor_rates')
             .insert(rate)
-            .select()
+            .select('*')
             .single();
         if (error) throw error;
         return data;
@@ -349,7 +356,7 @@ export const projectService = {
             .from('project_labor_rates')
             .update(updates)
             .eq('id', id)
-            .select()
+            .select('*')
             .single();
         if (error) throw error;
         return data;
@@ -358,6 +365,45 @@ export const projectService = {
     async deleteLaborRate(id: string) {
         const { error } = await supabase
             .from('project_labor_rates')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+    },
+
+    // Labor Categories
+    async getLaborCategories() {
+        const { data, error } = await supabase
+            .from('project_labor_categories')
+            .select('*')
+            .order('name');
+        if (error) throw error;
+        return data || [];
+    },
+
+    async addLaborCategory(category: any) {
+        const { data, error } = await supabase
+            .from('project_labor_categories')
+            .insert(category)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async updateLaborCategory(id: string, updates: any) {
+        const { data, error } = await supabase
+            .from('project_labor_categories')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteLaborCategory(id: string) {
+        const { error } = await supabase
+            .from('project_labor_categories')
             .delete()
             .eq('id', id);
         if (error) throw error;
@@ -394,6 +440,45 @@ export const projectService = {
     async deleteWorkerActivity(id: string) {
         const { error } = await supabase
             .from('project_worker_activities')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+    },
+
+    // Worker Types
+  async getWorkerTypes() {
+    const { data, error } = await supabase
+      .from('worker_types')
+      .select('*')
+      .order('name');
+    if (error) throw error;
+    return (data || []) as EmployeeWorkerType[];
+  },
+
+  async addWorkerType(type: Omit<EmployeeWorkerType, 'id' | 'created_at'>) {
+    const { data, error } = await supabase
+      .from('worker_types')
+      .insert(type)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as EmployeeWorkerType;
+  },
+
+  async updateWorkerType(id: string, type: Partial<Omit<EmployeeWorkerType, 'id' | 'created_at'>>) {
+    const { data, error } = await supabase
+      .from('worker_types')
+      .update(type)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as EmployeeWorkerType;
+  },
+
+    async deleteWorkerType(id: string) {
+        const { error } = await supabase
+            .from('worker_types')
             .delete()
             .eq('id', id);
         if (error) throw error;

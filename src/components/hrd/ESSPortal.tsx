@@ -196,7 +196,15 @@ export function ESSPortal() {
     }
 
     // Check if we should block the portal
-    const isAttendanceRequired = user?.role !== 'Administrator' || (attendanceSettings?.admin_attendance_required ?? true);
+    const isTukang = employee?.position?.toLowerCase().includes('tukang') || 
+                     employee?.position?.toLowerCase().includes('pekerja') ||
+                     employee?.department?.toLowerCase().includes('tukang');
+
+    let isAttendanceRequired = user?.role !== 'Administrator' || (attendanceSettings?.admin_attendance_required ?? true);
+    
+    if (isTukang && attendanceSettings && attendanceSettings.worker_attendance_required === false) {
+        isAttendanceRequired = false;
+    }
 
     if (!user?.employee_id && isAttendanceRequired) {
         return (
@@ -333,7 +341,9 @@ export function ESSPortal() {
                         <TabsTrigger value="attendance" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Absensi</TabsTrigger>
                         <TabsTrigger value="leave" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Cuti</TabsTrigger>
                         <TabsTrigger value="payroll" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Gaji</TabsTrigger>
-                        <TabsTrigger value="pipeline" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Pipeline</TabsTrigger>
+                        {user?.role === 'Administrator' && (
+                            <TabsTrigger value="pipeline" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Pipeline</TabsTrigger>
+                        )}
                         <TabsTrigger value="loan" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Kasbon</TabsTrigger>
                         <TabsTrigger value="reward" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Reward</TabsTrigger>
                     </TabsList>
@@ -460,9 +470,11 @@ export function ESSPortal() {
                     <PayrollManagement />
                 </TabsContent>
 
-                <TabsContent value="pipeline">
-                    <UserPipeline />
-                </TabsContent>
+                {user?.role === 'Administrator' && (
+                    <TabsContent value="pipeline">
+                        <UserPipeline />
+                    </TabsContent>
+                )}
 
                 <TabsContent value="loan">
                     <LoanManagement />

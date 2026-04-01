@@ -358,11 +358,27 @@ export function AttendanceManagement() {
   // Modified: Logic to exclude holidays
   const isTodayHoliday = getWorkSchedule(today, attendanceSettings?.attendance_holidays || []).isHoliday;
 
-  const notPresentToday = isTodayHoliday ? [] : employees.filter(emp =>
-    !todayAttendance.some(att => att.employee_id === emp.id)
-  );
+  const notPresentToday = isTodayHoliday ? [] : employees.filter(emp => {
+    const isTukang = (emp.position || '').toLowerCase().includes('tukang') || 
+                    (emp.position || '').toLowerCase().includes('pekerja') ||
+                    (emp.departments?.name || '').toLowerCase().includes('lapangan');
+    
+    // Jika Tukang dan absensi online tidak wajib, jangan tampilkan di daftar "Belum Absen"
+    if (!attendanceSettings?.worker_attendance_required && isTukang) {
+      return false;
+    }
+
+    return !todayAttendance.some(att => att.employee_id === emp.id);
+  });
 
   // Calculate statistics
+  const requiredEmployeesCount = employees.filter(emp => {
+    const isTukang = (emp.position || '').toLowerCase().includes('tukang') || 
+                    (emp.position || '').toLowerCase().includes('pekerja') ||
+                    (emp.departments?.name || '').toLowerCase().includes('lapangan');
+    return attendanceSettings?.worker_attendance_required || !isTukang;
+  }).length;
+
   const stats = {
     totalEmployees: employees.length,
     presentToday: todayAttendance.filter(att => ['present', 'late'].includes(att.status)).length,
@@ -370,8 +386,8 @@ export function AttendanceManagement() {
     absentToday: isTodayHoliday ? 0 : todayAttendance.filter(att => att.status === 'absent').length,
     isHoliday: isTodayHoliday,
     notYetPresentToday: notPresentToday.length,
-    attendanceRate: employees.length > 0 ?
-      Math.round((todayAttendance.filter(att => ['present', 'late'].includes(att.status)).length / employees.length) * 100) : 0
+    attendanceRate: requiredEmployeesCount > 0 ?
+      Math.min(100, Math.round((todayAttendance.filter(att => ['present', 'late'].includes(att.status)).length / requiredEmployeesCount) * 100)) : 0
   };
 
   // Reset form

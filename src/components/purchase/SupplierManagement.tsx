@@ -503,7 +503,17 @@ export function SupplierManagement() {
               )}
 
               {(visibleColumns.deposit || visibleColumns.debt) && (
-                <div className={`mt-4 p-3 rounded-lg ${isInventory ? 'bg-inventory/5' : 'bg-orange-50'} border border-dashed ${isInventory ? 'border-inventory/20' : 'border-orange-200'}`}>
+                <div 
+                  className={`mt-4 p-3 rounded-lg border border-dashed cursor-pointer transition-all hover:bg-opacity-80 active:scale-95 ${
+                    isInventory 
+                      ? 'bg-inventory/5 border-inventory/20 hover:bg-inventory/10' 
+                      : 'bg-orange-50 border-orange-200 hover:bg-orange-100'
+                  }`}
+                  onClick={() => {
+                    setSelectedSupplierForDeposit(supplier);
+                    setShowDepositDialog(true);
+                  }}
+                >
                   {visibleColumns.deposit && (
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-medium text-gray-500 flex items-center gap-1">

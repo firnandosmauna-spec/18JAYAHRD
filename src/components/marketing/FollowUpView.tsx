@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import {
     Table,
     TableBody,
@@ -92,6 +93,7 @@ export default function FollowUpView() {
         occupation: ''
     });
     const { toast } = useToast();
+    const { user } = useAuth();
 
     // Approval State
     const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
@@ -395,7 +397,7 @@ export default function FollowUpView() {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Follow Up Konsumen (V3 - {new Date().toLocaleTimeString()})</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">Follow Up Konsumen</h2>
                     <p className="text-muted-foreground">
                         Kelola dan pantau interaksi dengan calon konsumen
                     </p>
@@ -484,55 +486,40 @@ export default function FollowUpView() {
                     </Dialog>
 
                     {/* Sanction Settings Dialog */}
-                    <Dialog open={sanctionDialogOpen} onOpenChange={setSanctionDialogOpen}>
-                        <DialogContent className="sm:max-w-[425px]">
-                            <DialogHeader>
-                                <DialogTitle>Pengaturan Sanksi Keterlambatan</DialogTitle>
-                                <DialogDescription>
-                                    Konfigurasi batas waktu follow up sebelum sanksi diterapkan.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="grid gap-4 py-4">
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor="hours" className="text-right col-span-2">
-                                        Batas Waktu (Jam)
-                                    </Label>
-                                    <Input
-                                        id="hours"
-                                        type="number"
-                                        value={maxFollowUpHours}
-                                        onChange={(e) => setMaxFollowUpHours(Number(e.target.value))}
-                                        className="col-span-2"
-                                    />
+                    {user?.role === 'Administrator' && (
+                        <Dialog open={sanctionDialogOpen} onOpenChange={setSanctionDialogOpen}>
+                            <DialogContent className="sm:max-w-[425px]">
+                                <DialogHeader>
+                                    <DialogTitle>Pengaturan Sanksi Keterlambatan</DialogTitle>
+                                    <DialogDescription>
+                                        Konfigurasi batas waktu follow up sebelum sanksi diterapkan.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-4 py-4">
+                                    <div className="grid grid-cols-4 items-center gap-4">
+                                        <Label htmlFor="hours" className="text-right col-span-2">
+                                            Batas Waktu (Jam)
+                                        </Label>
+                                        <Input
+                                            id="hours"
+                                            type="number"
+                                            value={maxFollowUpHours}
+                                            onChange={(e) => setMaxFollowUpHours(Number(e.target.value))}
+                                            className="col-span-2"
+                                        />
+                                    </div>
+                                    <p className="text-xs text-muted-foreground text-center">
+                                        Jika follow up tidak dilakukan dalam {maxFollowUpHours} jam sejak data masuk, marketing akan terkena sanksi (Badge Merah).
+                                    </p>
                                 </div>
-                                <p className="text-xs text-muted-foreground text-center">
-                                    Jika follow up tidak dilakukan dalam {maxFollowUpHours} jam sejak data masuk, marketing akan terkena sanksi (Badge Merah).
-                                </p>
-                            </div>
-                            <DialogFooter>
-                                <Button onClick={() => setSanctionDialogOpen(false)}>Simpan Pengaturan</Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                                <DialogFooter>
+                                    <Button onClick={() => setSanctionDialogOpen(false)}>Simpan Pengaturan</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    )}
 
-                    <Button onClick={async () => {
-                        const { error } = await supabase.from('consumer_profiles').insert({
-                            code: `C-${Date.now()}`,
-                            name: 'Budi Santoso (Sample)',
-                            phone: '081234567890',
-                            address: 'Jl. Merdeka No. 45, Jakarta',
-                            occupation: 'Wiraswasta',
-                            sales_person: 'Andi'
-                        });
-                        if (error) {
-                            alert('Gagal seed: ' + error.message);
-                        } else {
-                            alert('Data sample berhasil ditambahkan. Refresh halaman.');
-                            fetchConsumers();
-                        }
-                    }} variant="secondary" size="sm">
-                        + Isi Data Contoh (Seed)
-                    </Button>
+
                     <Button onClick={() => openFollowUpDialog()} className="bg-indigo-600 hover:bg-indigo-700">
                         <Plus className="w-4 h-4 mr-2" />
                         Tambah Follow Up
@@ -552,15 +539,17 @@ export default function FollowUpView() {
                     />
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button
-                        variant="ghost"
-                        onClick={() => setSanctionDialogOpen(true)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                        <Clock className="h-4 w-4 mr-2" />
-                        Pengaturan Sanksi
-                        {countSanctions() > 0 && <Badge variant="destructive" className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px]">{countSanctions()}</Badge>}
-                    </Button>
+                    {user?.role === 'Administrator' && (
+                        <Button
+                            variant="ghost"
+                            onClick={() => setSanctionDialogOpen(true)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                            <Clock className="h-4 w-4 mr-2" />
+                            Pengaturan Sanksi
+                            {countSanctions() > 0 && <Badge variant="destructive" className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px]">{countSanctions()}</Badge>}
+                        </Button>
+                    )}
                     <Button variant="outline" className="gap-2">
                         <Filter className="h-4 w-4" />
                         Filter Status

@@ -9,7 +9,8 @@ import {
   Trash2, 
   Loader2, 
   CheckCircle, 
-  X
+  X,
+  Layers
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +43,7 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { useEmployees } from '@/hooks/useSupabase';
-import { useProjectLaborRates } from '@/hooks/useProject';
+import { useProjectLaborRates, useWorkerTypes } from '@/hooks/useProject';
 
 export function WorkerManagement() {
   const { 
@@ -61,6 +62,14 @@ export function WorkerManagement() {
     deleteRate, 
     refetch: refetchRates 
   } = useProjectLaborRates();
+  const { 
+    workerTypes, 
+    loading: workerTypesLoading, 
+    addWorkerType, 
+    updateWorkerType, 
+    deleteWorkerType, 
+    refetch: refetchWorkerTypes 
+  } = useWorkerTypes();
   const { toast } = useToast();
   
   const [activeTab, setActiveTab] = useState('workers');
@@ -76,6 +85,14 @@ export function WorkerManagement() {
     description: ''
   });
 
+  // Worker Type Form State
+  const [showWorkerTypeDialog, setShowWorkerTypeDialog] = useState(false);
+  const [workerTypeForm, setWorkerTypeForm] = useState({
+    id: '',
+    name: '',
+    description: ''
+  });
+
   // Worker Form State
   const [showWorkerDialog, setShowWorkerDialog] = useState(false);
   const [workerForm, setWorkerForm] = useState({
@@ -85,7 +102,8 @@ export function WorkerManagement() {
     phone: '',
     email: '',
     join_date: new Date().toISOString().split('T')[0],
-    status: 'active' as 'active' | 'inactive'
+    status: 'active' as 'active' | 'inactive',
+    worker_type_id: 'none'
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -113,7 +131,7 @@ export function WorkerManagement() {
         name: rate.name,
         unit: rate.unit,
         default_rate: rate.default_rate,
-        description: rate.description || ''
+        description: ''
       });
     } else {
       setRateForm({
@@ -182,7 +200,8 @@ export function WorkerManagement() {
         phone: worker.phone || '',
         email: worker.email || '',
         join_date: worker.join_date || new Date().toISOString().split('T')[0],
-        status: (worker.status as 'active' | 'inactive') || 'active'
+        status: (worker.status as 'active' | 'inactive') || 'active',
+        worker_type_id: worker.worker_type_id || 'none'
       });
     } else {
       setWorkerForm({
@@ -192,7 +211,8 @@ export function WorkerManagement() {
         phone: '',
         email: '',
         join_date: new Date().toISOString().split('T')[0],
-        status: 'active'
+        status: 'active',
+        worker_type_id: 'none'
       });
     }
     setShowWorkerDialog(true);
@@ -210,10 +230,12 @@ export function WorkerManagement() {
         await updateEmployee(workerForm.id, {
           name: workerForm.name,
           position: workerForm.position,
-          phone: workerForm.phone || null,
-          email: workerForm.email || null,
+          phone: workerForm.phone?.trim() || null,
+          email: workerForm.email?.trim() || null,
           join_date: workerForm.join_date,
-          status: workerForm.status
+          status: workerForm.status,
+          // @ts-ignore
+          worker_type_id: workerForm.worker_type_id === 'none' ? null : workerForm.worker_type_id
         });
         toast({ title: "Berhasil", description: "Data tukang diperbarui" });
       } else {
@@ -225,8 +247,10 @@ export function WorkerManagement() {
           status: workerForm.status,
           join_date: workerForm.join_date,
           salary: 0, // Workers usually paid by labor rates
-          phone: workerForm.phone || null,
-          email: workerForm.email || null,
+          phone: workerForm.phone?.trim() || null,
+          email: workerForm.email?.trim() || null,
+          // @ts-ignore
+          worker_type_id: workerForm.worker_type_id === 'none' ? null : workerForm.worker_type_id,
           address: '',
           bank: '',
           bank_account: '',
@@ -256,6 +280,66 @@ export function WorkerManagement() {
       refetchEmployees();
     } catch (err: any) {
       toast({ title: "Gagal", description: err.message || "Gagal menghapus data", variant: "destructive" });
+    }
+  };
+
+  // Worker Type Handlers
+  const handleOpenWorkerTypeDialog = (type?: any) => {
+    if (type) {
+      setWorkerTypeForm({
+        id: type.id,
+        name: type.name,
+        description: type.description || ''
+      });
+    } else {
+      setWorkerTypeForm({
+        id: '',
+        name: '',
+        description: ''
+      });
+    }
+    setShowWorkerTypeDialog(true);
+  };
+
+  const handleSaveWorkerType = async () => {
+    if (!workerTypeForm.name) {
+      toast({ title: "Error", description: "Nama tipe wajib diisi", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      if (workerTypeForm.id) {
+        await updateWorkerType(workerTypeForm.id, {
+          name: workerTypeForm.name,
+          description: workerTypeForm.description
+        });
+        toast({ title: "Berhasil", description: "Tipe pekerja diperbarui" });
+      } else {
+        await addWorkerType({
+          name: workerTypeForm.name,
+          description: workerTypeForm.description
+        });
+        toast({ title: "Berhasil", description: "Tipe pekerja ditambahkan" });
+      }
+      setShowWorkerTypeDialog(false);
+      refetchWorkerTypes();
+    } catch (err: any) {
+      toast({ title: "Gagal", description: err.message || "Gagal menyimpan tipe pekerja", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteWorkerType = async (id: string) => {
+    if (!confirm('Yakin ingin menghapus tipe pekerja ini? Pekerja dengan tipe ini akan kembali ke tanpa tipe.')) return;
+    try {
+      await deleteWorkerType(id);
+      toast({ title: "Berhasil", description: "Tipe pekerja dihapus" });
+      refetchWorkerTypes();
+      refetchEmployees();
+    } catch (err: any) {
+      toast({ title: "Gagal", description: err.message || "Gagal menghapus tipe pekerja", variant: "destructive" });
     }
   };
 
@@ -290,10 +374,15 @@ export function WorkerManagement() {
               <Plus className="w-4 h-4 mr-2" />
               Tambah Tukang
             </Button>
-          ) : (
+          ) : activeTab === 'rates' ? (
             <Button onClick={() => handleOpenRateDialog()} className="bg-hrd hover:bg-hrd/90">
               <Plus className="w-4 h-4 mr-2" />
               Tambah Upah
+            </Button>
+          ) : (
+            <Button onClick={() => handleOpenWorkerTypeDialog()} className="bg-hrd hover:bg-hrd/90">
+              <Plus className="w-4 h-4 mr-2" />
+              Tambah Tipe
             </Button>
           )}
         </div>
@@ -308,6 +397,10 @@ export function WorkerManagement() {
           <TabsTrigger value="rates" className="data-[state=active]:bg-white">
             <Hammer className="w-4 h-4 mr-2" />
             Master Upah
+          </TabsTrigger>
+          <TabsTrigger value="worker_types" className="data-[state=active]:bg-white">
+            <Plus className="w-4 h-4 mr-2" />
+            Tipe Pekerjaan
           </TabsTrigger>
         </TabsList>
 
@@ -327,6 +420,7 @@ export function WorkerManagement() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nama</TableHead>
+                      <TableHead>Tipe</TableHead>
                       <TableHead>Posisi</TableHead>
                       <TableHead>Telepon</TableHead>
                       <TableHead>Status</TableHead>
@@ -344,7 +438,18 @@ export function WorkerManagement() {
                     ) : (
                       tukangWorkers.map((worker) => (
                         <TableRow key={worker.id}>
-                          <TableCell className="font-medium">{worker.name}</TableCell>
+                          <TableCell className="font-medium text-hrd">{worker.name}</TableCell>
+                          <TableCell>
+                            {/* @ts-ignore */}
+                            {worker.worker_types?.name ? (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                {/* @ts-ignore */}
+                                {worker.worker_types.name}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs italic">Tanpa Tipe</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="font-normal capitalize">
                               {worker.position || '-'}
@@ -416,7 +521,7 @@ export function WorkerManagement() {
                   <TableBody>
                     {filteredRates.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                           Belum ada data upah. Klik "Tambah Upah" untuk memulai.
                         </TableCell>
                       </TableRow>
@@ -448,6 +553,70 @@ export function WorkerManagement() {
                                 size="icon" 
                                 className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
                                 onClick={() => handleDeleteRate(rate.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="worker_types" className="m-0">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Tipe Pekerjaan Tukang</CardTitle>
+              <CardDescription>Definisikan kategori pekerjaan seperti Harian, Borongan, dll.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {workerTypesLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-hrd" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nama Tipe</TableHead>
+                      <TableHead>Deskripsi</TableHead>
+                      <TableHead className="text-right">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {workerTypes.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                          Belum ada tipe pekerjaan. Klik "Tambah Tipe" untuk memulai.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      workerTypes.map((type) => (
+                        <TableRow key={type.id}>
+                          <TableCell className="font-medium">{type.name}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {type.description || '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                                onClick={() => handleOpenWorkerTypeDialog(type)}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => handleDeleteWorkerType(type.id)}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </Button>
@@ -529,15 +698,34 @@ export function WorkerManagement() {
                 </Select>
               </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email (Opsional)</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="tukang@email.com"
-                value={workerForm.email}
-                onChange={(e) => setWorkerForm({ ...workerForm, email: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="worker_type">Tipe Pekerjaan</Label>
+                <Select 
+                  value={workerForm.worker_type_id} 
+                  onValueChange={(val: any) => setWorkerForm({ ...workerForm, worker_type_id: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih Tipe" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa Tipe</SelectItem>
+                    {workerTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email (Opsional)</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="tukang@email.com"
+                  value={workerForm.email}
+                  onChange={(e) => setWorkerForm({ ...workerForm, email: e.target.value })}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -617,6 +805,51 @@ export function WorkerManagement() {
             >
               {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
               {rateForm.id ? 'Simpan Perubahan' : 'Tambah Master'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Worker Type Dialog */}
+      <Dialog open={showWorkerTypeDialog} onOpenChange={setShowWorkerTypeDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{workerTypeForm.id ? 'Edit Tipe Pekerjaan' : 'Tambah Tipe Baru'}</DialogTitle>
+            <DialogDescription>
+              Misal: Harian, Borongan, Kontrak, dll.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="type_name">Nama Tipe</Label>
+              <Input
+                id="type_name"
+                placeholder="Misal: Harian"
+                value={workerTypeForm.name}
+                onChange={(e) => setWorkerTypeForm({ ...workerTypeForm, name: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="type_description">Keterangan (Opsional)</Label>
+              <Input
+                id="type_description"
+                placeholder="Deskripsi singkat..."
+                value={workerTypeForm.description}
+                onChange={(e) => setWorkerTypeForm({ ...workerTypeForm, description: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowWorkerTypeDialog(false)}>
+              Batal
+            </Button>
+            <Button 
+              onClick={handleSaveWorkerType} 
+              disabled={isSaving}
+              className="bg-hrd hover:bg-hrd/90"
+            >
+              {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+              {workerTypeForm.id ? 'Simpan' : 'Tambah'}
             </Button>
           </DialogFooter>
         </DialogContent>

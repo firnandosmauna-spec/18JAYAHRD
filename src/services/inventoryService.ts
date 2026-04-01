@@ -11,7 +11,6 @@ export const categoryService = {
       .order('name', { ascending: true })
 
     if (error) {
-      // If table doesn't exist, return empty array instead of throwing
       if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
         console.warn('Product categories table does not exist yet. Please run the schema.sql in Supabase.');
         return [];
@@ -63,7 +62,6 @@ export const warehouseService = {
       .order('name', { ascending: true })
 
     if (error) {
-      // If table doesn't exist, return empty array instead of throwing
       if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
         console.warn('Warehouses table does not exist yet. Please run the schema.sql in Supabase.');
         return [];
@@ -155,7 +153,6 @@ export const productService = {
       return await enrichProductsWithSupplierDebt(products || []);
     } catch (err: any) {
       console.error('Error fetching products:', err);
-      // Fallback
       const { data, error } = await supabase
         .from('products')
         .select(`
@@ -334,7 +331,6 @@ export const productService = {
   },
 
   async updateStock(id: string, quantity: number, operation: 'add' | 'subtract' | 'set' = 'set') {
-    // Get current product
     const { data: product, error: fetchError } = await supabase
       .from('products')
       .select('stock')
@@ -406,7 +402,6 @@ export const stockMovementService = {
     const { data, error } = await query
 
     if (error) {
-      // If table doesn't exist, return empty array instead of throwing
       if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
         console.warn('Stock movements table does not exist yet. Please run the schema.sql in Supabase.');
         return [];
@@ -453,8 +448,39 @@ export const stockMovementService = {
     return data
   },
 
+  async getBySupplier(supplierId: string) {
+    const { data: products } = await supabase
+      .from('products')
+      .select('id')
+      .eq('supplier_id', supplierId);
+
+    if (!products || products.length === 0) return [];
+
+    const productIds = products.map(p => p.id);
+
+    const { data, error } = await supabase
+      .from('stock_movements')
+      .select(`
+        *,
+        products (
+          id,
+          name,
+          sku,
+          unit,
+          supplier_id,
+          suppliers (name)
+        ),
+        warehouses (id, name),
+        payment_methods (id, name)
+      `)
+      .in('product_id', productIds)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
   async create(movement: Omit<StockMovement, 'id' | 'created_at' | 'updated_at'>) {
-    // Start transaction-like operation
     const { data: movementData, error: movementError } = await supabase
       .from('stock_movements')
       .insert(movement)
@@ -472,7 +498,6 @@ export const stockMovementService = {
 
     if (movementError) throw movementError
 
-    // Update product stock based on movement type
     const { data: product } = await supabase
       .from('products')
       .select('stock')
@@ -481,7 +506,6 @@ export const stockMovementService = {
 
     if (product) {
       let newStock = product.stock || 0
-
       if (movement.movement_type === 'in' || movement.movement_type === 'adjustment') {
         newStock += movement.quantity
       } else if (movement.movement_type === 'out') {
@@ -496,11 +520,36 @@ export const stockMovementService = {
       if (updateError) throw updateError
     }
 
+    if (movement.payment_method_id && movement.movement_type === 'in') {
+      const { data: pm } = await supabase
+        .from('payment_methods')
+        .select('name')
+        .eq('id', movement.payment_method_id)
+        .single();
+
+      if (pm?.name?.toLowerCase().trim() === 'deposit') {
+        const { data: prod } = await supabase
+          .from('products')
+          .select('supplier_id, name')
+          .eq('id', movement.product_id)
+          .single();
+
+        if (prod?.supplier_id) {
+          await supabase.from('supplier_deposits').insert({
+            supplier_id: prod.supplier_id,
+            amount: movement.quantity * (movement.unit_price || 0),
+            type: 'usage',
+            description: `Belanja Material: ${prod.name} x ${movement.quantity} (Ref: ${movement.reference || 'Manual'})`,
+            reference_id: movementData.id
+          });
+        }
+      }
+    }
+
     return movementData
   },
 
   async update(id: string, updates: Partial<StockMovement>) {
-    // 1. Get old movement
     const { data: oldMovement, error: fetchError } = await supabase
       .from('stock_movements')
       .select('*')
@@ -509,7 +558,6 @@ export const stockMovementService = {
 
     if (fetchError) throw fetchError
 
-    // 2. Update movement
     const { data: movementData, error: updateError } = await supabase
       .from('stock_movements')
       .update(updates)
@@ -528,7 +576,6 @@ export const stockMovementService = {
 
     if (updateError) throw updateError
 
-    // 3. Adjust stock
     const { data: product } = await supabase
       .from('products')
       .select('stock')
@@ -537,15 +584,12 @@ export const stockMovementService = {
 
     if (product) {
       let currentStock = product.stock || 0
-
-      // Reverse old movement
       if (oldMovement.movement_type === 'in' || oldMovement.movement_type === 'adjustment') {
         currentStock -= oldMovement.quantity
       } else if (oldMovement.movement_type === 'out') {
         currentStock += oldMovement.quantity
       }
 
-      // Apply new movement
       const finalMovement = { ...oldMovement, ...updates }
       if (finalMovement.movement_type === 'in' || finalMovement.movement_type === 'adjustment') {
         currentStock += finalMovement.quantity
@@ -559,11 +603,38 @@ export const stockMovementService = {
         .eq('id', oldMovement.product_id)
     }
 
+    await supabase.from('supplier_deposits').delete().eq('reference_id', id).eq('type', 'usage');
+    const finalMov = { ...oldMovement, ...updates };
+    if (finalMov.payment_method_id && finalMov.movement_type === 'in') {
+      const { data: pm } = await supabase
+        .from('payment_methods')
+        .select('name')
+        .eq('id', finalMov.payment_method_id)
+        .single();
+
+      if (pm?.name?.toLowerCase().includes('deposit')) {
+        const { data: prod } = await supabase
+          .from('products')
+          .select('supplier_id, name')
+          .eq('id', finalMov.product_id)
+          .single();
+
+        if (prod?.supplier_id) {
+          await supabase.from('supplier_deposits').insert({
+            supplier_id: prod.supplier_id,
+            amount: finalMov.quantity * (finalMov.unit_price || 0),
+            type: 'usage',
+            description: `Pembelian produk: ${prod.name} (Ref: ${finalMov.reference || '-'})`,
+            reference_id: id
+          });
+        }
+      }
+    }
+
     return movementData
   },
 
   async delete(id: string) {
-    // 1. Get movement to reverse stock
     const { data: movement, error: fetchError } = await supabase
       .from('stock_movements')
       .select('*')
@@ -572,7 +643,6 @@ export const stockMovementService = {
 
     if (fetchError) throw fetchError
 
-    // 2. Adjust stock
     const { data: product } = await supabase
       .from('products')
       .select('stock')
@@ -593,13 +663,8 @@ export const stockMovementService = {
         .eq('id', movement.product_id)
     }
 
-    // 3. Delete movement
-    const { error } = await supabase
-      .from('stock_movements')
-      .delete()
-      .eq('id', id)
-
+    await supabase.from('supplier_deposits').delete().eq('reference_id', id).eq('type', 'usage');
+    const { error } = await supabase.from('stock_movements').delete().eq('id', id)
     if (error) throw error
   }
 }
-

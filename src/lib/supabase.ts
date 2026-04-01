@@ -254,9 +254,18 @@ export interface Employee {
   sales_target?: number
   sales_achieved?: number
   attendance_score: number
-  innovation_projects?: number
+  innovation_projects?: number;
   team_leadership?: boolean;
   customer_rating?: number;
+  worker_type_id?: string | null;
+  worker_types?: {
+      id: string;
+      name: string;
+  };
+  departments?: {
+    id: string;
+    name: string;
+  };
   allowances?: { title: string; amount: number }[];
   deductions?: { title: string; amount: number }[];
   contract_file_url?: string | null;

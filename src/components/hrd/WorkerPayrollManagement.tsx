@@ -105,9 +105,8 @@ export function WorkerPayrollManagement() {
         }
     }, [selectedLocation, projects, initialProjectId]);
 
-    // Form State
     const [formData, setFormData] = useState({
-        worker_id: '',
+        employee_id: '',
         working_days: '1',
         daily_rate: '',
         late_deduction: '0',
@@ -117,6 +116,13 @@ export function WorkerPayrollManagement() {
         payment_date: new Date().toISOString().split('T')[0]
     });
 
+    const tukangEmployees = employees.filter(emp => 
+        emp.position?.toLowerCase().includes('tukang') || 
+        emp.position?.toLowerCase().includes('pekerja') ||
+        emp.department?.toLowerCase().includes('tukang') ||
+        emp.worker_type_id // Or check worker_types if joined
+    );
+
     // Worker Hooks (conditional on project selection)
     const { workers, loading: workersLoading } = useProjectWorkers(selectedProjectId);
     const { payments, loading: paymentsLoading, addPayment, deletePayment, refetch: refetchPayments } = useProjectWorkerPayments(selectedProjectId);
@@ -124,16 +130,18 @@ export function WorkerPayrollManagement() {
 
     // Load worker details when selected
     useEffect(() => {
-        if (formData.worker_id && workers.length > 0) {
-            const worker = workers.find(w => w.id === formData.worker_id);
-            if (worker) {
+        if (formData.employee_id) {
+            const employee = employees.find(e => e.id === formData.employee_id);
+            if (employee) {
+                // Find if already a worker in this project to get their specific rate
+                const projectWorker = workers.find(w => w.employee_id === formData.employee_id);
                 setFormData(prev => ({
                     ...prev,
-                    daily_rate: worker.daily_rate?.toString() || ''
+                    daily_rate: projectWorker?.daily_rate?.toString() || employee.salary?.toString() || ''
                 }));
             }
         }
-    }, [formData.worker_id, workers]);
+    }, [formData.employee_id, employees, workers]);
 
     // Derived Calculations
     const calculateTotal = () => {
@@ -145,7 +153,7 @@ export function WorkerPayrollManagement() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedProjectId || !formData.worker_id) {
+        if (!selectedProjectId || !formData.employee_id) {
             toast({
                 title: "Error",
                 description: "Mohon pilih proyek dan tukang",
@@ -158,10 +166,30 @@ export function WorkerPayrollManagement() {
             setIsSubmitting(true);
             const totalAmount = calculateTotal();
             
+            // 0. Ensure worker is assigned to project
+            let workerIdToUse = '';
+            const existingWorker = workers.find(w => w.employee_id === formData.employee_id);
+            
+            if (existingWorker) {
+                workerIdToUse = existingWorker.id;
+            } else {
+                // Auto-assign to project
+                const employee = employees.find(e => e.id === formData.employee_id);
+                const newWorker = await projectService.addWorker({
+                    project_id: selectedProjectId,
+                    employee_id: formData.employee_id,
+                    role: employee?.position || 'Tukang',
+                    daily_rate: parseFloat(formData.daily_rate) || 0,
+                    status: 'active',
+                    joined_at: new Date().toISOString()
+                });
+                workerIdToUse = newWorker.id;
+            }
+
             // 1. Add Payment
             await addPayment({
                 project_id: selectedProjectId,
-                worker_id: formData.worker_id,
+                worker_id: workerIdToUse,
                 amount: totalAmount,
                 payment_date: formData.payment_date,
                 working_days: parseFloat(formData.working_days),
@@ -192,7 +220,7 @@ export function WorkerPayrollManagement() {
             
             setShowAddForm(false);
             setFormData({
-                worker_id: '',
+                employee_id: '',
                 working_days: '1',
                 daily_rate: '',
                 late_deduction: '0',
@@ -390,23 +418,21 @@ export function WorkerPayrollManagement() {
                                         <div className="space-y-2">
                                             <Label>Nama Tukang</Label>
                                             <Select 
-                                                value={formData.worker_id} 
-                                                onValueChange={(val) => setFormData(prev => ({ ...prev, worker_id: val }))}
+                                                value={formData.employee_id} 
+                                                onValueChange={(val) => setFormData(prev => ({ ...prev, employee_id: val }))}
                                             >
                                                 <SelectTrigger>
-                                                    <SelectValue placeholder="Pilih Tukang" />
+                                                    <SelectValue placeholder="Pilih Tukang dari Master Karyawan" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {workers.map(w => {
-                                                        const emp = employees.find(e => e.id === w.employee_id);
-                                                        return (
-                                                            <SelectItem key={w.id} value={w.id!}>
-                                                                {emp?.name || 'Unknown Worker'} - {w.role}
-                                                            </SelectItem>
-                                                        );
-                                                    })}
+                                                    {tukangEmployees.map(emp => (
+                                                        <SelectItem key={emp.id} value={emp.id}>
+                                                            {emp.name} - {emp.position}
+                                                        </SelectItem>
+                                                    ))}
                                                 </SelectContent>
                                             </Select>
+                                            <p className="text-[10px] text-muted-foreground italic">Pekerja otomatis ditambahkan ke proyek jika belum terdaftar</p>
                                         </div>
 
                                         <div className="space-y-2">

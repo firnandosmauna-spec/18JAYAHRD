@@ -49,13 +49,14 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useProducts, useWarehouses, useStockMovements, useProjectLocations } from '../../hooks/useInventory';
-import { usePurchaseInvoices } from '../../hooks/usePurchase';
+import { usePurchaseInvoices, useSuppliers } from '../../hooks/usePurchase';
 import { useToast } from '../ui/use-toast';
 import { format } from 'date-fns';
 import { paymentMethodService, PaymentMethod } from '../../services/paymentMethodService';
+import { PurchaseService } from '../../services/purchaseService';
 import { cn } from '../../lib/utils';
 import type { Product } from '../../lib/supabase';
-import type { PurchaseInvoice } from '@/types/purchase';
+import type { PurchaseInvoice, Supplier } from '@/types/purchase';
 
 interface StockMovement {
     id: string;
@@ -82,6 +83,7 @@ export function MaterialPurchaseManagement() {
     const { locations: projectLocations } = useProjectLocations();
     const { movements, loading, addMovement, updateMovement, deleteMovement, refetch } = useStockMovements();
     const { invoices } = usePurchaseInvoices();
+    const { suppliers, loading: loadingSuppliers, refetch: refetchSuppliers } = useSuppliers();
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState('');
     const [showAddDialog, setShowAddDialog] = useState(false);
@@ -279,6 +281,12 @@ export function MaterialPurchaseManagement() {
         }
     };
 
+    const selectedProduct = (products as any[]).find(p => p.id === formData.product_id);
+    const selectedSupplier = selectedProduct?.suppliers;
+    const supplierBalance = suppliers.find(s => s.id === selectedSupplier?.id);
+
+    const isDepositAvailable = (supplierBalance?.deposit_balance || 0) > 0;
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -286,293 +294,377 @@ export function MaterialPurchaseManagement() {
                     <h2 className="text-2xl font-bold text-[#1C1C1E] font-display">Belanja Material</h2>
                     <p className="text-muted-foreground font-body">Catat penambahan material ke gudang</p>
                 </div>
-                <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-                    <DialogTrigger asChild>
-                        <Button className="bg-green-600 hover:bg-green-700">
-                            <Plus className="w-4 h-4 mr-2" />
-                            Tambah Material
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md">
-                        <DialogHeader>
-                            <DialogTitle className="font-display">Catat Belanja Material</DialogTitle>
-                            <DialogDescription className="font-body">
-                                Masukkan detail penerimaan material
-                            </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleAdd} className="space-y-4 pt-4">
-                            <div className="space-y-2">
-                                <Label className="font-body">Pilih Produk *</Label>
-                                <Select
-                                    value={formData.product_id}
-                                    onValueChange={(val: string) => {
-                                        const p = (products as any[]).find((prod: any) => prod.id === val);
-                                        setFormData({
-                                            ...formData,
-                                            product_id: val,
-                                            unit_price: p?.cost?.toString() || ''
-                                        });
-                                    }}
-                                    required
-                                >
-                                    <SelectTrigger className="font-body">
-                                        <SelectValue placeholder="Cari produk..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {(products as any[]).map((p: any) => (
-                                            <SelectItem key={p.id} value={p.id} className="font-body">
-                                                {p.name} ({p.sku})
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => refetchSuppliers()} className="font-body">
+                        Refresh Saldo
+                    </Button>
+                    <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+                        <DialogTrigger asChild>
+                            <Button className="bg-green-600 hover:bg-green-700">
+                                <Plus className="w-4 h-4 mr-2" />
+                                Tambah Material
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+                            <DialogHeader>
+                                <DialogTitle className="font-display">Catat Belanja Material</DialogTitle>
+                                <DialogDescription className="font-body">
+                                    Masukkan detail penerimaan material
+                                </DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleAdd} className="space-y-4 pt-4">
                                 <div className="space-y-2">
-                                    <Label className="font-body text-xs">Jumlah *</Label>
-                                    <Input
-                                        type="number"
-                                        placeholder="0"
-                                        value={formData.quantity}
-                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, quantity: e.target.value })}
-                                        required
-                                        className="font-mono"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="font-body text-xs">Gudang</Label>
+                                    <Label className="font-body">Pilih Produk *</Label>
                                     <Select
-                                        value={formData.warehouse_id}
-                                        onValueChange={(val: string) => setFormData({ ...formData, warehouse_id: val })}
+                                        value={formData.product_id}
+                                        onValueChange={(val: string) => {
+                                            const p = (products as any[]).find((prod: any) => prod.id === val);
+                                            setFormData({
+                                                ...formData,
+                                                product_id: val,
+                                                unit_price: p?.cost?.toString() || ''
+                                            });
+                                        }}
+                                        required
                                     >
                                         <SelectTrigger className="font-body">
-                                            <SelectValue placeholder="Pilih gudang" />
+                                            <SelectValue placeholder="Cari produk..." />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {(warehouses as any[]).map((w: any) => (
-                                                <SelectItem key={w.id} value={w.id} className="font-body">
-                                                    {w.name}
+                                            {(products as any[]).map((p: any) => (
+                                                <SelectItem key={p.id} value={p.id} className="font-body">
+                                                    {p.name} ({p.sku})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {selectedSupplier && (
+                                        <div className="flex items-center justify-between mt-1 px-1">
+                                            <span className="text-[10px] text-muted-foreground">Supplier: {selectedSupplier.name}</span>
+                                            {isDepositAvailable && (
+                                                <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                                                    Saldo Deposit: {formatCurrency(supplierBalance?.deposit_balance || 0)}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="font-body text-xs">Jumlah *</Label>
+                                        <Input
+                                            type="number"
+                                            placeholder="0"
+                                            value={formData.quantity}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, quantity: e.target.value })}
+                                            required
+                                            className="font-mono"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="font-body text-xs">Gudang</Label>
+                                        <Select
+                                            value={formData.warehouse_id}
+                                            onValueChange={(val: string) => setFormData({ ...formData, warehouse_id: val })}
+                                        >
+                                            <SelectTrigger className="font-body">
+                                                <SelectValue placeholder="Pilih gudang" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {(warehouses as any[]).map((w: any) => (
+                                                    <SelectItem key={w.id} value={w.id} className="font-body">
+                                                        {w.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="font-body text-xs">Lokasi Proyek</Label>
+                                    <Select
+                                        value={formData.project_location}
+                                        onValueChange={(val: string) => setFormData({ ...formData, project_location: val })}
+                                    >
+                                        <SelectTrigger className="font-body h-10">
+                                            <SelectValue placeholder="Pilih lokasi proyek" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {projectLocations.map((l: string) => (
+                                                <SelectItem key={l} value={l} className="font-body text-xs cursor-pointer">
+                                                    {l}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
 
-                            <div className="space-y-2">
-                                <Label className="font-body text-xs">Lokasi Proyek</Label>
-                                <Select
-                                    value={formData.project_location}
-                                    onValueChange={(val: string) => setFormData({ ...formData, project_location: val })}
-                                >
-                                    <SelectTrigger className="font-body h-10">
-                                        <SelectValue placeholder="Pilih lokasi proyek" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {projectLocations.map((l: string) => (
-                                            <SelectItem key={l} value={l} className="font-body text-xs cursor-pointer">
-                                                {l}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            </div>
+                                <div className="space-y-2">
+                                    <Label className="font-body text-xs">Harga Satuan (IDR) *</Label>
+                                    <Input
+                                        type="number"
+                                        placeholder="0"
+                                        value={formData.unit_price}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, unit_price: e.target.value })}
+                                        required
+                                        className="font-mono"
+                                    />
+                                </div>
 
+                                <div className="space-y-2">
+                                    <Label className="font-body text-xs">No. Referensi (PO/Surat Jalan)</Label>
+                                    <Input
+                                        placeholder="MSK-2024..."
+                                        value={formData.reference}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, reference: e.target.value })}
+                                        className="font-mono"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="font-body text-xs">Cara Pembayaran</Label>
+                                    <Select
+                                        value={formData.payment_method_id}
+                                        onValueChange={(val: string) => setFormData({ ...formData, payment_method_id: val })}
+                                    >
+                                        <SelectTrigger className="font-body text-xs h-9">
+                                            <SelectValue placeholder="Pilih Cara Bayar" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {paymentMethods.map((pm: PaymentMethod) => {
+                                                const isDeposit = pm.name.toLowerCase().includes('deposit');
+                                                const isReferred = isDeposit && isDepositAvailable;
+                                                return (
+                                                    <SelectItem key={pm.id} value={pm.id} className="font-body text-xs">
+                                                        <div className="flex items-center justify-between w-full gap-4">
+                                                            <span>{pm.name}</span>
+                                                            {isReferred && <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-[8px] h-4">Disarankan</Badge>}
+                                                        </div>
+                                                    </SelectItem>
+                                                );
+                                            })}
+                                        </SelectContent>
+                                    </Select>
+                                    {isDepositAvailable && formData.payment_method_id && !paymentMethods.find(pm => pm.id === formData.payment_method_id)?.name.toLowerCase().includes('deposit') && (
+                                        <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
+                                            <TrendingUp className="w-3 h-3" />
+                                            Supplier memiliki saldo deposit. Disarankan menggunakan metode Deposit.
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="font-body text-xs">Keterangan</Label>
+                                    <Input
+                                        placeholder="Tambahkan catatan..."
+                                        value={formData.notes}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, notes: e.target.value })}
+                                        className="font-body"
+                                    />
+                                </div>
+
+                                <DialogFooter className="gap-2 pt-4">
+                                    <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)} className="font-body">
+                                        Batal
+                                    </Button>
+                                    <Button type="submit" disabled={isSubmitting} className="bg-green-600 hover:bg-green-700 font-body">
+                                        {isSubmitting ? 'Menyimpan...' : 'Simpan Material'}
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card className="bg-blue-50/50 border-blue-100">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-blue-600 flex items-center gap-2">
+                            <TrendingUp className="w-4 h-4" />
+                            Total Deposit Tersedia
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-blue-900">
+                            {formatCurrency(suppliers.reduce((acc, s) => acc + (s.deposit_balance || 0), 0))}
+                        </div>
+                        <p className="text-xs text-blue-600 mt-1">Saldo di seluruh supplier</p>
+                    </CardContent>
+                </Card>
+                <Card className="bg-red-50/50 border-red-100">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-red-600 flex items-center gap-2">
+                            <FileText className="w-4 h-4" />
+                            Total Hutang Belum Dibayar
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-red-900">
+                            {formatCurrency(suppliers.reduce((acc, s) => acc + (s.total_debt || 0), 0))}
+                        </div>
+                        <p className="text-xs text-red-600 mt-1">Estimasi hutang ke supplier</p>
+                    </CardContent>
+                </Card>
+                <Card className="md:col-span-2">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <Package className="w-4 h-4" />
+                            Ringkasan Saldo Per Supplier
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="max-h-[120px] overflow-y-auto px-4">
+                        <div className="space-y-2">
+                            {suppliers.filter(s => (s.deposit_balance || 0) > 0 || (s.total_debt || 0) > 0).length === 0 ? (
+                                <p className="text-xs text-muted-foreground italic py-4">Belum ada saldo deposit atau hutang.</p>
+                            ) : (
+                                suppliers.filter(s => (s.deposit_balance || 0) > 0 || (s.total_debt || 0) > 0).map(s => (
+                                    <div key={s.id} className="flex items-center justify-between text-xs border-b border-gray-100 pb-1">
+                                        <span className="font-medium truncate max-w-[150px]">{s.name}</span>
+                                        <div className="flex gap-2">
+                                            {(s.deposit_balance || 0) > 0 && <span className="text-blue-600">Dep: {formatCurrency(s.deposit_balance || 0)}</span>}
+                                            {(s.total_debt || 0) > 0 && <span className="text-red-600">Hut: {formatCurrency(s.total_debt || 0)}</span>}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="font-display">Edit Belanja Material</DialogTitle>
+                        <DialogDescription className="font-body">
+                            Perbarui detail penerimaan material
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleUpdate} className="space-y-4 pt-4">
+                        <div className="space-y-2">
+                            <Label className="font-body">Produk</Label>
+                            <Select
+                                value={formData.product_id}
+                                onValueChange={(val: string) => setFormData({ ...formData, product_id: val })}
+                                disabled
+                            >
+                                <SelectTrigger className="font-body opacity-50">
+                                    <SelectValue placeholder="Produk..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {(products as any[]).map((p: any) => (
+                                        <SelectItem key={p.id} value={p.id} className="font-body">
+                                            {p.name} ({p.sku})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label className="font-body text-xs">Harga Satuan (IDR) *</Label>
+                                <Label className="font-body text-xs">Jumlah *</Label>
                                 <Input
                                     type="number"
                                     placeholder="0"
-                                    value={formData.unit_price}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, unit_price: e.target.value })}
+                                    value={formData.quantity}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, quantity: e.target.value })}
                                     required
                                     className="font-mono"
                                 />
                             </div>
-
                             <div className="space-y-2">
-                                <Label className="font-body text-xs">No. Referensi (PO/Surat Jalan)</Label>
-                                <Input
-                                    placeholder="MSK-2024..."
-                                    value={formData.reference}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, reference: e.target.value })}
-                                    className="font-mono"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="font-body text-xs">Cara Pembayaran</Label>
+                                <Label className="font-body text-xs">Gudang</Label>
                                 <Select
-                                    value={formData.payment_method_id}
-                                    onValueChange={(val: string) => setFormData({ ...formData, payment_method_id: val })}
+                                    value={formData.warehouse_id}
+                                    onValueChange={(val: string) => setFormData({ ...formData, warehouse_id: val })}
                                 >
-                                    <SelectTrigger className="font-body text-xs h-9">
-                                        <SelectValue placeholder="Pilih Cara Bayar" />
+                                    <SelectTrigger className="font-body">
+                                        <SelectValue placeholder="Pilih gudang" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {paymentMethods.map((pm: PaymentMethod) => (
-                                            <SelectItem key={pm.id} value={pm.id} className="font-body text-xs">
-                                                {pm.name}
+                                        {(warehouses as any[]).map((w: any) => (
+                                            <SelectItem key={w.id} value={w.id} className="font-body">
+                                                {w.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
+                        </div>
 
-                            <div className="space-y-2">
-                                <Label className="font-body text-xs">Keterangan</Label>
-                                <Input
-                                    placeholder="Tambahkan catatan..."
-                                    value={formData.notes}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, notes: e.target.value })}
-                                    className="font-body"
-                                />
-                            </div>
+                        <div className="space-y-2">
+                            <Label className="font-body text-xs">Lokasi Proyek</Label>
+                            <Select
+                                value={formData.project_location}
+                                onValueChange={(val: string) => setFormData({ ...formData, project_location: val })}
+                            >
+                                <SelectTrigger className="font-body h-10">
+                                    <SelectValue placeholder="Ganti lokasi proyek..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {projectLocations.map((l: string) => (
+                                        <SelectItem key={l} value={l} className="font-body text-xs cursor-pointer">
+                                            {l}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                            <DialogFooter className="gap-2 pt-4">
-                                <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)} className="font-body">
-                                    Batal
-                                </Button>
-                                <Button type="submit" disabled={isSubmitting} className="bg-green-600 hover:bg-green-700 font-body">
-                                    {isSubmitting ? 'Menyimpan...' : 'Simpan Material'}
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                        <div className="space-y-2">
+                            <Label className="font-body text-xs">No. Referensi (PO/Surat Jalan)</Label>
+                            <Input
+                                placeholder="MSK-2024..."
+                                value={formData.reference}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, reference: e.target.value })}
+                                className="font-mono"
+                            />
+                        </div>
 
-                <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-                    <DialogContent className="max-w-md">
-                        <DialogHeader>
-                            <DialogTitle className="font-display">Edit Belanja Material</DialogTitle>
-                            <DialogDescription className="font-body">
-                                Perbarui detail penerimaan material
-                            </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleUpdate} className="space-y-4 pt-4">
-                            <div className="space-y-2">
-                                <Label className="font-body">Produk</Label>
-                                <Select
-                                    value={formData.product_id}
-                                    onValueChange={(val: string) => setFormData({ ...formData, product_id: val })}
-                                    disabled
-                                >
-                                    <SelectTrigger className="font-body opacity-50">
-                                        <SelectValue placeholder="Produk..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {(products as any[]).map((p: any) => (
-                                            <SelectItem key={p.id} value={p.id} className="font-body">
-                                                {p.name} ({p.sku})
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                        <div className="space-y-2">
+                            <Label className="font-body text-xs">Cara Pembayaran</Label>
+                            <Select
+                                value={formData.payment_method_id}
+                                onValueChange={(val: string) => setFormData({ ...formData, payment_method_id: val })}
+                            >
+                                <SelectTrigger className="font-body text-xs h-9">
+                                    <SelectValue placeholder="Pilih Cara Bayar" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {paymentMethods.map((pm: PaymentMethod) => (
+                                        <SelectItem key={pm.id} value={pm.id} className="font-body text-xs">
+                                            {pm.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="font-body text-xs">Jumlah *</Label>
-                                    <Input
-                                        type="number"
-                                        placeholder="0"
-                                        value={formData.quantity}
-                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, quantity: e.target.value })}
-                                        required
-                                        className="font-mono"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="font-body text-xs">Gudang</Label>
-                                    <Select
-                                        value={formData.warehouse_id}
-                                        onValueChange={(val: string) => setFormData({ ...formData, warehouse_id: val })}
-                                    >
-                                        <SelectTrigger className="font-body">
-                                            <SelectValue placeholder="Pilih gudang" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {(warehouses as any[]).map((w: any) => (
-                                                <SelectItem key={w.id} value={w.id} className="font-body">
-                                                    {w.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
+                        <div className="space-y-2">
+                            <Label className="font-body text-xs">Keterangan</Label>
+                            <Input
+                                placeholder="Tambahkan catatan..."
+                                value={formData.notes}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, notes: e.target.value })}
+                                className="font-body"
+                            />
+                        </div>
 
-                            <div className="space-y-2">
-                                <Label className="font-body text-xs">Lokasi Proyek</Label>
-                                <Select
-                                    value={formData.project_location}
-                                    onValueChange={(val: string) => setFormData({ ...formData, project_location: val })}
-                                >
-                                    <SelectTrigger className="font-body h-10">
-                                        <SelectValue placeholder="Ganti lokasi proyek..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {projectLocations.map((l: string) => (
-                                            <SelectItem key={l} value={l} className="font-body text-xs cursor-pointer">
-                                                {l}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="font-body text-xs">No. Referensi (PO/Surat Jalan)</Label>
-                                <Input
-                                    placeholder="MSK-2024..."
-                                    value={formData.reference}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, reference: e.target.value })}
-                                    className="font-mono"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="font-body text-xs">Cara Pembayaran</Label>
-                                <Select
-                                    value={formData.payment_method_id}
-                                    onValueChange={(val: string) => setFormData({ ...formData, payment_method_id: val })}
-                                >
-                                    <SelectTrigger className="font-body text-xs h-9">
-                                        <SelectValue placeholder="Pilih Cara Bayar" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {paymentMethods.map((pm: PaymentMethod) => (
-                                            <SelectItem key={pm.id} value={pm.id} className="font-body text-xs">
-                                                {pm.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="font-body text-xs">Keterangan</Label>
-                                <Input
-                                    placeholder="Tambahkan catatan..."
-                                    value={formData.notes}
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, notes: e.target.value })}
-                                    className="font-body"
-                                />
-                            </div>
-
-                            <DialogFooter className="gap-2 pt-4">
-                                <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)} className="font-body">
-                                    Batal
-                                </Button>
-                                <Button type="submit" disabled={isSubmitting} className="bg-green-600 hover:bg-green-700 font-body">
-                                    {isSubmitting ? 'Memperbarui...' : 'Simpan Perubahan'}
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
-            </div>
+                        <DialogFooter className="gap-2 pt-4">
+                            <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)} className="font-body">
+                                Batal
+                            </Button>
+                            <Button type="submit" disabled={isSubmitting} className="bg-green-600 hover:bg-green-700 font-body">
+                                {isSubmitting ? 'Memperbarui...' : 'Simpan Perubahan'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             <Card className="border-gray-200">
                 <CardHeader>
@@ -688,7 +780,10 @@ export function MaterialPurchaseManagement() {
                                                 {formatCurrency(m.quantity * (m.unit_price || prod?.cost || 0))}
                                             </TableCell>
                                             <TableCell className="font-body text-[10px]">
-                                                <Badge variant="secondary" className="font-normal">
+                                                <Badge 
+                                                    variant="secondary" 
+                                                    className="font-normal"
+                                                >
                                                     {caraBayar}
                                                 </Badge>
                                             </TableCell>

@@ -2180,8 +2180,10 @@ export default function HRDModuleSupabase() {
     ...(checkAccess('Cuti & Izin') !== 'none' ? [{ label: 'Cuti & Izin', href: '/hrd/leave', icon: Calendar }] : []),
     ...(checkAccess('Absensi') !== 'none' ? [{ label: 'Absensi', href: '/hrd/attendance', icon: Clock }] : []),
     ...(checkAccess('Penggajian') !== 'none' ? [{ label: 'Penggajian', href: '/hrd/payroll', icon: DollarSign }] : []),
-    { label: 'Daftar Tukang (Baru)', href: '/hrd/workers', icon: Hammer },
-    { label: 'Penggajian Tukang', href: '/hrd/payroll-tukang', icon: Hammer },
+    ...(user?.role === 'Administrator' ? [
+      { label: 'Daftar Tukang (Baru)', href: '/hrd/workers', icon: Hammer },
+      { label: 'Penggajian Tukang', href: '/hrd/payroll-tukang', icon: Hammer }
+    ] : []),
     ...(checkAccess('Kasbon') !== 'none' ? [{ label: 'Kasbon', href: '/hrd/loans', icon: Wallet }] : []),
     ...(checkAccess('Reward') !== 'none' ? [{ label: 'Reward', href: '/hrd/rewards', icon: Award }] : []),
     ...(checkAccess('Pengaturan') !== 'none' ? [{ label: 'Pengaturan', href: '/hrd/settings', icon: SettingsIcon }] : [])
@@ -2330,8 +2332,8 @@ export default function HRDModuleSupabase() {
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="recruitment" element={['staff', 'marketing'].includes(user?.role || '') ? <Navigate to="/hrd" replace /> : <PlaceholderPage title="Rekrutmen" />} />
           <Route path="attendance" element={<AttendanceManagement />} />
-          <Route path="workers" element={<WorkerManagement />} />
-          <Route path="payroll-tukang" element={<WorkerPayrollManagement />} />
+          <Route path="workers" element={user?.role === 'Administrator' ? <WorkerManagement /> : <Navigate to="/hrd" replace />} />
+          <Route path="payroll-tukang" element={user?.role === 'Administrator' ? <WorkerPayrollManagement /> : <Navigate to="/hrd" replace />} />
           <Route path="payroll" element={<PayrollManagement />} />
           <Route path="loans" element={<LoanManagement />} />
           <Route path="rewards" element={<RewardManagement />} />

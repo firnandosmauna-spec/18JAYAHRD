@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { projectService } from '@/services/projectService'
+import { projectService, type EmployeeWorkerType } from '@/services/projectService'
 import { handleSupabaseError } from '@/services/supabaseService'
 import type { Project, ProjectPhase, ProjectMaterial, ProjectWorker } from '@/lib/supabase'
+import { useToast } from '@/components/ui/use-toast'
 
 // Projects Hook
 export function useProjects(status?: string) {
@@ -352,6 +353,134 @@ export function useProjectLaborRates() {
     }, [])
 
     return { rates, loading, error, refetch: fetchRates, addRate, updateRate, deleteRate }
+}
+
+// Project Labor Categories Hook
+export function useProjectLaborCategories() {
+    const [categories, setCategories] = useState<any[]>([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    const fetchCategories = async () => {
+        try {
+            setLoading(true)
+            const data = await projectService.getLaborCategories()
+            setCategories(data)
+        } catch (err) {
+            setError(handleSupabaseError(err))
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const addCategory = async (category: any) => {
+        try {
+            const newCategory = await projectService.addLaborCategory(category)
+            setCategories(prev => [newCategory, ...prev])
+            return newCategory
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
+    const updateCategory = async (id: string, updates: any) => {
+        try {
+            const updatedCategory = await projectService.updateLaborCategory(id, updates)
+            setCategories(prev => prev.map(c => c.id === id ? updatedCategory : c))
+            return updatedCategory
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
+    const deleteCategory = async (id: string) => {
+        try {
+            await projectService.deleteLaborCategory(id)
+            setCategories(prev => prev.filter(c => c.id !== id))
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
+    useEffect(() => {
+        fetchCategories()
+    }, [])
+
+    return { categories, loading, error, refetch: fetchCategories, addCategory, updateCategory, deleteCategory }
+}
+
+export function useWorkerTypes() {
+    const [workerTypes, setWorkerTypes] = useState<EmployeeWorkerType[]>([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+    const { toast } = useToast()
+
+    const fetchWorkerTypes = async () => {
+        try {
+            setLoading(true)
+            const data = await projectService.getWorkerTypes()
+            setWorkerTypes(data)
+        } catch (err: any) {
+            setError(err.message)
+            toast({
+                title: 'Error',
+                description: 'Gagal mengambil data tipe pekerja',
+                variant: 'destructive',
+            })
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const addWorkerType = async (type: Omit<EmployeeWorkerType, 'id' | 'created_at'>) => {
+        try {
+            const newType = await projectService.addWorkerType(type)
+            setWorkerTypes(prev => [...prev, newType])
+            return newType
+        } catch (err: any) {
+            toast({
+                title: 'Error',
+                description: err.message || 'Gagal menambah tipe pekerja',
+                variant: 'destructive',
+            })
+            throw err
+        }
+    }
+
+    const updateWorkerType = async (id: string, type: Partial<Omit<EmployeeWorkerType, 'id' | 'created_at'>>) => {
+        try {
+            const updatedType = await projectService.updateWorkerType(id, type)
+            setWorkerTypes(prev => prev.map(t => t.id === id ? updatedType : t))
+            return updatedType
+        } catch (err: any) {
+            toast({
+                title: 'Error',
+                description: err.message || 'Gagal mengubah tipe pekerja',
+                variant: 'destructive',
+            })
+            throw err
+        }
+    }
+
+    const deleteWorkerType = async (id: string) => {
+        try {
+            await projectService.deleteWorkerType(id)
+            setWorkerTypes(prev => prev.filter(t => t.id !== id))
+        } catch (err: any) {
+            toast({
+                title: 'Error',
+                description: err.message || 'Gagal menghapus tipe pekerja',
+                variant: 'destructive',
+            })
+            throw err
+        }
+    }
+
+    useEffect(() => {
+        fetchWorkerTypes()
+    }, [])
+
+    return { workerTypes, loading, error, refetch: fetchWorkerTypes, addWorkerType, updateWorkerType, deleteWorkerType }
 }
 
 // Project Worker Activities Hook

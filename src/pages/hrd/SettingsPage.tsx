@@ -42,6 +42,7 @@ const attendanceSchema = z.object({
     office_wifi_ssid: z.string().optional(),
     is_auto_nik: z.boolean(),
     restrict_off_hours_access: z.boolean(),
+    worker_attendance_required: z.boolean(),
 });
 
 const leaveSchema = z.object({
@@ -169,7 +170,8 @@ export default function SettingsPage() {
                 { key: 'office_radius', value: data.office_radius, description: 'Radius batas absensi (meter)' },
                 { key: 'office_wifi_ssid', value: data.office_wifi_ssid || '', description: 'SSID WiFi Kantor' },
                 { key: 'is_auto_nik', value: data.is_auto_nik, description: 'Gunakan NIK Otomatis untuk Karyawan Baru' },
-                { key: 'restrict_off_hours_access', value: data.restrict_off_hours_access, description: 'Batasi akses aplikasi di luar jam kerja (Non-Admin)' }
+                { key: 'restrict_off_hours_access', value: data.restrict_off_hours_access, description: 'Batasi akses aplikasi di luar jam kerja (Non-Admin)' },
+                { key: 'worker_attendance_required', value: data.worker_attendance_required, description: 'Wajibkan absensi online untuk kategori Tukang/Pekerja' }
             ];
 
             await settingsService.updateSettings(updates);
@@ -450,6 +452,16 @@ export default function SettingsPage() {
                                                 <Switch
                                                     checked={attendanceForm.watch("restrict_off_hours_access")}
                                                     onCheckedChange={(val) => attendanceForm.setValue("restrict_off_hours_access", val)}
+                                                />
+                                            </div>
+                                            <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-100 flex items-center justify-between">
+                                                <div className="space-y-0.5">
+                                                    <Label className="font-body text-blue-900 text-sm">Wajib Absen Online Tukang</Label>
+                                                    <p className="text-[10px] text-blue-700">Jika dinonaktifkan, kategori Tukang tidak wajib absen online.</p>
+                                                </div>
+                                                <Switch
+                                                    checked={attendanceForm.watch("worker_attendance_required")}
+                                                    onCheckedChange={(val) => attendanceForm.setValue("worker_attendance_required", val)}
                                                 />
                                             </div>
                                         </div>

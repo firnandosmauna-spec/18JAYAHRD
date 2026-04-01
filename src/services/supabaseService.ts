@@ -30,6 +30,10 @@ export const employeeService = {
         ),
         profiles!fk_profiles_employee (
           avatar
+        ),
+        worker_types (
+          id,
+          name
         )
       `)
       .order('created_at', { ascending: false })
@@ -57,6 +61,10 @@ export const employeeService = {
         ),
         profiles!fk_profiles_employee (
           avatar
+        ),
+        worker_types (
+          id,
+          name
         )
       `)
       .eq('id', id)
@@ -113,6 +121,10 @@ export const employeeService = {
         ),
         profiles!fk_profiles_employee (
           avatar
+        ),
+        worker_types (
+          id,
+          name
         )
       `)
       .or(`name.ilike.%${query}%,position.ilike.%${query}%,email.ilike.%${query}%`)

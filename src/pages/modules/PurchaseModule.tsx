@@ -22,9 +22,11 @@ import { useProducts } from '@/hooks/useSales';
 import { SupplierManagement } from '@/components/purchase/SupplierManagement';
 import { PurchaseOrderManagement } from '@/components/purchase/PurchaseOrderManagement';
 import { PurchaseInvoiceManagement } from '@/components/purchase/PurchaseInvoiceManagement';
+import { useNavigate } from 'react-router-dom';
 
 function PurchaseDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { stats, loading: statsLoading } = usePurchaseStats();
   const { suppliers } = useSuppliers();
   const { products } = useProducts();
@@ -64,7 +66,10 @@ function PurchaseDashboard() {
           <p className="text-gray-600">Kelola pembelian, supplier, dan invoice</p>
         </div>
         <div className="flex gap-2">
-          <Button className="bg-orange-600 hover:bg-orange-700">
+          <Button 
+            className="bg-orange-600 hover:bg-orange-700"
+            onClick={() => navigate('/purchase/orders?new=true')}
+          >
             <Plus className="w-4 h-4 mr-2" />
             PO Baru
           </Button>
@@ -136,7 +141,10 @@ function PurchaseDashboard() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/purchase/suppliers')}
+        >
           <CardHeader className="pb-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -164,7 +172,10 @@ function PurchaseDashboard() {
           </CardHeader>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/purchase/orders')}
+        >
           <CardHeader className="pb-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
@@ -178,7 +189,10 @@ function PurchaseDashboard() {
           </CardHeader>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-md transition-shadow">
+        <Card 
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate('/purchase/invoices')}
+        >
           <CardHeader className="pb-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
