@@ -254,10 +254,10 @@ async function checkLateReturnFromLeave(employeeId: string, checkInDate: string)
 
 export function AttendanceManagement() {
   const historyRef = React.useRef<HTMLDivElement>(null);
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('en-CA');
   const todayDate = new Date();
   const firstDay = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
-  const [startDate, setStartDate] = useState(firstDay.toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(firstDay.toLocaleDateString('en-CA'));
   const [endDate, setEndDate] = useState(today);
 
   const { attendance, loading, error, addAttendance, refetch, deleteAttendance, approveManualAttendance, rejectManualAttendance } = useAttendance(startDate, endDate);

@@ -154,7 +154,7 @@ export function RewardManagement() {
     title: '',
     description: '',
     points: '100',
-    awarded_date: new Date().toISOString().split('T')[0]
+    awarded_date: new Date().toLocaleDateString('en-CA')
   });
 
   const [isEditing, setIsEditing] = useState(false);
@@ -232,7 +232,7 @@ export function RewardManagement() {
       title: '',
       description: '',
       points: '100',
-      awarded_date: new Date().toISOString().split('T')[0]
+      awarded_date: new Date().toLocaleDateString('en-CA')
     });
     setIsEditing(false);
     setEditId(null);

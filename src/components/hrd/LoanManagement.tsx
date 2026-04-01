@@ -86,7 +86,7 @@ export function LoanManagement() {
         amount: '',
         installment_amount: '',
         reason: '',
-        start_date: new Date().toISOString().split('T')[0]
+        start_date: new Date().toLocaleDateString('en-CA')
     });
 
     // Filter Logic
@@ -150,7 +150,7 @@ export function LoanManagement() {
                 amount: '',
                 installment_amount: '',
                 reason: '',
-                start_date: new Date().toISOString().split('T')[0]
+                start_date: new Date().toLocaleDateString('en-CA')
             });
         } catch (error) {
             console.error(error);

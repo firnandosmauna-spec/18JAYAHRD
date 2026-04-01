@@ -124,7 +124,7 @@ function calculateWorkingDaysBetween(startDate: Date, endDate: Date, holidays: s
 
   while (current < target) {
     const day = current.getDay();
-    const dateStr = current.toISOString().split('T')[0];
+    const dateStr = current.toLocaleDateString('en-CA');
 
     // Cek jika bukan Minggu (0) dan bukan hari libur manual
     if (day !== 0 && !holidays.includes(dateStr)) {
@@ -156,8 +156,8 @@ async function checkLateReturn(leave: LeaveRequest): Promise<{ isLate: boolean; 
     // Cek apakah ada attendance setelah tanggal akhir cuti
     const nextDay = new Date(endDate);
     nextDay.setDate(nextDay.getDate() + 1);
-    const nextDayStr = nextDay.toISOString().split('T')[0];
-    const todayStr = today.toISOString().split('T')[0];
+    const nextDayStr = nextDay.toLocaleDateString('en-CA');
+    const todayStr = today.toLocaleDateString('en-CA');
 
     const attendanceRecords = await attendanceService.getByDateRange(nextDayStr, todayStr);
     const employeeAttendance = attendanceRecords.filter(

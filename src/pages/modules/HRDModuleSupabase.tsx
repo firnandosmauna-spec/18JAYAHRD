@@ -1804,7 +1804,7 @@ function HRDDashboard() {
   const { user } = useAuth();
   const { employees } = useEmployees();
   const { leaveRequests } = useLeaveRequests();
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('en-CA');
   const { attendance } = useAttendance(today, today);
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();

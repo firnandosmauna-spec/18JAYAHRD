@@ -113,7 +113,7 @@ export function WorkerPayrollManagement() {
         activity_detail: '',
         progress_percentage: '0',
         worker_count: '1',
-        payment_date: new Date().toISOString().split('T')[0]
+        payment_date: new Date().toLocaleDateString('en-CA')
     });
 
     const tukangEmployees = employees.filter(emp => 
@@ -227,7 +227,7 @@ export function WorkerPayrollManagement() {
                 activity_detail: '',
                 progress_percentage: '0',
                 worker_count: '1',
-                payment_date: new Date().toISOString().split('T')[0]
+                payment_date: new Date().toLocaleDateString('en-CA')
             });
             refetchPayments();
         } catch (error) {

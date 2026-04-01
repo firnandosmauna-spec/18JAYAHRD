@@ -169,7 +169,7 @@ export const attendanceService = {
   },
 
   async checkIn(employeeId: number, employeeName: string, location?: string): Promise<Attendance> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA');
     const now = new Date();
     const timeString = now.toTimeString().slice(0, 5);
     
@@ -194,7 +194,7 @@ export const attendanceService = {
   },
 
   async checkOut(employeeId: number): Promise<Attendance | null> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA');
     const now = new Date();
     const timeString = now.toTimeString().slice(0, 5);
     

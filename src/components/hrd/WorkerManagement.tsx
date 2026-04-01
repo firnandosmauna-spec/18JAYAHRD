@@ -101,7 +101,7 @@ export function WorkerManagement() {
     position: 'Tukang',
     phone: '',
     email: '',
-    join_date: new Date().toISOString().split('T')[0],
+    join_date: new Date().toLocaleDateString('en-CA'),
     status: 'active' as 'active' | 'inactive',
     worker_type_id: 'none'
   });
@@ -199,7 +199,7 @@ export function WorkerManagement() {
         position: worker.position || 'Tukang',
         phone: worker.phone || '',
         email: worker.email || '',
-        join_date: worker.join_date || new Date().toISOString().split('T')[0],
+        join_date: worker.join_date || new Date().toLocaleDateString('en-CA'),
         status: (worker.status as 'active' | 'inactive') || 'active',
         worker_type_id: worker.worker_type_id || 'none'
       });
@@ -210,7 +210,7 @@ export function WorkerManagement() {
         position: 'Tukang',
         phone: '',
         email: '',
-        join_date: new Date().toISOString().split('T')[0],
+        join_date: new Date().toLocaleDateString('en-CA'),
         status: 'active',
         worker_type_id: 'none'
       });
