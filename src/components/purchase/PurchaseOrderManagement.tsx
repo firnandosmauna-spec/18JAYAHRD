@@ -136,7 +136,7 @@ export function PurchaseOrderManagement() {
     if (field === 'product_id') {
       const product = products.find(p => p.id === value);
       if (product) {
-        newItems[index].unit_price = product.cost || 0;
+        newItems[index].unit_price = (product as any).cost_price || 0;
       }
     }
     setOrderItems(newItems);
