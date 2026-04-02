@@ -1,4 +1,3 @@
-// V1.0.5 - FORCE_DEPLOY_STABILIZATION
 import React, { Suspense, lazy } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";

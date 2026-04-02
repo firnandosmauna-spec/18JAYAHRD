@@ -286,9 +286,6 @@ export default function LoginPage() {
           </div>
         </motion.div>
       </div>
-      <div className="fixed bottom-4 left-4 text-[10px] text-gray-400 opacity-30 pointer-events-none select-none">
-        Build: V1.0.6-STABLE-AUTH-FIX
-      </div>
     </div>
   );
 }
