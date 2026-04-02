@@ -322,33 +322,33 @@ export function UserPipeline({ initialTab = 'deals' }: UserPipelineProps) {
         <div className="space-y-6">
             {/* Custom Tabs Navigation */}
             <div className="flex bg-slate-100/50 p-1 rounded-xl w-fit border border-slate-200">
-                <Button
-                    variant={activeTab === 'deals' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className={`rounded-lg px-4 ${activeTab === 'deals' ? 'bg-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    onClick={() => setLocalActiveTab('deals')}
-                >
-                    <List className="h-4 w-4 mr-2" />
-                    Deals Saya
-                </Button>
-                <Button
-                    variant={activeTab === 'consumers' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className={`rounded-lg px-4 ${activeTab === 'consumers' ? 'bg-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    onClick={() => setLocalActiveTab('consumers')}
-                >
-                    <UserIcon className="h-4 w-4 mr-2" />
-                    Database Konsumen
-                </Button>
-                <Button
-                    variant={activeTab === 'pemberkasan' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className={`rounded-lg px-4 ${activeTab === 'pemberkasan' ? 'bg-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    onClick={() => { setLocalActiveTab('pemberkasan'); setSelectedConsumer(null); }}
-                >
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Pemberkasan Konsumen
-                </Button>
+                    <Button
+                        variant={activeTab === 'deals' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className={`rounded-lg px-4 ${activeTab === 'deals' ? 'bg-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => setLocalActiveTab('deals')}
+                    >
+                        <List className="h-4 w-4 mr-2" />
+                        <span>Deals Saya</span>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'consumers' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className={`rounded-lg px-4 ${activeTab === 'consumers' ? 'bg-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => setLocalActiveTab('consumers')}
+                    >
+                        <UserIcon className="h-4 w-4 mr-2" />
+                        <span>Database Konsumen</span>
+                    </Button>
+                    <Button
+                        variant={activeTab === 'pemberkasan' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className={`rounded-lg px-4 ${activeTab === 'pemberkasan' ? 'bg-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => { setLocalActiveTab('pemberkasan'); setSelectedConsumer(null); }}
+                    >
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        <span>Pemberkasan Konsumen</span>
+                    </Button>
             </div>
 
             {activeTab === 'deals' ? (
@@ -377,13 +377,13 @@ export function UserPipeline({ initialTab = 'deals' }: UserPipelineProps) {
                         <Table>
                             <TableHeader className="bg-slate-50">
                                 <TableRow>
-                                    <TableHead className="w-[20%]">Rencana Penjualan</TableHead>
-                                    <TableHead className="w-[10%]">Asal Konsumen</TableHead>
-                                    <TableHead className="w-[25%]">Data Konsumen</TableHead>
-                                    <TableHead className="w-[15%]">Survey / Waktu</TableHead>
-                                    <TableHead className="w-[15%]">Booking</TableHead>
-                                    <TableHead className="w-[10%]">Akad</TableHead>
-                                    <TableHead className="w-[5%]">Aksi</TableHead>
+                                    <TableHead className="w-[20%]"><span>Rencana Penjualan</span></TableHead>
+                                    <TableHead className="w-[10%]"><span>Asal Konsumen</span></TableHead>
+                                    <TableHead className="w-[25%]"><span>Data Konsumen</span></TableHead>
+                                    <TableHead className="w-[15%]"><span>Survey / Waktu</span></TableHead>
+                                    <TableHead className="w-[15%]"><span>Booking</span></TableHead>
+                                    <TableHead className="w-[10%]"><span>Akad</span></TableHead>
+                                    <TableHead className="w-[5%]"><span>Aksi</span></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -606,14 +606,14 @@ export function UserPipeline({ initialTab = 'deals' }: UserPipelineProps) {
                         <Table>
                             <TableHeader className="bg-slate-50">
                                 <TableRow>
-                                    <TableHead>Nama Konsumen</TableHead>
-                                    <TableHead>Kontak</TableHead>
-                                    <TableHead>Proyek</TableHead>
-                                    <TableHead>Pekerjaan</TableHead>
-                                    <TableHead>Proses Bank</TableHead>
-                                    <TableHead>Status Booking</TableHead>
-                                    <TableHead>Catatan Terakhir</TableHead>
-                                    <TableHead>Aksi</TableHead>
+                                    <TableHead><span>Nama Konsumen</span></TableHead>
+                                    <TableHead><span>Kontak</span></TableHead>
+                                    <TableHead><span>Proyek</span></TableHead>
+                                    <TableHead><span>Pekerjaan</span></TableHead>
+                                    <TableHead><span>Proses Bank</span></TableHead>
+                                    <TableHead><span>Status Booking</span></TableHead>
+                                    <TableHead><span>Catatan Terakhir</span></TableHead>
+                                    <TableHead><span>Aksi</span></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -721,11 +721,11 @@ export function UserPipeline({ initialTab = 'deals' }: UserPipelineProps) {
                                 <Table>
                                     <TableHeader className="bg-slate-50">
                                         <TableRow>
-                                            <TableHead>Nama Konsumen</TableHead>
-                                            <TableHead>Proyek</TableHead>
-                                            <TableHead>Pekerjaan</TableHead>
-                                            <TableHead>Proses Bank</TableHead>
-                                            <TableHead className="text-right">Aksi</TableHead>
+                                            <TableHead><span>Nama Konsumen</span></TableHead>
+                                            <TableHead><span>Proyek</span></TableHead>
+                                            <TableHead><span>Pekerjaan</span></TableHead>
+                                            <TableHead><span>Proses Bank</span></TableHead>
+                                            <TableHead className="text-right"><span>Aksi</span></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>

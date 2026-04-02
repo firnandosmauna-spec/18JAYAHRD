@@ -1482,22 +1482,24 @@ function ProjectPayrollSummary({ projectId }: { projectId: string }) {
   );
 }
 
+import { useModulePersistence } from '@/hooks/useModulePersistence';
+
 export default function ProjectModule() {
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const savedPath = localStorage.getItem('lastPath_projects');
-  console.log('🔍 ProjectModule: savedPath from localStorage (lastPath_projects):', savedPath);
+  const { savedPath } = useModulePersistence('projects');
 
   return (
     <ProjectNotificationProvider>
-      <ModuleLayout moduleId="project" title="Proyek" navItems={navItems}>
+      <ModuleLayout moduleId="projects" title="Proyek" navItems={navItems}>
         <Routes>
           <Route index element={
             savedPath && savedPath !== '/projects' && savedPath.startsWith('/projects') ? (
               <Navigate to={savedPath} replace />
             ) : (
-              <ProjectDashboard />
+              <Navigate to="/projects/dashboard" replace />
             )
           } />
+          <Route path="dashboard" element={<ProjectDashboard />} />
           <Route path="active" element={<ActiveProjectsPage selectedProjectId={selectedProjectId} setSelectedProjectId={setSelectedProjectId} />} />
           <Route path="planning" element={<PlanningPage />} />
           <Route path="materials" element={<MaterialsPage />} />

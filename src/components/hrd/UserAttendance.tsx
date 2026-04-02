@@ -380,6 +380,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             toast({ title: 'Sudah Absen Pulang', description: 'Anda telah menyelesaikan absensi hari ini.', variant: 'destructive' });
             return;
         }
+        setIsSubmitting(true);
         try {
             const now = new Date();
             const checkOutTime = now.toTimeString().slice(0, 5);
@@ -401,6 +402,8 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             refetch();
         } catch (error: any) {
             toast({ title: 'Gagal Check Out', description: error.message, variant: 'destructive' });
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -416,22 +419,23 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             const now = new Date();
             const timeStr = now.toTimeString().slice(0, 5);
             
-            // If it's early leave, we might want to update today's record if it exists
-            if (manualType === 'early_leave' && todayRecord) {
+            // If a record already exists for today, we MUST update it to avoid UNIQUE constraint violation
+            if (todayRecord) {
                 await updateAttendance(todayRecord.id, {
-                    check_out: timeStr,
+                    check_in: manualType === 'outside_hours' ? timeStr : (todayRecord.check_in || timeStr),
+                    check_out: manualType === 'early_leave' ? timeStr : (todayRecord.check_out || null),
                     is_manual: true,
                     manual_status: 'pending',
                     manual_reason: manualReason,
-                    notes: `${todayRecord.notes || ''}. [REQUEST EARLY LEAVE] ${manualReason}`.trim()
+                    notes: `${todayRecord.notes || ''}. [MANUAL REQUEST: ${manualType}] ${manualReason}`.trim()
                 });
             } else {
-                // Otherwise create a new record (e.g. for outside hours or activity)
+                // Otherwise create a new record (e.g. they haven't checked in at all)
                 await addAttendance({
                     employee_id: user.employee_id,
                     date: today,
-                    check_in: manualType === 'outside_hours' ? timeStr : (todayRecord?.check_in || timeStr),
-                    check_out: manualType === 'early_leave' ? timeStr : (todayRecord?.check_out || null),
+                    check_in: timeStr,
+                    check_out: manualType === 'early_leave' ? timeStr : null,
                     status: 'present',
                     is_manual: true,
                     manual_status: 'pending',
@@ -455,9 +459,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     };
 
     return (
-        <div className="space-y-6">
-            <AnimatePresence>
-            </AnimatePresence>
+        <div className="space-y-6 translate-no" translate="no">
 
             {/* Weekly Stats Banner */}
             {weeklyLateMinutes > 0 && (
@@ -466,10 +468,12 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                         <AlertCircle className={`w-5 h-5 ${weeklyLateMinutes > 30 ? 'text-red-600' : 'text-yellow-600'}`} />
                         <div>
                             <p className={`font-bold ${weeklyLateMinutes > 30 ? 'text-red-900' : 'text-yellow-900'}`}>
-                                Total Keterlambatan Minggu Ini: {weeklyLateMinutes} Menit
+                                <span>Total Keterlambatan Minggu Ini: {weeklyLateMinutes} Menit</span>
                             </p>
                             {weeklyLateMinutes > 30 && (
-                                <p className="text-xs text-red-700 font-bold mt-1">BATAS TOLERANSI 30 MENIT TERLAMPUI - SP1 AKTIF</p>
+                                <p className="text-xs text-red-700 font-bold mt-1">
+                                    <span>BATAS TOLERANSI 30 MENIT TERLAMPUI - SP1 AKTIF</span>
+                                </p>
                             )}
                         </div>
                     </div>
@@ -482,15 +486,15 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 <Card className="lg:col-span-1 border-none shadow-xl bg-gradient-to-b from-white to-gray-50/50 overflow-hidden relative">
                     <div className="absolute top-0 right-0 p-4">
                         <Badge variant="outline" className="bg-hrd/10 text-hrd border-hrd/20 animate-pulse">
-                            Live Time
+                            <span>Live Time</span>
                         </Badge>
                     </div>
                     <CardHeader className="text-center pt-10">
                         <div className="text-5xl font-mono font-black text-hrd tracking-tighter mb-1">
-                            {formatTime(currentTime)}
+                            <span>{formatTime(currentTime)}</span>
                         </div>
                         <CardDescription className="font-body text-lg font-medium">
-                            {formatDate(today)}
+                            <span>{formatDate(today)}</span>
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-8 pb-10">
@@ -501,9 +505,9 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                         <MapPin className="w-5 h-5 text-blue-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Lokasi Saat Ini</p>
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest"><span>Lokasi Saat Ini</span></p>
                                         <p className="text-sm font-body text-gray-700 leading-relaxed truncate max-w-[200px]">
-                                            {location}
+                                            <span>{location}</span>
                                         </p>
                                     </div>
                                 </div>
@@ -521,10 +525,14 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                 <Button
                                     className="w-full h-14 bg-hrd hover:bg-hrd-dark text-white rounded-2xl text-lg font-bold shadow-lg shadow-hrd/20 transition-all hover:scale-[1.02] active:scale-95"
                                     onClick={handleCheckIn}
-                                    disabled={gettingLocation || loading || !!todayRecord}
+                                    disabled={gettingLocation || loading || isSubmitting || !!todayRecord}
                                 >
-                                    {gettingLocation || loading ? <Loader2 className="w-6 h-6 animate-spin mr-2" /> : <LogIn className="w-6 h-6 mr-2" />}
-                                    Masuk Kerja
+                                    {gettingLocation || loading || isSubmitting ? (
+                                        <Loader2 key="loader-in" className="w-6 h-6 animate-spin mr-2" />
+                                    ) : (
+                                        <LogIn key="login-icon" className="w-6 h-6 mr-2" />
+                                    )}
+                                    <span>Masuk Kerja</span>
                                 </Button>
                             ) : (
                                 <Button
@@ -532,8 +540,12 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                     onClick={handleCheckOut}
                                     disabled={isSubmitting || !!todayRecord.check_out}
                                 >
-                                    {isSubmitting ? <Loader2 className="w-6 h-6 animate-spin mr-2" /> : <LogOut className="w-6 h-6 mr-2" />}
-                                    {todayRecord.check_out ? 'Absensi Selesai' : 'Pulang Kerja'}
+                                    {isSubmitting ? (
+                                        <Loader2 key="loader-out" className="w-6 h-6 animate-spin mr-2" />
+                                    ) : (
+                                        <LogOut key="logout-icon" className="w-6 h-6 mr-2" />
+                                    )}
+                                    <span>{todayRecord.check_out ? 'Absensi Selesai' : 'Pulang Kerja'}</span>
                                 </Button>
                             )}
 
@@ -590,30 +602,30 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                             <div className="p-2 bg-white rounded-xl shadow-sm">
                                                 <LogIn className="w-4 h-4 text-hrd" />
                                             </div>
-                                            <span className="text-sm font-body text-gray-500">Check In</span>
+                                            <span className="text-sm font-body text-gray-500"><span>Check In</span></span>
                                         </div>
-                                        <span className="font-mono font-bold text-lg">{todayRecord?.check_in || '--:--'}</span>
+                                        <span className="font-mono font-bold text-lg"><span>{todayRecord?.check_in || '--:--'}</span></span>
                                     </div>
                                     <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 bg-white rounded-xl shadow-sm">
                                                 <LogOut className="w-4 h-4 text-orange-500" />
                                             </div>
-                                            <span className="text-sm font-body text-gray-500">Check Out</span>
+                                            <span className="text-sm font-body text-gray-500"><span>Check Out</span></span>
                                         </div>
-                                        <span className="font-mono font-bold text-lg">{todayRecord?.check_out || '--:--'}</span>
+                                        <span className="font-mono font-bold text-lg"><span>{todayRecord?.check_out || '--:--'}</span></span>
                                     </div>
                                 </div>
 
                                 <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-100">
                                     <div className="flex justify-between items-start mb-2">
-                                        <p className="text-xs font-bold text-blue-600 uppercase">Analysis</p>
+                                        <p className="text-xs font-bold text-blue-600 uppercase"><span>Analysis</span></p>
                                         <Badge variant={todayRecord?.status === 'late' ? 'destructive' : 'default'} className="bg-blue-600 text-[10px]">
-                                            {todayRecord?.status || 'Unknown'}
+                                            <span>{todayRecord?.status || 'Unknown'}</span>
                                         </Badge>
                                     </div>
                                     <p className="text-sm text-blue-900 leading-relaxed font-body">
-                                        {todayRecord?.notes || (todayRecord ? 'Kehadiran Anda telah tercatat dengan koordinat GPS yang valid.' : 'Silakan lakukan presensi untuk mencatat jam kerja Anda.')}
+                                        <span>{todayRecord?.notes || (todayRecord ? 'Kehadiran Anda telah tercatat dengan koordinat GPS yang valid.' : 'Silakan lakukan presensi untuk mencatat jam kerja Anda.')}</span>
                                     </p>
                                 </div>
                             </div>
@@ -635,17 +647,17 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                                 </div>
                                             </motion.div>
                                         ) : (
-                                            <p className="text-xs text-muted-foreground font-body">Menunggu Koordinat GPS...</p>
+                                            <p className="text-xs text-muted-foreground font-body"><span>Menunggu Koordinat GPS...</span></p>
                                         )}
                                     </div>
                                 </div>
                                 <div className="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-white">
                                     <div className="flex items-center gap-2">
                                         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                        <p className="text-[10px] font-bold text-gray-500 tracking-wider">SECURE TRACKING ACTIVE</p>
+                                        <p className="text-[10px] font-bold text-gray-500 tracking-wider"><span>SECURE TRACKING ACTIVE</span></p>
                                     </div>
                                     <p className="text-[10px] font-mono mt-0.5 text-gray-400">
-                                        {coordinates ? `LAT: ${coordinates.lat.toFixed(4)} LNG: ${coordinates.lng.toFixed(4)}` : 'SCANNING...'}
+                                        <span>{coordinates ? `LAT: ${coordinates.lat.toFixed(4)} LNG: ${coordinates.lng.toFixed(4)}` : 'SCANNING...'}</span>
                                     </p>
                                 </div>
                             </div>

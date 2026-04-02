@@ -12,9 +12,12 @@ import PemberkasanView from '@/components/marketing/PemberkasanView';
 import ControlTableView from '@/components/marketing/ControlTableView';
 import AkadProcessView from '@/components/marketing/AkadProcessView';
 
+import { useModulePersistence } from '@/hooks/useModulePersistence';
+
 export default function MarketingModule() {
     const [pipelines, setPipelines] = useState<Pipeline[]>([]);
     const [loading, setLoading] = useState(true);
+    const { savedPath } = useModulePersistence('marketing');
 
     const fetchPipelines = async () => {
         try {
@@ -48,10 +51,6 @@ export default function MarketingModule() {
             supabase.removeChannel(channel);
         };
     }, []);
-
-    // Determine the last visited sub-path for Marketing
-    const savedPath = localStorage.getItem('lastPath_marketing');
-    console.log('%c 🔍 [RESTORE] MarketingModule savedPath:', 'background: #222; color: #3498db', savedPath);
 
     return (
         <ModuleLayout

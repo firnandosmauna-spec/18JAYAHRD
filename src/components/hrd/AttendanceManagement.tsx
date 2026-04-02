@@ -22,7 +22,8 @@ import {
   TrendingUp,
   Users,
   RefreshCcw,
-  UserX
+  UserX,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -116,6 +117,7 @@ function formatTime(timeString?: string) {
 
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('id-ID', {
+    weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric'
@@ -253,6 +255,8 @@ async function checkLateReturnFromLeave(employeeId: string, checkInDate: string)
 }
 
 export function AttendanceManagement() {
+
+
   const historyRef = React.useRef<HTMLDivElement>(null);
   const today = new Date().toLocaleDateString('en-CA');
   const todayDate = new Date();
@@ -280,6 +284,7 @@ export function AttendanceManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedAttendance, setSelectedAttendance] = useState<AttendanceRecord | null>(null);
   const [penaltyRate, setPenaltyRate] = useState<number>(0);
   const [isEditing, setIsEditing] = useState(false);
@@ -669,25 +674,26 @@ export function AttendanceManagement() {
 
   // Handle Delete Attendance
   const handleDeleteAttendance = async (id: string) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus data absensi ini?')) {
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      if (!confirm('Apakah Anda yakin ingin menghapus data absensi ini?')) {
-        return;
-      }
-
       await deleteAttendance(id);
-      // refetch(); // deleteAttendance in hook already updates state and refetch is called via real-time subscription anyway
-
       toast({
         title: 'Berhasil',
-        description: 'Data absensi berhasil dihapus',
+        description: 'Data absensi telah dihapus',
       });
+      refetch();
     } catch (error: any) {
-      console.error('Failed to delete attendance:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Gagal menghapus data absensi',
-        variant: 'destructive'
+        description: error.message,
+        variant: 'destructive',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -724,24 +730,46 @@ export function AttendanceManagement() {
   };
 
   const handleApproveManual = async (id: string) => {
+    if (!user?.employee_id) {
+      toast({ 
+        title: 'Akses Ditolak', 
+        description: 'Anda harus tertaut ke data Karyawan untuk menyetujui absensi.', 
+        variant: 'destructive' 
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      if (!user?.employee_id) return;
       await approveManualAttendance(id, user.employee_id);
       toast({ title: 'Berhasil', description: 'Absensi manual disetujui' });
       refetch();
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleRejectManual = async (id: string) => {
+    if (!user?.employee_id) {
+      toast({ 
+        title: 'Akses Ditolak', 
+        description: 'Anda harus tertaut ke data Karyawan untuk menolak absensi.', 
+        variant: 'destructive' 
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      if (!user?.employee_id) return;
       await rejectManualAttendance(id, user.employee_id);
       toast({ title: 'Berhasil', description: 'Absensi manual ditolak' });
       refetch();
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -750,7 +778,7 @@ export function AttendanceManagement() {
       <div className="flex items-center justify-center h-[60vh]">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-hrd/30 border-t-hrd rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground font-body">Memuat data absensi...</p>
+          <p className="text-muted-foreground font-body"><span>Memuat data absensi...</span></p>
         </div>
       </div>
     );
@@ -760,7 +788,7 @@ export function AttendanceManagement() {
     return (
       <Alert>
         <AlertCircle className="h-4 w-4" />
-        <AlertDescription>Error memuat data: {error}</AlertDescription>
+        <AlertDescription><span>Error memuat data: {error}</span></AlertDescription>
       </Alert>
     );
   }
@@ -774,8 +802,8 @@ export function AttendanceManagement() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Manajemen Absensi</h1>
-          <p className="text-muted-foreground font-body">Kelola kehadiran dan absensi karyawan</p>
+          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]"><span>Manajemen Absensi</span></h1>
+          <p className="text-muted-foreground font-body"><span>Kelola kehadiran dan absensi karyawan</span></p>
         </div>
         {user?.role !== 'staff' && (
           <div className="flex gap-2">
@@ -785,7 +813,7 @@ export function AttendanceManagement() {
               onClick={() => setShowHolidayDialog(true)}
             >
               <Calendar className="w-4 h-4 mr-2" />
-              Atur Hari Libur
+              <span>Atur Hari Libur</span>
             </Button>
             <Button
               className="bg-hrd hover:bg-hrd-dark font-body"
@@ -795,7 +823,7 @@ export function AttendanceManagement() {
               }}
             >
               <Plus className="w-4 h-4 mr-2" />
-              Catat Absensi
+              <span>Catat Absensi</span>
             </Button>
           </div>
         )}
@@ -819,7 +847,7 @@ export function AttendanceManagement() {
                 <SelectValue placeholder="Semua Karyawan" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Semua Karyawan</SelectItem>
+                <SelectItem value="all"><span>Semua Karyawan</span></SelectItem>
                 {employees.map(emp => (
                   <SelectItem key={emp.id} value={emp.id} className="font-body">
                     {emp.name}
@@ -831,7 +859,7 @@ export function AttendanceManagement() {
           <div className="flex gap-2 col-span-1 md:col-span-2 justify-end">
             <Button variant="outline" className="font-body" onClick={handleExportExcel}>
               <Download className="w-4 h-4 mr-2" />
-              Export Excel
+              <span>Export Excel</span>
             </Button>
           </div>
         </div>
@@ -847,11 +875,11 @@ export function AttendanceManagement() {
                   <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
                     <Users className="w-6 h-6 text-blue-600" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">Total</Badge>
+                  <Badge variant="secondary" className="font-mono text-xs"><span>Total</span></Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.totalEmployees}</p>
-                  <p className="text-sm text-muted-foreground font-body">Total Karyawan</p>
+                  <p className="text-sm text-muted-foreground font-body"><span>Total Karyawan</span></p>
                 </div>
               </CardContent>
             </Card>
@@ -864,11 +892,11 @@ export function AttendanceManagement() {
                   <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
                     <CheckCircle className="w-6 h-6 text-green-600" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">Hari Ini</Badge>
+                  <Badge variant="secondary" className="font-mono text-xs"><span>Hari Ini</span></Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.presentToday}</p>
-                  <p className="text-sm text-muted-foreground font-body">Hadir</p>
+                  <p className="text-sm text-muted-foreground font-body"><span>Hadir</span></p>
                 </div>
               </CardContent>
             </Card>
@@ -881,11 +909,11 @@ export function AttendanceManagement() {
                   <div className="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center">
                     <AlertCircle className="w-6 h-6 text-yellow-600" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">Hari Ini</Badge>
+                  <Badge variant="secondary" className="font-mono text-xs"><span>Hari Ini</span></Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.lateToday}</p>
-                  <p className="text-sm text-muted-foreground font-body">Terlambat</p>
+                  <p className="text-sm text-muted-foreground font-body"><span>Terlambat</span></p>
                 </div>
               </CardContent>
             </Card>
@@ -898,11 +926,11 @@ export function AttendanceManagement() {
                   <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center">
                     <UserX className="w-6 h-6 text-orange-600" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">Hari Ini</Badge>
+                  <Badge variant="secondary" className="font-mono text-xs"><span>Hari Ini</span></Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.notYetPresentToday}</p>
-                  <p className="text-sm text-muted-foreground font-body">Belum Absen</p>
+                  <p className="text-sm text-muted-foreground font-body"><span>Belum Absen</span></p>
                 </div>
               </CardContent>
             </Card>
@@ -915,11 +943,11 @@ export function AttendanceManagement() {
                   <div className="w-12 h-12 rounded-xl bg-hrd/10 flex items-center justify-center">
                     <TrendingUp className="w-6 h-6 text-hrd" />
                   </div>
-                  <Badge variant="secondary" className="font-mono text-xs">Rate</Badge>
+                  <Badge variant="secondary" className="font-mono text-xs"><span>Rate</span></Badge>
                 </div>
                 <div className="mt-4">
                   <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stats.attendanceRate}%</p>
-                  <p className="text-sm text-muted-foreground font-body">Tingkat Kehadiran</p>
+                  <p className="text-sm text-muted-foreground font-body"><span>Tingkat Kehadiran</span></p>
                   <Progress value={stats.attendanceRate} className="mt-2 h-2" />
                 </div>
               </CardContent>
@@ -932,18 +960,18 @@ export function AttendanceManagement() {
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
         <TabsList className={`grid w-full ${user?.role === 'staff' ? 'grid-cols-2' : 'grid-cols-4'}`}>
           <TabsTrigger value="today" className="font-body">
-            {user?.role === 'staff' ? 'Absensi Hari Ini' : 'Hari Ini'}
+            <span>{user?.role === 'staff' ? 'Absensi Hari Ini' : 'Hari Ini'}</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="font-body">
-            Riwayat
+            <span>Riwayat</span>
           </TabsTrigger>
           {user?.role !== 'staff' && (
             <>
               <TabsTrigger value="summary" className="font-body">
-                Ringkasan
+                <span>Ringkasan</span>
               </TabsTrigger>
               <TabsTrigger value="manual" className="font-body relative">
-                Persetujuan
+                <span>Persetujuan</span>
                 {attendance.filter(a => a.is_manual && a.manual_status === 'pending').length > 0 && (
                   <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center animate-pulse">
                     {attendance.filter(a => a.is_manual && a.manual_status === 'pending').length}
@@ -958,9 +986,9 @@ export function AttendanceManagement() {
           <Card className="border-gray-200">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <div>
-                <CardTitle className="font-display">Absensi Hari Ini</CardTitle>
+                <CardTitle className="font-display"><span>Absensi Hari Ini</span></CardTitle>
                 <CardDescription className="font-body">
-                  Daftar kehadiran karyawan tanggal {formatDate(today)}
+                  <span>Daftar kehadiran karyawan tanggal {formatDate(today)}</span>
                 </CardDescription>
               </div>
             </CardHeader>
@@ -968,18 +996,18 @@ export function AttendanceManagement() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="font-body">Karyawan</TableHead>
-                    <TableHead className="font-body">Check In</TableHead>
-                    <TableHead className="font-body">Check Out</TableHead>
-                    <TableHead className="font-body">Status</TableHead>
-                    <TableHead className="font-body text-right">Aksi</TableHead>
+                    <TableHead className="font-body"><span>Karyawan</span></TableHead>
+                    <TableHead className="font-body"><span>Check In</span></TableHead>
+                    <TableHead className="font-body"><span>Check Out</span></TableHead>
+                    <TableHead className="font-body"><span>Status</span></TableHead>
+                    <TableHead className="font-body text-right"><span>Aksi</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredTodayAttendance.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                        Belum ada data absensi hari ini.
+                        <span>Belum ada data absensi hari ini.</span>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -1008,7 +1036,7 @@ export function AttendanceManagement() {
                           <TableCell>
                             <Badge className={`${statusColors[attendance.status as AttendanceStatus]} font-body`}>
                               <StatusIcon className="w-3 h-3 mr-1" />
-                              {statusLabels[attendance.status as AttendanceStatus]}
+                              <span>{statusLabels[attendance.status as AttendanceStatus]}</span>
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
@@ -1048,13 +1076,15 @@ export function AttendanceManagement() {
                                     <Edit className="w-4 h-4" />
                                   </Button>
                                   <Button
+                                    key={`delete-${attendance.id}`}
                                     variant="ghost"
                                     size="icon"
                                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                     onClick={() => handleDeleteAttendance(attendance.id)}
+                                    disabled={isSubmitting}
                                     title="Hapus Data"
                                   >
-                                    <Trash2 className="w-4 h-4" />
+                                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                   </Button>
                                 </>
                               )}
@@ -1132,14 +1162,14 @@ export function AttendanceManagement() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="font-body">Tanggal</TableHead>
-                    <TableHead className="font-body">Karyawan</TableHead>
-                    <TableHead className="font-body">Check In</TableHead>
-                    <TableHead className="font-body">Check Out</TableHead>
-                    <TableHead className="font-body">Status</TableHead>
-                    <TableHead className="font-body">Potongan</TableHead>
+                    <TableHead className="font-body"><span>Tanggal</span></TableHead>
+                    <TableHead className="font-body"><span>Karyawan</span></TableHead>
+                    <TableHead className="font-body"><span>Check In</span></TableHead>
+                    <TableHead className="font-body"><span>Check Out</span></TableHead>
+                    <TableHead className="font-body"><span>Status</span></TableHead>
+                    <TableHead className="font-body"><span>Potongan</span></TableHead>
                     {user?.role !== 'staff' && (
-                      <TableHead className="font-body text-right">Aksi</TableHead>
+                      <TableHead className="font-body text-right"><span>Aksi</span></TableHead>
                     )}
                   </TableRow>
                 </TableHeader>
@@ -1147,7 +1177,7 @@ export function AttendanceManagement() {
                   {filteredAttendance.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={user?.role === 'staff' ? 5 : 6} className="text-center py-8 text-muted-foreground">
-                        Tidak ada data riwayat absensi pada periode ini.
+                        <span>Tidak ada riwayat absensi untuk periode ini.</span>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -1179,7 +1209,7 @@ export function AttendanceManagement() {
                           <TableCell>
                             <Badge className={`${statusColors[attendance.status as AttendanceStatus]} font-body`}>
                               <StatusIcon className="w-3 h-3 mr-1" />
-                              {statusLabels[attendance.status as AttendanceStatus]}
+                              <span>{statusLabels[attendance.status as AttendanceStatus]}</span>
                             </Badge>
                           </TableCell>
                           <TableCell className="font-mono text-sm">
@@ -1197,13 +1227,15 @@ export function AttendanceManagement() {
                               <div className="flex items-center justify-end gap-1">
                                 {attendance.status === 'late' && (
                                   <Button
+                                    key={`reset-${attendance.id}`}
                                     variant="ghost"
                                     size="icon"
                                     className="text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
                                     onClick={() => handleResetStatus(attendance.id)}
+                                    disabled={isSubmitting}
                                     title="Reset Status"
                                   >
-                                    <RefreshCcw className="w-4 h-4" />
+                                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
                                   </Button>
                                 )}
                                 <Button
@@ -1386,11 +1418,11 @@ export function AttendanceManagement() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="font-body">Karyawan</TableHead>
-                      <TableHead className="font-body">Tanggal</TableHead>
-                      <TableHead className="font-body">Waktu</TableHead>
-                      <TableHead className="font-body">Alasan</TableHead>
-                      <TableHead className="font-body text-right">Aksi</TableHead>
+                      <TableHead className="font-body"><span>Karyawan</span></TableHead>
+                      <TableHead className="font-body"><span>Tanggal</span></TableHead>
+                      <TableHead className="font-body"><span>Waktu</span></TableHead>
+                      <TableHead className="font-body"><span>Alasan</span></TableHead>
+                      <TableHead className="font-body text-right"><span>Aksi</span></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1425,23 +1457,24 @@ export function AttendanceManagement() {
                               {att.manual_reason}
                             </TableCell>
                             <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-green-200 text-green-700 hover:bg-green-50 font-body"
+                              <div className="flex gap-2 justify-end">
+                                <Button 
+                                  variant="default" 
+                                  size="sm" 
+                                  className="bg-green-600 hover:bg-green-700"
                                   onClick={() => handleApproveManual(att.id)}
+                                  disabled={isSubmitting}
                                 >
-                                  <CheckCircle className="w-4 h-4 mr-1" />
+                                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
                                   Setujui
                                 </Button>
-                                <Button
+                                <Button 
+                                  variant="destructive" 
                                   size="sm"
-                                  variant="outline"
-                                  className="border-red-200 text-red-700 hover:bg-red-50 font-body"
                                   onClick={() => handleRejectManual(att.id)}
+                                  disabled={isSubmitting}
                                 >
-                                  <XCircle className="w-4 h-4 mr-1" />
+                                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <XCircle className="w-4 h-4 mr-2" />}
                                   Tolak
                                 </Button>
                               </div>

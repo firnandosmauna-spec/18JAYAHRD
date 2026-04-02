@@ -269,9 +269,10 @@ const navItems = [
   { label: 'Invoice', href: '/sales/invoices', icon: Receipt },
 ];
 
+import { useModulePersistence } from '@/hooks/useModulePersistence';
+
 export default function SalesModule() {
-  const savedPath = localStorage.getItem('lastPath_sales');
-  console.log('🔍 SalesModule: savedPath from localStorage:', savedPath);
+  const { savedPath } = useModulePersistence('sales');
 
   return (
     <ModuleLayout moduleId="sales" title="Penjualan" navItems={navItems}>
@@ -280,9 +281,10 @@ export default function SalesModule() {
           savedPath && savedPath !== '/sales' && savedPath.startsWith('/sales') ? (
             <Navigate to={savedPath} replace />
           ) : (
-            <SalesDashboard />
+            <Navigate to="/sales/dashboard" replace />
           )
         } />
+        <Route path="dashboard" element={<SalesDashboard />} />
         <Route path="customers" element={<CustomerManagement />} />
         <Route path="products" element={<ProductManagement />} />
         <Route path="orders" element={<SalesOrderManagement />} />

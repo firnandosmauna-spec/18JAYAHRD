@@ -7,7 +7,7 @@ import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { usePresence } from '@/hooks/usePresence';
 
 export type UserRole = 'Administrator' | 'manager' | 'staff' | 'marketing';
-export type ModuleType = 'hrd' | 'accounting' | 'inventory' | 'customer' | 'project' | 'sales' | 'purchase' | 'marketing';
+export type ModuleType = 'hrd' | 'accounting' | 'inventory' | 'customer' | 'project' | 'projects' | 'sales' | 'purchase' | 'marketing';
 
 export interface User {
   id: string;
@@ -25,8 +25,6 @@ interface AuthContextType {
   session: Session | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (email: string, password: string, name: string, role?: UserRole, modules?: ModuleType[], position?: string, department?: string) => Promise<boolean>;
   logout: () => Promise<void>;
   hasModuleAccess: (module: ModuleType) => boolean;
   updateProfile: (updates: Partial<Profile>) => Promise<boolean>;
@@ -60,12 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [stashedSession, setStashedSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionKey, setSessionKey] = useState<string>(Math.random().toString(36).substring(7));
+  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
 
   const fetchingFor = useRef<string | null>(null);
   const initializing = useRef<boolean>(false);
   const isMounted = useRef(true);
-
-  const [onlineUsers] = useState<any[]>([]);
 
   const updateAuthState = (newSession: Session | null, newUser: User | null, newProfile: Profile | null) => {
     let finalizedUser = newUser;
@@ -194,6 +191,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             modules: (metadata?.modules as ModuleType[]) || defaultModules,
           }, null);
 
+          // CRITICAL: Await the profile fetch before finishing initialization
+          // This ensures that user.modules is fully populated from the DB 
+          // BEFORE any routing components try to check permissions.
           await fetchProfile(currentSession.user.id, metadata, currentSession);
         }
       } catch (error) {
@@ -201,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } finally {
         if (isMounted.current) {
           setIsLoading(false);
+          console.log('%c 🏁 [Auth] Initialization Complete', 'color: #00ff00; font-weight: bold');
         }
       }
     };
@@ -257,6 +258,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           const role = roleRaw as UserRole;
 
+          // Don't set isLoading(false) here, let fetchProfile handle it
           updateAuthState(currentSession, {
             id: userId,
             email: currentSession.user.email || '',
@@ -265,6 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             modules: (metadata?.modules as ModuleType[]) || getDefaultModules(role),
           }, null);
 
+          // Always fetch full profile from DB to get correct module list
           fetchProfile(userId, metadata, currentSession);
         }
       }
@@ -386,9 +389,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const hasModuleAccess = (module: ModuleType): boolean => {
-    if (user?.role === 'Administrator') return true;
-    return user?.modules.includes(module) ?? false;
+  const hasModuleAccess = (moduleName: ModuleType): boolean => {
+    if (!user) return false;
+    if (user.role === 'Administrator') return true;
+    
+    // Normalize module name for checking
+    let m = moduleName as string;
+    if (m === 'project') m = 'projects';
+
+    return user.modules.some(mod => {
+      let modName = mod as string;
+      if (modName === 'project') modName = 'projects';
+      return modName === m;
+    });
   };
 
   const value = React.useMemo(() => ({
@@ -405,8 +418,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updatePassword,
     onlineUsers,
     stashedSession,
-    restoreAdminSession
-  }), [user, profile, session, isLoading, onlineUsers, stashedSession]);
+    restoreAdminSession,
+  }), [user, profile, session, stashedSession, isLoading, onlineUsers, sessionKey]);
 
   return (
     <AuthContext.Provider value={value}>

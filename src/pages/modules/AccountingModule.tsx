@@ -9,32 +9,32 @@ import { CashOutView } from '../../components/accounting/CashOutView';
 import { CashBookView } from '../../components/accounting/CashBookView';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Badge } from '../../components/ui/badge';
 import {
-    LineChart,
+    LayoutDashboard,
     Wallet,
+    BookOpen,
     FileText,
     BarChart3,
-    ArrowUpRight,
-    ArrowDownRight,
+    Settings,
     TrendingUp,
-    LayoutDashboard,
-    Calculator,
-    BookOpen,
+    ArrowDownRight,
+    ArrowUpRight,
     Plus,
     Loader2,
-    Settings
+    Calculator
 } from 'lucide-react';
 import { useAccountingReports, useAccounts, useJournalEntries } from '../../hooks/useAccounting';
 import { formatCurrency } from '../../lib/utils';
-import { useNavigate } from 'react-router-dom';
-
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useNavigate, Routes, Route, Navigate } from 'react-router-dom';
+import { useModulePersistence } from '@/hooks/useModulePersistence';
 
 export default function AccountingModule() {
+    const navigate = useNavigate();
+    const { savedPath } = useModulePersistence('accounting');
+    
     const navItems = [
-        { label: 'Dashboard', href: '/accounting', icon: LayoutDashboard },
+        { label: 'Dashboard', href: '/accounting/dashboard', icon: LayoutDashboard },
         { label: 'Buku Kas', href: '/accounting/cash-book', icon: Wallet },
         { label: 'Buku Besar', href: '/accounting/ledger', icon: BookOpen },
         { label: 'Jurnal Umum', href: '/accounting/journal', icon: FileText },
@@ -42,46 +42,35 @@ export default function AccountingModule() {
         { label: 'Daftar Akun', href: '/accounting/coa', icon: Settings },
     ];
 
+    const resumePath = savedPath && savedPath !== '/accounting' && savedPath.startsWith('/accounting') ? savedPath : '/accounting/dashboard';
+
     return (
         <ModuleLayout
             title="Accounting Management"
             moduleId="accounting"
             navItems={navItems}
         >
-            <div className="p-6 md:p-8 space-y-8 print:p-0 print:m-0">
-                {(() => {
-                    const savedPath = localStorage.getItem('lastPath_accounting');
-                    console.log('🔍 AccountingModule: savedPath from localStorage:', savedPath);
-                    
-                    return (
-                        <Routes>
-                            <Route index element={
-                                savedPath && savedPath !== '/accounting' && savedPath.startsWith('/accounting') ? (
-                                    <Navigate to={savedPath} replace />
-                                ) : (
-                                    <AccountingDashboard />
-                                )
-                            } />
-                            <Route path="cash-book" element={<CashBookView />} />
-                            <Route path="cash-in" element={<CashInView />} />
-                            <Route path="cash-out" element={<CashOutView />} />
-                            <Route path="coa" element={<CoAView />} />
-                            <Route path="ledger" element={<LedgerView />} />
-                            <Route path="journal" element={<JournalEntryView />} />
-                            <Route path="reports" element={<ReportsView />} />
-                            <Route path="*" element={<Navigate to="/accounting" replace />} />
-                        </Routes>
-                    );
-                })()}
-            </div>
+            <Routes>
+                <Route index element={<Navigate to={resumePath} replace />} />
+                <Route path="dashboard" element={<AccountingDashboard navigate={navigate} />} />
+                <Route path="cash-book" element={<CashBookView />} />
+                <Route path="ledger" element={<LedgerView />} />
+                <Route path="journal" element={<JournalEntryView />} />
+                <Route path="reports" element={<ReportsView />} />
+                <Route path="coa" element={<CoAView />} />
+                <Route path="cash-in" element={<CashInView />} />
+                <Route path="cash-out" element={<CashOutView />} />
+                <Route path="*" element={<Navigate to="/accounting" replace />} />
+            </Routes>
         </ModuleLayout>
     );
 }
 
+interface DashboardProps {
+    navigate: (path: string) => void;
+}
 
-
-function AccountingDashboard() {
-    const navigate = useNavigate();
+function AccountingDashboard({ navigate }: DashboardProps) {
     const startDate = new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
     const endDate = new Date().toISOString().split('T')[0];
     const { pl, bs, loading: loadingReports } = useAccountingReports(startDate, endDate);
@@ -112,7 +101,6 @@ function AccountingDashboard() {
             trend: 'Real-time',
             isPositive: true,
         },
-        // ... (rest of stats)
         {
             label: 'Pendapatan (YTD)',
             value: pl?.total_revenue || 0,
@@ -163,7 +151,7 @@ function AccountingDashboard() {
     }).slice(0, 5);
 
     return (
-        <div className="space-y-8">
+        <div className="p-6 md:p-8 space-y-8 print:p-0 print:m-0">
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {stats.map((stat, idx) => (

@@ -212,10 +212,10 @@ export function ESSPortal() {
                 <Card className="max-w-md border-orange-200 bg-orange-50">
                     <CardContent className="pt-6 text-center">
                         <AlertCircle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-                        <h2 className="text-xl font-bold text-orange-900 mb-2">Akun Belum Terhubung</h2>
+                        <h2 className="text-xl font-bold text-orange-900 mb-2"><span>Akun Belum Terhubung</span></h2>
                         <p className="text-orange-800">
-                            Akun Anda belum terhubung dengan data karyawan di sistem HRD.
-                            Silakan hubungi HRD/Admin untuk melakukan sinkronisasi data.
+                            <span>Akun Anda belum terhubung dengan data karyawan di sistem HRD.</span>
+                            <span>Silakan hubungi HRD/Admin untuk melakukan sinkronisasi data.</span>
                         </p>
                     </CardContent>
                 </Card>
@@ -253,9 +253,9 @@ export function ESSPortal() {
                             <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
                                 <Megaphone className="w-6 h-6" />
                             </div>
-                            <h2 className="text-xl font-bold font-display">Pengumuman Penting</h2>
+                            <h2 className="text-xl font-bold font-display"><span>Pengumuman Penting</span></h2>
                         </div>
-                        <h3 className="text-lg font-semibold leading-tight">{currentAnnouncement?.title}</h3>
+                        <h3 className="text-lg font-semibold leading-tight"><span>{currentAnnouncement?.title}</span></h3>
                     </div>
 
                     <div className="p-6 bg-white">
@@ -301,14 +301,14 @@ export function ESSPortal() {
                         </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 text-center md:text-left">
-                        <h1 className="text-2xl font-bold font-display">{user?.name}</h1>
-                        <p className="text-white/80 font-body text-sm md:text-base">{employee?.position || 'Karyawan'}</p>
+                        <h1 className="text-2xl font-bold font-display"><span>{user?.name}</span></h1>
+                        <p className="text-white/80 font-body text-sm md:text-base"><span>{employee?.position || 'Karyawan'}</span></p>
                         <div className="mt-3 flex flex-wrap justify-center md:justify-start gap-2">
                             <Badge variant="secondary" className="bg-white/10 text-white/90 border-none hover:bg-white/20 text-[10px] py-0 h-5">
-                                NIK: {employee?.nik || user?.id.slice(0, 8).toUpperCase()}
+                                <span>NIK: {employee?.nik || user?.id.slice(0, 8).toUpperCase()}</span>
                             </Badge>
                             <Badge variant="secondary" className="bg-white/10 text-white/90 border-none hover:bg-white/20 text-[10px] py-0 h-5">
-                                {employee?.status === 'active' ? 'Aktif' : 'On Leave'}
+                                <span>{employee?.status === 'active' ? 'Aktif' : 'On Leave'}</span>
                             </Badge>
                         </div>
                     </div>
@@ -337,15 +337,15 @@ export function ESSPortal() {
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 <div className="relative">
                     <TabsList className="flex w-full overflow-x-auto lg:w-auto justify-start bg-gray-100/50 p-1 no-scrollbar flex-nowrap min-w-full">
-                        <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Overview</TabsTrigger>
-                        <TabsTrigger value="attendance" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Absensi</TabsTrigger>
-                        <TabsTrigger value="leave" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Cuti</TabsTrigger>
-                        <TabsTrigger value="payroll" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Gaji</TabsTrigger>
+                        <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap"><span>Overview</span></TabsTrigger>
+                        <TabsTrigger value="attendance" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap"><span>Absensi</span></TabsTrigger>
+                        <TabsTrigger value="leave" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap"><span>Cuti</span></TabsTrigger>
+                        <TabsTrigger value="payroll" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap"><span>Gaji</span></TabsTrigger>
                         {user?.role === 'Administrator' && (
-                            <TabsTrigger value="pipeline" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Pipeline</TabsTrigger>
+                            <TabsTrigger value="pipeline" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap"><span>Pipeline</span></TabsTrigger>
                         )}
-                        <TabsTrigger value="loan" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Kasbon</TabsTrigger>
-                        <TabsTrigger value="reward" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap">Reward</TabsTrigger>
+                        <TabsTrigger value="loan" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap"><span>Kasbon</span></TabsTrigger>
+                        <TabsTrigger value="reward" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-3 md:px-4 py-1.5 text-xs md:text-sm whitespace-nowrap"><span>Reward</span></TabsTrigger>
                     </TabsList>
                 </div>
 
@@ -361,22 +361,22 @@ export function ESSPortal() {
                             <CardContent className="pt-6">
                                 <div className="grid grid-cols-2 gap-y-4">
                                     <div>
-                                        <p className="text-sm text-muted-foreground font-body">Departemen</p>
-                                        <p className="font-semibold text-[#1C1C1E]">{departmentName}</p>
+                                        <p className="text-sm text-muted-foreground font-body"><span>Departemen</span></p>
+                                        <p className="font-semibold text-[#1C1C1E]"><span>{departmentName}</span></p>
                                     </div>
                                     <div>
-                                        <p className="text-sm text-muted-foreground font-body">Tanggal Bergabung</p>
-                                        <p className="font-semibold text-[#1C1C1E] font-mono">{employee?.join_date || '-'}</p>
+                                        <p className="text-sm text-muted-foreground font-body"><span>Tanggal Bergabung</span></p>
+                                        <p className="font-semibold text-[#1C1C1E] font-mono"><span>{employee?.join_date || '-'}</span></p>
                                     </div>
                                     <div>
-                                        <p className="text-sm text-muted-foreground font-body">Masa Kerja</p>
+                                        <p className="text-sm text-muted-foreground font-body"><span>Masa Kerja</span></p>
                                         <p className="font-semibold text-[#1C1C1E]">
-                                            {employee?.join_date ? calculateEmployeeDuration(employee.join_date) : '-'}
+                                            <span>{employee?.join_date ? calculateEmployeeDuration(employee.join_date) : '-'}</span>
                                         </p>
                                     </div>
                                     <div>
-                                        <p className="text-sm text-muted-foreground font-body">Sisa Cuti</p>
-                                        <p className="font-semibold text-hrd font-mono text-lg">12 Hari</p>
+                                        <p className="text-sm text-muted-foreground font-body"><span>Sisa Cuti</span></p>
+                                        <p className="font-semibold text-hrd font-mono text-lg"><span>12 Hari</span></p>
                                     </div>
                                 </div>
                             </CardContent>
@@ -388,7 +388,7 @@ export function ESSPortal() {
                                 <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
                                     <CardTitle className="text-lg flex items-center gap-2">
                                         <Bell className="w-5 h-5 text-hrd" />
-                                        Notifikasi Terbaru
+                                        <span>Notifikasi Terbaru</span>
                                     </CardTitle>
                                     <div className="flex items-center gap-1">
                                         <Button
@@ -426,10 +426,10 @@ export function ESSPortal() {
                                             notifications.slice(0, 5).map((notification) => (
                                                 <div key={notification.id} className={`p-4 hover:bg-gray-50 transition-colors ${!notification.read ? 'bg-blue-50/50' : ''}`}>
                                                     <p className={`text-sm ${!notification.read ? 'font-semibold text-blue-800' : 'font-medium text-gray-700'}`}>
-                                                        {notification.title}
+                                                        <span>{notification.title}</span>
                                                     </p>
                                                     <p className="text-xs text-muted-foreground mt-1">
-                                                        {new Date(notification.created_at).toLocaleString('id-ID')}
+                                                        <span>{new Date(notification.created_at).toLocaleString('id-ID')}</span>
                                                     </p>
                                                 </div>
                                             ))
@@ -446,8 +446,8 @@ export function ESSPortal() {
                             <CardContent className="p-0">
                                 <div className="bg-hrd/5 p-6 flex items-center justify-between">
                                     <div>
-                                        <p className="text-sm font-semibold text-hrd">ABSENSI ONLINE</p>
-                                        <h3 className="text-xl font-bold mt-1">Belum Absen</h3>
+                                        <p className="text-sm font-semibold text-hrd"><span>ABSENSI ONLINE</span></p>
+                                        <h3 className="text-xl font-bold mt-1"><span>Belum Absen</span></h3>
                                     </div>
                                     <div className="h-12 w-12 rounded-full bg-hrd text-white flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <Clock className="w-6 h-6" />

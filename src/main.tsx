@@ -12,16 +12,14 @@ const STORED_VERSION = localStorage.getItem("app_version");
 
 // Clear cache if version changed
 if (STORED_VERSION !== APP_VERSION) {
-  console.log("🔄 New app version detected, performing full clear...");
-  console.log("Old version:", STORED_VERSION, "New version:", APP_VERSION);
-
-  // Clear absolutely everything to ensure no stale sessions from old projects
-  localStorage.clear();
-  sessionStorage.clear();
+  console.log("🔄 New app version detected: ", APP_VERSION);
+  // Disabled aggressive clear to prevent user frustration from losing sessions/paths
+  // localStorage.clear();
+  // sessionStorage.clear();
 
   // Set new version
   localStorage.setItem("app_version", APP_VERSION);
-  console.log("✅ Full cache and session cleared");
+  console.log("✅ App version updated to", APP_VERSION);
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

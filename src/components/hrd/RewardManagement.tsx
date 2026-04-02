@@ -413,10 +413,10 @@ export function RewardManagement() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Manajemen Reward</h1>
-          <p className="text-muted-foreground font-body">Kelola penghargaan dan apresiasi karyawan</p>
+          <h2 className="text-2xl font-bold font-display text-[#1C1C1E]"><span>Loyalty & Rewards</span></h2>
+          <p className="text-muted-foreground font-body"><span>Penghargaan dan apresiasi untuk prestasi karyawan</span></p>
         </div>
         {user?.role !== 'staff' && (
           <Button
@@ -550,18 +550,18 @@ export function RewardManagement() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="all" className="font-body">
-            Semua ({counts.all})
+        <TabsList className="bg-gray-100/50 p-1">
+          <TabsTrigger value="all" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">
+            <span>Semua</span>
           </TabsTrigger>
-          <TabsTrigger value="active" className="font-body">
-            Aktif ({counts.active})
+          <TabsTrigger value="active" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">
+            <span>Aktif</span>
           </TabsTrigger>
-          <TabsTrigger value="claimed" className="font-body">
-            Diklaim ({counts.claimed})
+          <TabsTrigger value="claimed" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">
+            <span>Klaim</span>
           </TabsTrigger>
-          <TabsTrigger value="expired" className="font-body">
-            Kedaluwarsa ({counts.expired})
+          <TabsTrigger value="expired" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">
+            <span>Kedaluwarsa</span>
           </TabsTrigger>
         </TabsList>
 
@@ -571,14 +571,14 @@ export function RewardManagement() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="font-body">Karyawan</TableHead>
-                    <TableHead className="font-body">Penghargaan</TableHead>
-                    <TableHead className="font-body">Jenis</TableHead>
-                    <TableHead className="font-body">Poin</TableHead>
-                    <TableHead className="font-body">Tanggal</TableHead>
-                    <TableHead className="font-body">Status</TableHead>
+                    <TableHead className="font-body"><span>Karyawan</span></TableHead>
+                    <TableHead className="font-body"><span>Reward</span></TableHead>
+                    <TableHead className="font-body"><span>Jenis</span></TableHead>
+                    <TableHead className="font-body"><span>Poin</span></TableHead>
+                    <TableHead className="font-body"><span>Tanggal</span></TableHead>
+                    <TableHead className="font-body"><span>Status</span></TableHead>
                     {user?.role !== 'staff' && (
-                      <TableHead className="font-body text-right">Aksi</TableHead>
+                      <TableHead className="font-body text-right"><span>Aksi</span></TableHead>
                     )}
                   </TableRow>
                 </TableHeader>

@@ -120,6 +120,26 @@ export function LoanManagement() {
             const amount = parseFloat(formData.amount);
             const installment = parseFloat(formData.installment_amount);
 
+            if (isNaN(amount) || amount <= 0) {
+                toast({
+                    title: 'Error',
+                    description: 'Jumlah pinjaman tidak valid',
+                    variant: 'destructive'
+                });
+                setIsSubmitting(false);
+                return;
+            }
+
+            if (isNaN(installment) || installment <= 0) {
+                toast({
+                    title: 'Error',
+                    description: 'Jumlah cicilan tidak valid',
+                    variant: 'destructive'
+                });
+                setIsSubmitting(false);
+                return;
+            }
+
             if (installment > amount) {
                 toast({
                     title: 'Error',
@@ -210,12 +230,12 @@ export function LoanManagement() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold font-display text-[#1C1C1E]">Manajemen Kasbon</h1>
-                    <p className="text-muted-foreground font-body">Kelola pinjaman dan kasbon karyawan</p>
+                    <h2 className="text-2xl font-bold font-display text-[#1C1C1E]"><span>Manajemen Kasbon</span></h2>
+                    <p className="text-muted-foreground font-body"><span>Kelola pengajuan pinjaman dan cicilan karyawan</span></p>
                 </div>
                 <Button onClick={() => setShowAddDialog(true)} className="bg-hrd hover:bg-hrd-dark font-body">
                     <Plus className="w-4 h-4 mr-2" />
-                    Ajukan Kasbon
+                    <span>Ajukan Kasbon</span>
                 </Button>
             </div>
 
@@ -237,11 +257,11 @@ export function LoanManagement() {
                             <SelectValue placeholder="Status" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">Semua Status</SelectItem>
-                            <SelectItem value="pending">Menunggu</SelectItem>
-                            <SelectItem value="approved">Disetujui</SelectItem>
-                            <SelectItem value="paid_off">Lunas</SelectItem>
-                            <SelectItem value="rejected">Ditolak</SelectItem>
+                            <SelectItem value="all"><span>Semua Status</span></SelectItem>
+                            <SelectItem value="pending"><span>Menunggu</span></SelectItem>
+                            <SelectItem value="approved"><span>Disetujui</span></SelectItem>
+                            <SelectItem value="paid_off"><span>Lunas</span></SelectItem>
+                            <SelectItem value="rejected"><span>Ditolak</span></SelectItem>
                         </SelectContent>
                     </Select>
                 </CardContent>
@@ -253,23 +273,23 @@ export function LoanManagement() {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="font-body">Karyawan</TableHead>
-                                <TableHead className="font-body">Jumlah Pinjaman</TableHead>
-                                <TableHead className="font-body">Sisa Hutang</TableHead>
-                                <TableHead className="font-body">Cicilan/Bulan</TableHead>
-                                <TableHead className="font-body">Mulai Potong</TableHead>
-                                <TableHead className="font-body">Status</TableHead>
-                                <TableHead className="font-body text-right">Aksi</TableHead>
+                                <TableHead className="font-body"><span>Karyawan</span></TableHead>
+                                <TableHead className="font-body"><span>Plafon</span></TableHead>
+                                <TableHead className="font-body"><span>Sisa</span></TableHead>
+                                <TableHead className="font-body"><span>Angsuran</span></TableHead>
+                                <TableHead className="font-body"><span>Alasan</span></TableHead>
+                                <TableHead className="font-body"><span>Status</span></TableHead>
+                                <TableHead className="text-right font-body"><span>Aksi</span></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8">Memuat data...</TableCell>
+                                    <TableCell colSpan={7} className="text-center py-8"><span>Memuat data...</span></TableCell>
                                 </TableRow>
                             ) : filteredLoans.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Tidak ada data kasbon found</TableCell>
+                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground"><span>Tidak ada data kasbon ditemukan</span></TableCell>
                                 </TableRow>
                             ) : (
                                 filteredLoans.map((loan) => {
@@ -280,22 +300,22 @@ export function LoanManagement() {
                                                 <div className="flex items-center gap-3">
                                                     <Avatar className="w-8 h-8">
                                                         <AvatarFallback className="bg-hrd/10 text-hrd text-xs">
-                                                            {employee?.name.substring(0, 2).toUpperCase() || 'NA'}
+                                                            <span>{employee?.name.substring(0, 2).toUpperCase() || 'NA'}</span>
                                                         </AvatarFallback>
                                                     </Avatar>
                                                     <div>
-                                                        <p className="font-medium font-body">{employee?.name || 'Unknown'}</p>
-                                                        <p className="text-xs text-muted-foreground font-body">{loan.reason}</p>
+                                                        <p className="font-medium font-body"><span>{employee?.name || 'Unknown'}</span></p>
+                                                        <p className="text-xs text-muted-foreground font-body"><span>{loan.reason}</span></p>
                                                     </div>
                                                 </div>
                                             </TableCell>
                                             <TableCell className="font-mono">{formatCurrency(loan.amount)}</TableCell>
                                             <TableCell className="font-mono text-red-600 font-medium">{formatCurrency(loan.remaining_amount)}</TableCell>
                                             <TableCell className="font-mono">{formatCurrency(loan.installment_amount)}</TableCell>
-                                            <TableCell className="font-body text-sm">{formatDate(loan.start_date)}</TableCell>
+                                            <TableCell className="font-body text-sm"><span>{formatDate(loan.start_date)}</span></TableCell>
                                             <TableCell>
                                                 <Badge className={`${statusColors[loan.status]} font-body`}>
-                                                    {statusLabels[loan.status]}
+                                                    <span>{statusLabels[loan.status]}</span>
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right">
@@ -328,12 +348,12 @@ export function LoanManagement() {
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Ajukan Kasbon Baru</DialogTitle>
-                        <DialogDescription>Input detail pengajuan kasbon karyawan</DialogDescription>
+                        <DialogTitle><span>Ajukan Kasbon Baru</span></DialogTitle>
+                        <DialogDescription><span>Input detail pengajuan kasbon karyawan</span></DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
-                            <Label>Karyawan</Label>
+                            <Label><span>Karyawan</span></Label>
                             <Select
                                 value={formData.employee_id}
                                 onValueChange={(val) => setFormData(p => ({ ...p, employee_id: val }))}
@@ -343,13 +363,13 @@ export function LoanManagement() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     {employees.map(emp => (
-                                        <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                                        <SelectItem key={emp.id} value={emp.id}><span>{emp.name}</span></SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="grid gap-2">
-                            <Label>Jumlah Pinjaman (Rp)</Label>
+                            <Label><span>Jumlah Pinjaman (Rp)</span></Label>
                             <Input
                                 type="number"
                                 value={formData.amount}
@@ -358,17 +378,17 @@ export function LoanManagement() {
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label>Cicilan per Bulan (Rp)</Label>
+                            <Label><span>Cicilan per Bulan (Rp)</span></Label>
                             <Input
                                 type="number"
                                 value={formData.installment_amount}
                                 onChange={(e) => setFormData(p => ({ ...p, installment_amount: e.target.value }))}
                                 placeholder="Contoh: 100000"
                             />
-                            <p className="text-xs text-muted-foreground">Akan dipotong otomatis dari gaji bulanan.</p>
+                            <p className="text-xs text-muted-foreground"><span>Akan dipotong otomatis dari gaji bulanan.</span></p>
                         </div>
                         <div className="grid gap-2">
-                            <Label>Mulai Potong Gaji</Label>
+                            <Label><span>Mulai Potong Gaji</span></Label>
                             <Input
                                 type="date"
                                 value={formData.start_date}
@@ -376,7 +396,7 @@ export function LoanManagement() {
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label>Alasan / Keperluan</Label>
+                            <Label><span>Alasan / Keperluan</span></Label>
                             <Textarea
                                 value={formData.reason}
                                 onChange={(e) => setFormData(p => ({ ...p, reason: e.target.value }))}
@@ -385,9 +405,9 @@ export function LoanManagement() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowAddDialog(false)}>Batal</Button>
+                        <Button variant="outline" onClick={() => setShowAddDialog(false)}><span>Batal</span></Button>
                         <Button onClick={handleAddLoan} disabled={isSubmitting} className="bg-hrd hover:bg-hrd-dark">
-                            {isSubmitting ? 'Menyimpan...' : 'Ajukan Kasbon'}
+                            <span>{isSubmitting ? 'Menyimpan...' : 'Ajukan Kasbon'}</span>
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -295,9 +295,10 @@ function PlaceholderPage({ title }: { title: string }) {
   );
 }
 
+import { useModulePersistence } from '@/hooks/useModulePersistence';
+
 export default function PurchaseModule() {
-  const savedPath = localStorage.getItem('lastPath_purchase');
-  console.log('🔍 PurchaseModule: savedPath from localStorage:', savedPath);
+  const { savedPath } = useModulePersistence('purchase');
 
   return (
     <ModuleLayout moduleId="purchase" title="Pembelian" navItems={navItems}>
@@ -306,9 +307,10 @@ export default function PurchaseModule() {
           savedPath && savedPath !== '/purchase' && savedPath.startsWith('/purchase') ? (
             <Navigate to={savedPath} replace />
           ) : (
-            <PurchaseDashboard />
+            <Navigate to="/purchase/dashboard" replace />
           )
         } />
+        <Route path="dashboard" element={<PurchaseDashboard />} />
         <Route path="suppliers" element={<SupplierManagement />} />
         <Route path="orders" element={<PurchaseOrderManagement />} />
         <Route path="invoices" element={<PurchaseInvoiceManagement />} />

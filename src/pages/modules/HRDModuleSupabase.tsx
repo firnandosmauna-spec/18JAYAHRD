@@ -2,6 +2,7 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 import { Routes, Route, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { useModulePersistence } from '@/hooks/useModulePersistence';
 import ModuleLayout from '@/components/layout/ModuleLayout';
 import {
   Users,
@@ -2028,8 +2029,8 @@ function HRDDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]">Dashboard HRD</h1>
-          <p className="text-muted-foreground font-body">Kelola sumber daya manusia perusahaan</p>
+          <h1 className="font-display text-2xl font-bold text-[#1C1C1E]"><span>Dashboard HRD</span></h1>
+          <p className="text-muted-foreground font-body"><span>Kelola sumber daya manusia perusahaan</span></p>
         </div>
         <div className="flex items-center gap-3">
           {user?.role === 'Administrator' && (
@@ -2060,7 +2061,7 @@ function HRDDashboard() {
 
             return (
               <div key={moduleName} className="space-y-3">
-                <h2 className="font-display text-lg font-semibold text-[#1C1C1E]">{moduleName}</h2>
+                <h2 className="font-display text-lg font-semibold text-[#1C1C1E]"><span>{moduleName}</span></h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {moduleStats.map((stat, index) => (
                     <motion.div
@@ -2079,12 +2080,12 @@ function HRDDashboard() {
                               <stat.icon className={`w-6 h-6 ${stat.color}`} />
                             </div>
                             <Badge variant="secondary" className="font-mono text-xs">
-                              {stat.module}
+                              <span>{stat.module}</span>
                             </Badge>
                           </div>
                           <div className="mt-4">
-                            <p className="font-mono text-2xl font-bold text-[#1C1C1E]">{stat.value}</p>
-                            <p className="text-sm text-muted-foreground font-body">{stat.label}</p>
+                            <p className="font-mono text-2xl font-bold text-[#1C1C1E]"><span>{stat.value}</span></p>
+                            <p className="text-sm text-muted-foreground font-body"><span>{stat.label}</span></p>
                           </div>
                         </CardContent>
                       </Card>
@@ -2275,9 +2276,8 @@ export default function HRDModuleSupabase() {
     );
   }
 
-  // Determine the last visited sub-path for HRD
-  const savedPathHRD = localStorage.getItem('lastPath_hrd');
-  console.log('🔍 HRDModule: savedPath from localStorage:', savedPathHRD);
+  // Determine the last visited sub-path for HRD using the unified hook
+  const { savedPath: savedPathHRD } = useModulePersistence('hrd');
   
   // Default logic: Staff/Marketing goes to portal, others to dashboard (index)
   const isWorker = user?.role === 'Staff' || user?.role === 'Marketing';

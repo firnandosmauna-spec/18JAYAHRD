@@ -620,9 +620,10 @@ function PlaceholderPage({ title }: { title: string }) {
   );
 }
 
+import { useModulePersistence } from '@/hooks/useModulePersistence';
+
 export default function CustomerServiceModule() {
-  const savedPath = localStorage.getItem('lastPath_customer');
-  console.log('🔍 CustomerServiceModule: savedPath from localStorage:', savedPath);
+  const { savedPath } = useModulePersistence('customer');
 
   return (
     <ModuleLayout moduleId="customer" title="Customer Service" navItems={navItems}>
@@ -631,9 +632,10 @@ export default function CustomerServiceModule() {
           savedPath && savedPath !== '/customer' && savedPath.startsWith('/customer') ? (
             <Navigate to={savedPath} replace />
           ) : (
-            <CustomerServiceDashboard />
+            <Navigate to="/customer/dashboard" replace />
           )
         } />
+        <Route path="dashboard" element={<CustomerServiceDashboard />} />
         <Route path="tickets" element={<TicketList />} />
         <Route path="customers" element={<CustomerList />} />
         <Route path="feedback" element={<PlaceholderPage title="Feedback Pelanggan" />} />

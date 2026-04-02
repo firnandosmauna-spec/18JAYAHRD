@@ -759,9 +759,10 @@ function PlaceholderPage({ title }: { title: string }) {
   );
 }
 
+import { useModulePersistence } from '@/hooks/useModulePersistence';
+
 function InventoryModule() {
-  const savedPath = localStorage.getItem('lastPath_inventory');
-  console.log('🔍 InventoryModule: savedPath from localStorage:', savedPath);
+  const { savedPath } = useModulePersistence('inventory');
 
   return (
     <ModuleLayout moduleId="inventory" title="Persediaan" navItems={navItems}>
@@ -770,9 +771,10 @@ function InventoryModule() {
           savedPath && savedPath !== '/inventory' && savedPath.startsWith('/inventory') ? (
             <Navigate to={savedPath} replace />
           ) : (
-            <InventoryDashboard />
+            <Navigate to="/inventory/dashboard" replace />
           )
         } />
+        <Route path="dashboard" element={<InventoryDashboard />} />
         <Route path="products" element={<ProductList />} />
         <Route path="stock-in" element={<MaterialPurchaseManagement />} />
         <Route path="stock-out" element={<StockOutManagement />} />

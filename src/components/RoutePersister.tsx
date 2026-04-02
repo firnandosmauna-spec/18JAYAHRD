@@ -10,25 +10,38 @@ export function RoutePersister() {
 
     useEffect(() => {
         // List of paths that should NOT be persisted
-        const ignoredPaths = ['/login', '/auth', '/', '/reset-password'];
-
-        // Also ignore if we are at root
+        const ignoredPaths = ['/login', '/auth', '/', '/reset-password', '/dashboard'];
+        
+        // Also ignore if we are at root or dashboard for the "Resume" feature
+        // This ensures the LAST ACTUAL MODULE is preserved as the resumption point.
         if (ignoredPaths.includes(location.pathname)) {
+            console.log(`%c ⏭️ [SKIP PERSIST] Path ${location.pathname} is in ignored list.`, 'color: #888');
             return;
         }
 
         const fullPath = location.pathname + location.search;
+        
+        // Skip updating if we are just at /dashboard and already have a module path saved?
+        // Actually, we should always save the LAST page, but let's be careful with the dashboard.
+        
         console.log('%c 📍 [PERSIST] Current Path:', 'background: #222; color: #bada55', fullPath);
         
         try {
             localStorage.setItem('lastVisitedPath', fullPath);
             const pathSegments = location.pathname.split('/').filter(Boolean);
+            
             if (pathSegments.length > 0) {
-                const moduleName = pathSegments[0];
-                const knownModules = ['hrd', 'accounting', 'inventory', 'customer', 'projects', 'marketing', 'sales', 'purchase', 'dashboard'];
+                let moduleName = pathSegments[0];
+                
+                // Normalization for module mapping
+                if (moduleName === 'project') moduleName = 'projects';
+
+                const knownModules = ['hrd', 'accounting', 'inventory', 'customer', 'projects', 'marketing', 'sales', 'purchase'];
                 if (knownModules.includes(moduleName)) {
-                    console.log(`%c 💾 [SAVE] lastPath_${moduleName} =`, 'background: #222; color: #00ff00', fullPath);
-                    localStorage.setItem(`lastPath_${moduleName}`, fullPath);
+                    // Update module-specific key
+                    const storageKey = `lastPath_${moduleName}`;
+                    localStorage.setItem(storageKey, fullPath);
+                    console.log(`%c 💾 [PERSISTER] Global: lastVisitedPath=${fullPath} | Module: ${storageKey}=${fullPath}`, 'background: #222; color: #00ff00');
                 }
             }
         } catch (e) {

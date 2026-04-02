@@ -1,6 +1,5 @@
-import { ReactNode } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { ReactNode, useState } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth, ModuleType } from '@/contexts/AuthContext';
 import {
   Building2,
@@ -8,19 +7,16 @@ import {
   Package,
   HeadphonesIcon,
   Home,
-  Bell,
   ShoppingCart,
   ShoppingBag,
-  ChevronLeft,
-  Menu,
+  X,
   Calculator,
   TrendingUp,
-  X
+  Menu
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UserProfile } from '@/components/auth/UserProfile';
 import { NotificationBell } from '@/components/hrd/NotificationBell';
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -41,13 +37,20 @@ interface ModuleLayoutProps {
   navItems: (NavItem | NavGroup)[];
 }
 
-const moduleConfig = {
+const moduleConfig: Record<string, any> = {
   hrd: {
     color: 'bg-hrd',
     textColor: 'text-hrd',
     lightBg: 'bg-hrd/10',
     borderColor: 'border-hrd',
     icon: Users,
+  },
+  accounting: {
+    color: 'bg-accounting',
+    textColor: 'text-accounting-light',
+    lightBg: 'bg-accounting/10',
+    borderColor: 'border-accounting',
+    icon: Calculator,
   },
   inventory: {
     color: 'bg-inventory',
@@ -63,33 +66,12 @@ const moduleConfig = {
     borderColor: 'border-customer',
     icon: HeadphonesIcon,
   },
-  accounting: {
-    color: 'bg-accounting',
-    textColor: 'text-accounting',
-    lightBg: 'bg-accounting/10',
-    borderColor: 'border-accounting',
-    icon: Calculator,
-  },
-  project: {
-    color: 'bg-[#E76F51]',
-    textColor: 'text-[#E76F51]',
-    lightBg: 'bg-[#E76F51]/10',
-    borderColor: 'border-[#E76F51]',
+  projects: {
+    color: 'bg-projects',
+    textColor: 'text-projects',
+    lightBg: 'bg-projects/10',
+    borderColor: 'border-projects',
     icon: Building2,
-  },
-  sales: {
-    color: 'bg-[#2563EB]',
-    textColor: 'text-[#2563EB]',
-    lightBg: 'bg-[#2563EB]/10',
-    borderColor: 'border-[#2563EB]',
-    icon: ShoppingCart,
-  },
-  purchase: {
-    color: 'bg-[#EA580C]',
-    textColor: 'text-[#EA580C]',
-    lightBg: 'bg-[#EA580C]/10',
-    borderColor: 'border-[#EA580C]',
-    icon: ShoppingBag,
   },
   marketing: {
     color: 'bg-indigo-600',
@@ -98,47 +80,59 @@ const moduleConfig = {
     borderColor: 'border-indigo-600',
     icon: TrendingUp,
   },
+  sales: {
+    color: 'bg-sales',
+    textColor: 'text-sales',
+    lightBg: 'bg-sales/10',
+    borderColor: 'border-sales',
+    icon: ShoppingCart,
+  },
+  purchase: {
+    color: 'bg-purchase',
+    textColor: 'text-purchase',
+    lightBg: 'bg-purchase/10',
+    borderColor: 'border-purchase',
+    icon: ShoppingBag,
+  },
 };
 
 const allModules = [
-  { id: 'hrd' as ModuleType, name: 'HRD', route: '/hrd', icon: Users },
-  { id: 'accounting' as ModuleType, name: 'Akuntansi', route: '/accounting', icon: Calculator },
-  { id: 'inventory' as ModuleType, name: 'Persediaan', route: '/inventory', icon: Package },
-  { id: 'customer' as ModuleType, name: 'Pelayanan', route: '/customer', icon: HeadphonesIcon },
-  { id: 'project' as ModuleType, name: 'Proyek', route: '/projects', icon: Building2 },
-  { id: 'sales' as ModuleType, name: 'Penjualan', route: '/sales', icon: ShoppingCart },
-  { id: 'purchase' as ModuleType, name: 'Pembelian', route: '/purchase', icon: ShoppingBag },
-  { id: 'marketing' as ModuleType, name: 'Marketing', route: '/marketing', icon: TrendingUp },
-];
+  { id: 'hrd' as ModuleType, name: 'HRD & Payroll', icon: Users, route: '/hrd' },
+  { id: 'accounting' as ModuleType, name: 'Akuntansi', icon: Calculator, route: '/accounting' },
+  { id: 'inventory' as ModuleType, name: 'Inventory', icon: Package, route: '/inventory' },
+  { id: 'marketing' as ModuleType, name: 'Marketing', icon: TrendingUp, route: '/marketing' },
+  { id: 'customer' as ModuleType, name: 'Customer Service', icon: HeadphonesIcon, route: '/customer' },
+  { id: 'projects' as ModuleType, name: 'Proyek', icon: Building2, route: '/projects' },
+  { id: 'sales' as ModuleType, name: 'Penjualan', icon: ShoppingCart, route: '/sales' },
+  { id: 'purchase' as ModuleType, name: 'Pembelian', icon: ShoppingBag, route: '/purchase' },
+] as const;
 
 export default function ModuleLayout({ children, moduleId, title, navItems }: ModuleLayoutProps) {
-  const { user, logout, hasModuleAccess } = useAuth();
+  const { user, hasModuleAccess } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const config = moduleConfig[moduleId];
+  const config = moduleConfig[moduleId] || moduleConfig.hrd;
   const ModuleIcon = config.icon;
 
   const renderNavItem = (item: NavItem) => {
-    const isActive = location.pathname === item.href;
+    const isActive = location.pathname === item.href || location.pathname.startsWith(`${item.href}/`);
+
     return (
-      <button
+      <Link
         key={item.href}
-        onClick={() => {
-          navigate(item.href);
-          setSidebarOpen(false);
-        }}
+        to={item.href}
         className={cn(
-          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-body text-sm transition-all text-left",
+          "flex items-center gap-3 px-3 py-2 rounded-lg font-body text-sm transition-all",
           isActive
-            ? `${config.lightBg} ${config.textColor} font-medium shadow-sm`
+            ? `${config.lightBg} ${config.textColor} font-bold`
             : "text-gray-600 hover:bg-gray-100"
         )}
       >
-        <item.icon className={cn("w-5 h-5", isActive ? config.textColor : "text-gray-400")} />
+        <item.icon className={cn("w-4 h-4", isActive ? config.textColor : "text-gray-400")} />
         {item.label}
-      </button>
+      </Link>
     );
   };
 
@@ -205,36 +199,26 @@ export default function ModuleLayout({ children, moduleId, title, navItems }: Mo
               {allModules.filter(m => hasModuleAccess(m.id)).map((module) => {
                 const isCurrentModule = module.id === moduleId;
                 const moduleConf = moduleConfig[module.id];
+                
+                const storageKey = `lastPath_${module.id}`;
+                const savedPath = localStorage.getItem(storageKey);
+                const targetPath = savedPath || module.route;
+                
                 return (
-                  <button
+                  <Link
                     key={module.id}
-                    onClick={() => {
-                      if (!isCurrentModule) {
-                        const storageKey = `lastPath_${module.id.replace('project', 'projects')}`;
-                        const savedPath = localStorage.getItem(storageKey);
-                        
-                        console.log(`%c 🖱️ [SIDEBAR SWITCH] Module: ${module.id}`, 'background: #333; color: #ffeb3b', {
-                          id: module.id,
-                          storageKey,
-                          savedPath,
-                          defaultRoute: module.route
-                        });
-
-                        navigate(savedPath || module.route);
-                        setSidebarOpen(false);
-                      }
-                    }}
-                    disabled={isCurrentModule}
+                    to={isCurrentModule ? '#' : targetPath}
+                    onClick={() => setSidebarOpen(false)}
                     className={cn(
-                      "w-full aspect-square rounded-lg flex items-center justify-center transition-all",
+                      "w-full aspect-square rounded-lg flex items-center justify-center transition-all cursor-pointer relative z-10",
                       isCurrentModule
-                        ? `${moduleConf.color} text-white`
-                        : `${moduleConf.lightBg} ${moduleConf.textColor} hover:opacity-80`
+                        ? `${moduleConf.color} text-white cursor-default`
+                        : `${moduleConf.lightBg} ${moduleConf.textColor} hover:bg-white/50 active:scale-95`
                     )}
                     title={module.name}
                   >
-                    <module.icon className="w-5 h-5" />
-                  </button>
+                    <module.icon className="w-5 h-5 pointer-events-none" />
+                  </Link>
                 );
               })}
             </div>
@@ -254,47 +238,29 @@ export default function ModuleLayout({ children, moduleId, title, navItems }: Mo
       </aside>
 
       {/* Main Content */}
-      <div className="lg:ml-64">
-        {/* Top Header */}
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-          <div className="flex items-center justify-between h-16 px-4 sm:px-6">
-            <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="lg:hidden"
-                onClick={() => setSidebarOpen(true)}
-              >
-                <Menu className="w-5 h-5" />
-              </Button>
+      <main className="lg:pl-64 min-h-screen">
+        {/* Header */}
+        <header className="h-16 bg-white border-b border-gray-200 sticky top-0 z-30 px-4 md:px-8 flex items-center justify-between">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu className="w-6 h-6" />
+          </Button>
 
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <span className="text-sm font-body hidden sm:inline">Dashboard</span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {user?.role === 'Administrator' && <NotificationBell />}
-              <UserProfile />
-            </div>
+          <div className="flex items-center gap-4 ml-auto">
+            <NotificationBell />
+            <UserProfile />
           </div>
         </header>
 
         {/* Page Content */}
-        <main className="p-4 sm:p-6 lg:p-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            {children}
-          </motion.div>
-        </main>
-      </div>
+        <div className="p-4 md:p-8">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

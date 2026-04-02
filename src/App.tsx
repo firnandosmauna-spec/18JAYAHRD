@@ -189,11 +189,11 @@ function App() {
                   }
                 />
 
-                {/* Project Module */}
+                {/* Projects Module */}
                 <Route
                   path="/projects/*"
                   element={
-                    <ProtectedRoute requiredModule="project">
+                    <ProtectedRoute requiredModule="projects">
                       <ProjectModule />
                     </ProtectedRoute>
                   }
