@@ -2279,8 +2279,8 @@ export default function HRDModuleSupabase() {
   // Determine the last visited sub-path for HRD using the unified hook
   const { savedPath: savedPathHRD } = useModulePersistence('hrd');
   
-  // Default logic: Staff/Marketing goes to portal, others to dashboard (index)
-  const isWorker = user?.role === 'Staff' || user?.role === 'Marketing';
+  // Default logic: staff/marketing goes to portal, others to dashboard (index)
+  const isWorker = user?.role === 'staff' || user?.role === 'marketing';
   const defaultRoute = isWorker ? "/hrd/portal" : "/hrd/dashboard";
 
   return (

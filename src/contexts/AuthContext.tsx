@@ -26,7 +26,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (email: string, password: string, name: string, role?: UserRole, modules?: ModuleType[]) => Promise<boolean>;
+  register: (email: string, password: string, name: string, role?: UserRole, modules?: ModuleType[], position?: string, department?: string) => Promise<boolean>;
   logout: () => Promise<void>;
   hasModuleAccess: (module: ModuleType) => boolean;
   updateProfile: (updates: Partial<Profile>) => Promise<boolean>;
@@ -443,7 +443,7 @@ export function useAuth() {
       isAuthenticated: false,
       isLoading: true,
       login: async (_e: string, _p: string) => false,
-      register: async (_e: string, _p: string, _n: string) => false,
+      register: async (_e: string, _p: string, _n: string, _r?: UserRole, _m?: ModuleType[], _pos?: string, _dep?: string) => false,
       logout: async () => { },
       hasModuleAccess: () => false,
       updateProfile: async () => false,
