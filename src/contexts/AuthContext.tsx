@@ -25,6 +25,8 @@ interface AuthContextType {
   session: Session | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  login: (email: string, password: string) => Promise<boolean>;
+  register: (email: string, password: string, name: string, role?: UserRole, modules?: ModuleType[]) => Promise<boolean>;
   logout: () => Promise<void>;
   hasModuleAccess: (module: ModuleType) => boolean;
   updateProfile: (updates: Partial<Profile>) => Promise<boolean>;
