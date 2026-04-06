@@ -54,8 +54,10 @@ import {
     useProducts,
     useWarehouses,
     useStockMovements,
-    useProjectLocations
+    useProjectLocations,
+    useProductCategories
 } from '@/hooks/useInventory';
+import { useSuppliers } from '@/hooks/usePurchase';
 import { useToast } from '@/components/ui/use-toast';
 import { format } from 'date-fns';
 
@@ -64,8 +66,15 @@ export function StockOutManagement() {
     const { warehouses } = useWarehouses();
     const { movements, loading, addMovement, updateMovement, deleteMovement, refetch } = useStockMovements();
     const { locations } = useProjectLocations();
+    const { categories } = useProductCategories();
+    const { suppliers } = useSuppliers();
     const { toast } = useToast();
     const [searchQuery, setSearchQuery] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [supplierFilter, setSupplierFilter] = useState('all');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [productFilter, setProductFilter] = useState('all');
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [showEditDialog, setShowEditDialog] = useState(false);
     const [editingMovement, setEditingMovement] = useState<any | null>(null);
@@ -127,18 +136,32 @@ export function StockOutManagement() {
     const movementsWithBalances = calculateBalances();
 
     const filteredMovements = movementsWithBalances.filter(m => {
-        const productName = (m as any).products?.name || '';
-        const supplierName = (m as any).products?.suppliers?.name || '';
-        const sku = (m as any).products?.sku || '';
+        const product = (m as any).products;
+        const productName = product?.name || '';
+        const supplierName = product?.suppliers?.name || '';
+        const sku = product?.sku || '';
         const reference = m.reference || '';
         const search = searchQuery.toLowerCase();
 
-        if (searchQuery) {
-            return productName.toLowerCase().includes(search) ||
-                supplierName.toLowerCase().includes(search) ||
-                sku.toLowerCase().includes(search) ||
-                reference.toLowerCase().includes(search);
-        }
+        // Search Query
+        const matchesSearch = !searchQuery || 
+            productName.toLowerCase().includes(search) ||
+            supplierName.toLowerCase().includes(search) ||
+            sku.toLowerCase().includes(search) ||
+            reference.toLowerCase().includes(search);
+        
+        if (!matchesSearch) return false;
+
+        // Date Filter
+        const movementDate = m.created_at.split('T')[0];
+        if (startDate && movementDate < startDate) return false;
+        if (endDate && movementDate > endDate) return false;
+
+        // Category, Supplier, Product Filters
+        if (categoryFilter !== 'all' && product?.category_id !== categoryFilter) return false;
+        if (supplierFilter !== 'all' && product?.supplier_id !== supplierFilter) return false;
+        if (productFilter !== 'all' && m.product_id !== productFilter) return false;
+
         return true;
     });
 
@@ -626,16 +649,105 @@ export function StockOutManagement() {
 
             <Card className="border-gray-200">
                 <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <CardTitle className="font-display text-lg">Riwayat Ending material masuk dan keluar</CardTitle>
-                        <div className="relative w-full sm:w-64">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                            <Input
-                                placeholder="Cari riwayat..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-10 font-body"
-                            />
+                    <div className="flex flex-col space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <CardTitle className="font-display text-lg">Riwayat Ending material masuk dan keluar</CardTitle>
+                            <div className="relative w-full sm:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                <Input
+                                    placeholder="Cari riwayat..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="pl-10 font-body"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-gray-50/50 rounded-lg border border-gray-100">
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Tgl Mulai</Label>
+                                <div className="relative">
+                                    <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                    <Input
+                                        type="date"
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="h-8 pl-8 text-xs font-body"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Tgl Selesai</Label>
+                                <div className="relative">
+                                    <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                    <Input
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="h-8 pl-8 text-xs font-body"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Supplier</Label>
+                                <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+                                    <SelectTrigger className="h-8 text-xs font-body">
+                                        <SelectValue placeholder="Semua Supplier" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all" className="text-xs">Semua Supplier</SelectItem>
+                                        {suppliers.map(s => (
+                                            <SelectItem key={s.id} value={s.id} className="text-xs">{s.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Kategori</Label>
+                                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                                    <SelectTrigger className="h-8 text-xs font-body">
+                                        <SelectValue placeholder="Semua Kategori" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all" className="text-xs">Semua Kategori</SelectItem>
+                                        {categories.map(c => (
+                                            <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex items-end gap-2">
+                                <div className="flex-1 space-y-1.5">
+                                    <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Produk Spesifik</Label>
+                                    <Select value={productFilter} onValueChange={setProductFilter}>
+                                        <SelectTrigger className="h-8 text-xs font-body">
+                                            <SelectValue placeholder="Semua Produk" />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[300px]">
+                                            <SelectItem value="all" className="text-xs">Semua Produk</SelectItem>
+                                            {products.map(p => (
+                                                <SelectItem key={p.id} value={p.id} className="text-xs truncate max-w-[200px]">{p.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <Button 
+                                    variant="outline" 
+                                    size="icon"
+                                    onClick={() => {
+                                        setStartDate('');
+                                        setEndDate('');
+                                        setSupplierFilter('all');
+                                        setCategoryFilter('all');
+                                        setProductFilter('all');
+                                        setSearchQuery('');
+                                    }}
+                                    className="h-8 w-8 hover:bg-gray-100 shrink-0"
+                                    title="Reset Filter"
+                                >
+                                    <Plus className="w-3.5 h-3.5 rotate-45" />
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </CardHeader>

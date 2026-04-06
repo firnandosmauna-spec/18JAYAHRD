@@ -50,7 +50,7 @@ import {
 } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { useProducts, useStockMovements } from '@/hooks/useInventory';
+import { useProducts, useStockMovements, useProductCategories } from '@/hooks/useInventory';
 import { useSuppliers } from '@/hooks/usePurchase';
 
 export function InventoryReports() {
@@ -60,6 +60,11 @@ export function InventoryReports() {
     const [movementType, setMovementType] = useState('all');
     const [reportTab, setReportTab] = useState('movements');
     const [supplierStatusFilter, setSupplierStatusFilter] = useState('all');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [supplierFilter, setSupplierFilter] = useState('all');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [productFilter, setProductFilter] = useState('all');
     const [visibleColumns, setVisibleColumns] = useState(() => {
         const saved = localStorage.getItem('inventory_report_visible_columns');
         if (saved) {
@@ -87,6 +92,13 @@ export function InventoryReports() {
     }, [visibleColumns]);
 
     const getDateRange = () => {
+        if (startDate || endDate) {
+            return {
+                start: startDate || undefined,
+                end: endDate || undefined
+            };
+        }
+
         if (dateRange === 'all') return { start: undefined, end: undefined };
 
         const end = new Date();
@@ -102,6 +114,7 @@ export function InventoryReports() {
 
     const range = getDateRange();
     const { products, loading: productsLoading } = useProducts();
+    const { categories } = useProductCategories();
     const { movements, loading: movementsLoading } = useStockMovements(range.start, range.end);
     const { suppliers, loading: suppliersLoading } = useSuppliers();
 
@@ -138,10 +151,13 @@ export function InventoryReports() {
     }, [movements, products]);
 
     const filteredMovements = movements.filter(m => {
-        const productName = (m as any).products?.name || '';
-        const sku = (m as any).products?.sku || '';
+        const product = (m as any).products;
+        const productName = product?.name || '';
+        const sku = product?.sku || '';
         const matchesSearch = productName.toLowerCase().includes(movementSearchQuery.toLowerCase()) ||
             sku.toLowerCase().includes(movementSearchQuery.toLowerCase());
+
+        if (!matchesSearch) return false;
 
         let matchesType = true;
         if (movementType === 'in') {
@@ -149,8 +165,14 @@ export function InventoryReports() {
         } else if (movementType === 'out') {
             matchesType = m.movement_type === 'out' || (m.movement_type === 'adjustment' && m.quantity < 0);
         }
+        if (!matchesType) return false;
 
-        return matchesSearch && matchesType;
+        // Custom filters
+        if (supplierFilter !== 'all' && product?.supplier_id !== supplierFilter) return false;
+        if (categoryFilter !== 'all' && product?.category_id !== categoryFilter) return false;
+        if (productFilter !== 'all' && m.product_id !== productFilter) return false;
+
+        return true;
     });
 
     const filteredTotalValue = useMemo(() => {
@@ -355,7 +377,7 @@ export function InventoryReports() {
 
                 <TabsContent value="movements">
                     <Card className="border-gray-200">
-                        <CardHeader>
+                        <CardHeader className="space-y-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div>
                                     <CardTitle className="font-display text-lg">Detail Pergerakan Stok</CardTitle>
@@ -365,7 +387,7 @@ export function InventoryReports() {
                                     <div className="relative w-full sm:w-64">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                         <Input
-                                            placeholder="Cari produk..."
+                                            placeholder="Cari nama/SKU..."
                                             value={movementSearchQuery}
                                             onChange={(e) => setMovementSearchQuery(e.target.value)}
                                             className="pl-10 font-body"
@@ -416,6 +438,94 @@ export function InventoryReports() {
                                             </div>
                                         </PopoverContent>
                                     </Popover>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-gray-50/50 rounded-lg border border-gray-100">
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Tgl Mulai</Label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                        <Input
+                                            type="date"
+                                            value={startDate}
+                                            onChange={(e) => setStartDate(e.target.value)}
+                                            className="h-8 pl-8 text-xs font-body"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Tgl Selesai</Label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                        <Input
+                                            type="date"
+                                            value={endDate}
+                                            onChange={(e) => setEndDate(e.target.value)}
+                                            className="h-8 pl-8 text-xs font-body"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Supplier</Label>
+                                    <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+                                        <SelectTrigger className="h-8 text-xs font-body">
+                                            <SelectValue placeholder="Semua Supplier" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all" className="text-xs">Semua Supplier</SelectItem>
+                                            {suppliers.map(s => (
+                                                <SelectItem key={s.id} value={s.id} className="text-xs">{s.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Kategori</Label>
+                                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                                        <SelectTrigger className="h-8 text-xs font-body">
+                                            <SelectValue placeholder="Semua Kategori" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all" className="text-xs">Semua Kategori</SelectItem>
+                                            {categories.map(c => (
+                                                <SelectItem key={c.id} value={c.id} className="text-xs">{c.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="flex items-end gap-2">
+                                    <div className="flex-1 space-y-1.5">
+                                        <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Produk Spesifik</Label>
+                                        <Select value={productFilter} onValueChange={setProductFilter}>
+                                            <SelectTrigger className="h-8 text-xs font-body">
+                                                <SelectValue placeholder="Semua Produk" />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-[300px]">
+                                                <SelectItem value="all" className="text-xs">Semua Produk</SelectItem>
+                                                {products.map(p => (
+                                                    <SelectItem key={p.id} value={p.id} className="text-xs truncate max-w-[200px]">{p.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <Button 
+                                        variant="outline" 
+                                        size="icon"
+                                        onClick={() => {
+                                            setStartDate('');
+                                            setEndDate('');
+                                            setSupplierFilter('all');
+                                            setCategoryFilter('all');
+                                            setProductFilter('all');
+                                            setMovementSearchQuery('');
+                                            setMovementType('all');
+                                        }}
+                                        className="h-8 w-8 hover:bg-gray-100 shrink-0"
+                                        title="Reset Filter"
+                                    >
+                                        <Filter className="w-3.5 h-3.5" />
+                                    </Button>
                                 </div>
                             </div>
                         </CardHeader>

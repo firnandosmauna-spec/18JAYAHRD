@@ -91,6 +91,9 @@ export function MaterialPurchaseManagement() {
     const [editingMovement, setEditingMovement] = useState<StockMovement | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
 
     React.useEffect(() => {
         const fetchPaymentMethods = async () => {
@@ -166,10 +169,41 @@ export function MaterialPurchaseManagement() {
         const sku = (m as any).products?.sku || '';
         const reference = (m as any).reference || '';
         const search = searchQuery.toLowerCase();
-        return productName.toLowerCase().includes(search) ||
+        
+        const matchesSearch = productName.toLowerCase().includes(search) ||
             supplierName.toLowerCase().includes(search) ||
             sku.toLowerCase().includes(search) ||
             reference.toLowerCase().includes(search);
+
+        if (!matchesSearch) return false;
+
+        // Date filter
+        if (startDate && new Date(m.created_at) < new Date(startDate)) return false;
+        if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            if (new Date(m.created_at) > end) return false;
+        }
+
+        // Payment method filter
+        if (paymentMethodFilter !== 'all') {
+            const inv = (invoices as PurchaseInvoice[]).find((i: PurchaseInvoice) => i.id === m.reference);
+            let caraBayar = (m as any).payment_methods?.name || '';
+            if (!caraBayar) {
+                if (inv) {
+                    caraBayar = inv.payment_status === 'paid' ? 'Tunai / Cash' : 'Hutang / Tempo';
+                } else {
+                    caraBayar = m.reference_type === 'manual_entry' ? 'Manual' : '-';
+                }
+            }
+            
+            const cbLower = caraBayar.toLowerCase();
+            if (paymentMethodFilter === 'cash' && !(cbLower.includes('cash') || cbLower.includes('tunai'))) return false;
+            if (paymentMethodFilter === 'hutang' && !(cbLower.includes('hutang') || cbLower.includes('tempo'))) return false;
+            if (paymentMethodFilter === 'deposit' && !cbLower.includes('deposit')) return false;
+        }
+
+        return true;
     });
 
     const handleAdd = async (e: React.FormEvent) => {
@@ -668,16 +702,75 @@ export function MaterialPurchaseManagement() {
 
             <Card className="border-gray-200">
                 <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <CardTitle className="font-display text-lg">Riwayat Belanja Material</CardTitle>
-                        <div className="relative w-full sm:w-64">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                            <Input
-                                placeholder="Cari riwayat..."
-                                value={searchQuery}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-                                className="pl-10 font-body"
-                            />
+                    <div className="flex flex-col space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <CardTitle className="font-display text-lg">Riwayat Belanja Material</CardTitle>
+                            <div className="relative w-full sm:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                <Input
+                                    placeholder="Cari riwayat..."
+                                    value={searchQuery}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                                    className="pl-10 font-body"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50/50 rounded-lg border border-gray-100">
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Mulai Tanggal</Label>
+                                <div className="relative">
+                                    <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                    <Input
+                                        type="date"
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="h-8 pl-8 text-xs font-body"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Sampai Tanggal</Label>
+                                <div className="relative">
+                                    <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                    <Input
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="h-8 pl-8 text-xs font-body"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Cara Bayar</Label>
+                                <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+                                    <SelectTrigger className="h-8 text-xs font-body">
+                                        <SelectValue placeholder="Semua Cara Bayar" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all" className="text-xs">Semua Cara Bayar</SelectItem>
+                                        <SelectItem value="cash" className="text-xs">Tunai / Cash</SelectItem>
+                                        <SelectItem value="hutang" className="text-xs">Hutang / Tempo</SelectItem>
+                                        <SelectItem value="deposit" className="text-xs">Deposit</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex items-end">
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => {
+                                        setStartDate('');
+                                        setEndDate('');
+                                        setPaymentMethodFilter('all');
+                                        setSearchQuery('');
+                                    }}
+                                    className="h-8 text-xs w-full flex items-center justify-center gap-2 hover:bg-gray-100"
+                                >
+                                    <Filter className="w-3 h-3" />
+                                    Reset Filter
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </CardHeader>

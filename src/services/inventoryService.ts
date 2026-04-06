@@ -535,13 +535,31 @@ export const stockMovementService = {
           .single();
 
         if (prod?.supplier_id) {
+          const totalUsageValue = movement.quantity * (movement.unit_price || 0);
+          
+          // Insert into supplier_deposits (usage record)
           await supabase.from('supplier_deposits').insert({
             supplier_id: prod.supplier_id,
-            amount: movement.quantity * (movement.unit_price || 0),
+            amount: totalUsageValue,
             type: 'usage',
             description: `Belanja Material: ${prod.name} x ${movement.quantity} (Ref: ${movement.reference || 'Manual'})`,
             reference_id: movementData.id
           });
+
+          // UPDATE: Reduce the supplier's deposit_balance
+          const { data: supplier } = await supabase
+            .from('suppliers')
+            .select('deposit_balance')
+            .eq('id', prod.supplier_id)
+            .single();
+
+          if (supplier) {
+            const newBalance = (supplier.deposit_balance || 0) - totalUsageValue;
+            await supabase
+              .from('suppliers')
+              .update({ deposit_balance: newBalance })
+              .eq('id', prod.supplier_id);
+          }
         }
       }
     }
@@ -603,6 +621,20 @@ export const stockMovementService = {
         .eq('id', oldMovement.product_id)
     }
 
+    // Handle Deposit reversal if needed
+    const { data: oldProd } = await supabase.from('products').select('supplier_id').eq('id', oldMovement.product_id).single();
+    if (oldProd?.supplier_id && oldMovement.movement_type === 'in') {
+      const { data: oldPM } = await supabase.from('payment_methods').select('name').eq('id', oldMovement.payment_method_id).single();
+      if (oldPM?.name?.toLowerCase().includes('deposit')) {
+        // Reverse old deposit impact
+        const oldUsageValue = oldMovement.quantity * (oldMovement.unit_price || 0);
+        const { data: supplier } = await supabase.from('suppliers').select('deposit_balance').eq('id', oldProd.supplier_id).single();
+        if (supplier) {
+          await supabase.from('suppliers').update({ deposit_balance: (supplier.deposit_balance || 0) + oldUsageValue }).eq('id', oldProd.supplier_id);
+        }
+      }
+    }
+
     await supabase.from('supplier_deposits').delete().eq('reference_id', id).eq('type', 'usage');
     const finalMov = { ...oldMovement, ...updates };
     if (finalMov.payment_method_id && finalMov.movement_type === 'in') {
@@ -620,13 +652,21 @@ export const stockMovementService = {
           .single();
 
         if (prod?.supplier_id) {
+          const totalUsageValue = finalMov.quantity * (finalMov.unit_price || 0);
+
           await supabase.from('supplier_deposits').insert({
             supplier_id: prod.supplier_id,
-            amount: finalMov.quantity * (finalMov.unit_price || 0),
+            amount: totalUsageValue,
             type: 'usage',
             description: `Pembelian produk: ${prod.name} (Ref: ${finalMov.reference || '-'})`,
             reference_id: id
           });
+
+          // Apply NEW deposit impact
+          const { data: supplier } = await supabase.from('suppliers').select('deposit_balance').eq('id', prod.supplier_id).single();
+          if (supplier) {
+            await supabase.from('suppliers').update({ deposit_balance: (supplier.deposit_balance || 0) - totalUsageValue }).eq('id', prod.supplier_id);
+          }
         }
       }
     }
@@ -661,6 +701,22 @@ export const stockMovementService = {
         .from('products')
         .update({ stock: currentStock })
         .eq('id', movement.product_id)
+    }
+
+    // Reverse deposit impact on delete
+    if (movement.movement_type === 'in') {
+      const { data: pm } = await supabase.from('payment_methods').select('name').eq('id', movement.payment_method_id).single();
+      if (pm?.name?.toLowerCase().includes('deposit')) {
+        const { data: prod } = await supabase.from('products').select('supplier_id').eq('id', movement.product_id).single();
+        if (prod?.supplier_id) {
+          const usageValue = movement.quantity * (movement.unit_price || 0);
+          const { data: supplier } = await supabase.from('suppliers').select('deposit_balance').eq('id', prod.supplier_id).single();
+          if (supplier) {
+            const currentBalance = supplier.deposit_balance || 0;
+            await supabase.from('suppliers').update({ deposit_balance: currentBalance + usageValue }).eq('id', prod.supplier_id);
+          }
+        }
+      }
     }
 
     await supabase.from('supplier_deposits').delete().eq('reference_id', id).eq('type', 'usage');
