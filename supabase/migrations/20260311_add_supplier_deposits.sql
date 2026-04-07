@@ -68,3 +68,4 @@ ALTER TABLE supplier_deposits ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Enable read access for all users" ON supplier_deposits FOR SELECT USING (true);
 CREATE POLICY "Enable insert access for all users" ON supplier_deposits FOR INSERT WITH CHECK (true);
 CREATE POLICY "Enable delete access for all users" ON supplier_deposits FOR DELETE USING (true);
+CREATE POLICY "Enable update access for all users" ON supplier_deposits FOR UPDATE USING (true) WITH CHECK (true);

@@ -23,6 +23,7 @@ export interface AttendanceSettings {
     restrict_off_hours_access: boolean;
     worker_attendance_required: boolean;
     attendance_holidays: string[]; // Dates in YYYY-MM-DD format
+    strict_geofencing: boolean;
 }
 
 export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
@@ -42,6 +43,7 @@ export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
     restrict_off_hours_access: false,
     worker_attendance_required: true,
     attendance_holidays: [],
+    strict_geofencing: false,
 };
 
 export interface LeaveSettings {

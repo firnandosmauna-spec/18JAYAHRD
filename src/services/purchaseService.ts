@@ -27,32 +27,36 @@ export class PurchaseService {
       .neq('payment_status', 'paid')
       .neq('status', 'cancelled');
 
-    if (invoicesError) {
-      console.warn('Error fetching supplier debts:', invoicesError);
+    try {
+      if (invoicesError) {
+        console.warn('Error fetching supplier debts:', invoicesError);
+        return suppliers || [];
+      }
+
+      // Aggregate debt per supplier
+      const debtMap = (invoices || []).reduce((acc: any, inv) => {
+        const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
+        acc[inv.supplier_id] = (acc[inv.supplier_id] || 0) + debt;
+        return acc;
+      }, {});
+
+      const result = (suppliers || []).map(s => {
+        const method = (s.payment_method || '').trim().toLowerCase();
+        const isHutang = method === 'hutang';
+        const debtFromInvoices = debtMap[s.id] || 0;
+        
+        return {
+          ...s,
+          total_debt: isHutang ? (debtFromInvoices || Number(s.total_debt || 0)) : (debtFromInvoices > 0 ? debtFromInvoices : 0)
+        };
+      });
+
+      console.log(`Fetched ${result.length} suppliers with balances`);
+      return result;
+    } catch (error) {
+      console.error('Error in getSuppliers process:', error);
       return suppliers || [];
     }
-
-    // Aggregate debt per supplier
-    const debtMap = (invoices || []).reduce((acc: any, inv) => {
-      const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
-      acc[inv.supplier_id] = (acc[inv.supplier_id] || 0) + debt;
-      return acc;
-    }, {});
-
-    return (suppliers || []).map(s => {
-      // Robust case-insensitive check and trimming
-      const method = (s.payment_method || '').trim().toLowerCase();
-      const isHutang = method === 'hutang';
-
-      const debtFromInvoices = debtMap[s.id] || 0;
-
-      // If the supplier has real debt in invoices, we should consider it
-      // but still respect the user's preference for 'Hutang' status.
-      return {
-        ...s,
-        total_debt: isHutang ? (debtFromInvoices || Number(s.total_debt || 0)) : (debtFromInvoices > 0 ? debtFromInvoices : 0)
-      };
-    });
   }
 
   static async getSupplier(id: string): Promise<Supplier | null> {
@@ -341,13 +345,19 @@ export class PurchaseService {
   }
 
   static async addSupplierDeposit(deposit: Omit<SupplierDeposit, 'id' | 'created_at'>): Promise<SupplierDeposit> {
+    console.log('Adding supplier deposit:', deposit);
     const { data, error } = await supabase
       .from('supplier_deposits')
       .insert(deposit)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error adding supplier deposit:', error);
+      throw error;
+    }
+    
+    console.log('Supplier deposit added successfully:', data);
     return data;
   }
 

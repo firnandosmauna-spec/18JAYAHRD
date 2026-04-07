@@ -11,7 +11,8 @@ import {
     Trash2,
     MoreVertical,
     TrendingUp,
-    Filter
+    Filter,
+    ArrowUpDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -94,6 +95,8 @@ export function MaterialPurchaseManagement() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
+    const [supplierFilter, setSupplierFilter] = useState('all');
+    const [sortSupplier, setSortSupplier] = useState<'none' | 'asc' | 'desc'>('none');
 
     React.useEffect(() => {
         const fetchPaymentMethods = async () => {
@@ -161,7 +164,11 @@ export function MaterialPurchaseManagement() {
 
     const movementsWithBalances = calculateBalances();
 
-    const stockInMovements = movementsWithBalances.filter(m => m.movement_type === 'in' || (m.movement_type === 'adjustment' && m.quantity > 0));
+    // actual purchases (in) and positive adjustments
+    const stockInMovements = movementsWithBalances.filter(m => 
+        m.movement_type === 'in' || 
+        (m.movement_type === 'adjustment' && m.quantity > 0)
+    );
 
     const filteredMovements = stockInMovements.filter(m => {
         const productName = (m as any).products?.name || '';
@@ -203,7 +210,16 @@ export function MaterialPurchaseManagement() {
             if (paymentMethodFilter === 'deposit' && !cbLower.includes('deposit')) return false;
         }
 
+        // Supplier filter
+        if (supplierFilter !== 'all' && (m as any).products?.suppliers?.id !== supplierFilter) return false;
+
         return true;
+    }).sort((a, b) => {
+        if (sortSupplier === 'none') return 0;
+        const nameA = (a as any).products?.suppliers?.name || '';
+        const nameB = (b as any).products?.suppliers?.name || '';
+        if (sortSupplier === 'asc') return nameA.localeCompare(nameB);
+        return nameB.localeCompare(nameA);
     });
 
     const handleAdd = async (e: React.FormEvent) => {
@@ -716,7 +732,7 @@ export function MaterialPurchaseManagement() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50/50 rounded-lg border border-gray-100">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 p-4 bg-gray-50/50 rounded-lg border border-gray-100">
                             <div className="space-y-1.5">
                                 <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Mulai Tanggal</Label>
                                 <div className="relative">
@@ -755,6 +771,20 @@ export function MaterialPurchaseManagement() {
                                     </SelectContent>
                                 </Select>
                             </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">Filter Supplier</Label>
+                                <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+                                    <SelectTrigger className="h-8 text-xs font-body">
+                                        <SelectValue placeholder="Semua Supplier" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all" className="text-xs">Semua Supplier</SelectItem>
+                                        {suppliers.map(s => (
+                                            <SelectItem key={s.id} value={s.id} className="text-xs">{s.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <div className="flex items-end">
                                 <Button 
                                     variant="outline" 
@@ -763,6 +793,8 @@ export function MaterialPurchaseManagement() {
                                         setStartDate('');
                                         setEndDate('');
                                         setPaymentMethodFilter('all');
+                                        setSupplierFilter('all');
+                                        setSortSupplier('none');
                                         setSearchQuery('');
                                     }}
                                     className="h-8 text-xs w-full flex items-center justify-center gap-2 hover:bg-gray-100"
@@ -780,7 +812,23 @@ export function MaterialPurchaseManagement() {
                             <TableRow>
                                 <TableHead className="font-body text-[10px] uppercase">No</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">Tanggal</TableHead>
-                                <TableHead className="font-body text-[10px] uppercase">Supplier</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">
+                                    <div className="flex items-center gap-1">
+                                        Supplier
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            className="h-6 w-6 p-0 hover:bg-gray-200"
+                                            onClick={() => {
+                                                if (sortSupplier === 'none') setSortSupplier('asc');
+                                                else if (sortSupplier === 'asc') setSortSupplier('desc');
+                                                else setSortSupplier('none');
+                                            }}
+                                        >
+                                            <ArrowUpDown className={cn("w-3 h-3", sortSupplier !== 'none' && "text-blue-600")} />
+                                        </Button>
+                                    </div>
+                                </TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">No. Ref</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">Produk</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase text-center bg-blue-50/50">Stok Awal</TableHead>
@@ -920,7 +968,11 @@ export function MaterialPurchaseManagement() {
                                         TOTAL BELANJA
                                     </TableCell>
                                     <TableCell className="text-right font-mono text-green-600 text-sm">
-                                        {formatCurrency(filteredMovements.reduce((acc, m) => acc + (m.quantity * (m.unit_price || (m as any).products?.cost || 0)), 0))}
+                                        {formatCurrency(filteredMovements.reduce((acc, m) => {
+                                            // Only sum actual purchases for the financial total
+                                            if (m.movement_type !== 'in') return acc;
+                                            return acc + (m.quantity * (m.unit_price || (m as any).products?.cost || 0));
+                                        }, 0))}
                                     </TableCell>
                                     <TableCell colSpan={5}></TableCell>
                                 </TableRow>

@@ -156,7 +156,7 @@ export default function Attendance() {
             const { data: settingsData } = await supabase
                 .from('system_settings')
                 .select('*')
-                .in('key', ['office_latitude', 'office_longitude', 'office_radius', 'office_wifi_ssid']);
+                .in('key', ['office_latitude', 'office_longitude', 'office_radius', 'office_wifi_ssid', 'strict_geofencing']);
 
             const settings: any = {};
             settingsData?.forEach(s => settings[s.key] = s.value);
@@ -165,6 +165,7 @@ export default function Attendance() {
             const officeLng = Number(settings.office_longitude) || 109.3425;
             const officeRadius = Number(settings.office_radius) || 200; // Increased default for GPS jitter
             const officeSSID = settings.office_wifi_ssid;
+            const isStrict = settings.strict_geofencing === 'true' || settings.strict_geofencing === true;
 
             // 2. Request Permission
             let { status: permissionStatus } = await Location.requestForegroundPermissionsAsync();
@@ -219,36 +220,44 @@ export default function Attendance() {
                 const distanceKm = (distance / 1000).toFixed(2);
                 const distanceDesc = distance > 1000 ? `${distanceKm}km` : `${Math.round(distance)}m`;
 
+                const alertButtons: any[] = [
+                    { text: 'Batal', style: 'cancel', onPress: () => setSubmitting(false) }
+                ];
+
+                // Only add the reason-based check-in if NOT in strict mode
+                if (!isStrict) {
+                    alertButtons.push({
+                        text: 'Absen Saja (Butuh Alasan)',
+                        onPress: () => {
+                            Alert.prompt(
+                                'Alasan Absen Luar Jangkauan',
+                                'Mohon masukkan alasan mengapa Anda absen di luar jangkauan area kantor:',
+                                [
+                                    { text: 'Batal', style: 'cancel', onPress: () => setSubmitting(false) },
+                                    {
+                                        text: 'Kirim',
+                                        onPress: async (reason) => {
+                                            if (!reason || reason.trim() === '') {
+                                                Alert.alert('Error', 'Alasan wajib diisi.');
+                                                setSubmitting(false);
+                                                return;
+                                            }
+                                            // Execute insertion with reason
+                                            await processCheckIn(address, status, distance, reason);
+                                        }
+                                    }
+                                ]
+                            );
+                        }
+                    });
+                }
+
                 Alert.alert(
                     'Diluar Jangkauan',
-                    `Anda berada ${distanceDesc} dari kantor. Maksimal jarak adalah ${officeRadius}m.\n\nKoordinat Anda: ${location.coords.latitude.toFixed(6)}, ${location.coords.longitude.toFixed(6)}`,
-                    [
-                        { text: 'Batal', style: 'cancel', onPress: () => setSubmitting(false) },
-                        {
-                            text: 'Absen Saja (Butuh Alasan)',
-                            onPress: () => {
-                                Alert.prompt(
-                                    'Alasan Absen Luar Jangkauan',
-                                    'Mohon masukkan alasan mengapa Anda absen di luar jangkauan area kantor:',
-                                    [
-                                        { text: 'Batal', style: 'cancel', onPress: () => setSubmitting(false) },
-                                        {
-                                            text: 'Kirim',
-                                            onPress: async (reason) => {
-                                                if (!reason || reason.trim() === '') {
-                                                    Alert.alert('Error', 'Alasan wajib diisi.');
-                                                    setSubmitting(false);
-                                                    return;
-                                                }
-                                                // Execute insertion with reason
-                                                await processCheckIn(address, status, distance, reason);
-                                            }
-                                        }
-                                    ]
-                                );
-                            }
-                        }
-                    ]
+                    isStrict 
+                        ? `Anda berada ${distanceDesc} dari kantor. Absensi hanya dapat dilakukan di dalam radius ${officeRadius}m.`
+                        : `Anda berada ${distanceDesc} dari kantor. Maksimal jarak adalah ${officeRadius}m.\n\nKoordinat Anda: ${location.coords.latitude.toFixed(6)}, ${location.coords.longitude.toFixed(6)}`,
+                    alertButtons
                 );
                 return;
             }

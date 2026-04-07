@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { settingsService } from "@/services/settingsService";
 import { useToast } from "@/components/ui/use-toast";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Calendar, ShieldCheck, Clock, FileText } from "lucide-react";
+import { Loader2, Calendar, ShieldCheck, Clock, FileText, MapPin } from "lucide-react";
 import { sopService } from "@/services/sopService";
 import { GeneralSettings, DEFAULT_GENERAL_SETTINGS, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, LeaveSettings, DEFAULT_LEAVE_SETTINGS, PayrollSettings, DEFAULT_PAYROLL_SETTINGS } from "@/types/settings";
 import { UserManagement } from "@/components/hrd/UserManagement";
@@ -43,6 +43,7 @@ const attendanceSchema = z.object({
     is_auto_nik: z.boolean(),
     restrict_off_hours_access: z.boolean(),
     worker_attendance_required: z.boolean(),
+    strict_geofencing: z.boolean(),
 });
 
 const leaveSchema = z.object({
@@ -171,7 +172,8 @@ export default function SettingsPage() {
                 { key: 'office_wifi_ssid', value: data.office_wifi_ssid || '', description: 'SSID WiFi Kantor' },
                 { key: 'is_auto_nik', value: data.is_auto_nik, description: 'Gunakan NIK Otomatis untuk Karyawan Baru' },
                 { key: 'restrict_off_hours_access', value: data.restrict_off_hours_access, description: 'Batasi akses aplikasi di luar jam kerja (Non-Admin)' },
-                { key: 'worker_attendance_required', value: data.worker_attendance_required, description: 'Wajibkan absensi online untuk kategori Tukang/Pekerja' }
+                { key: 'worker_attendance_required', value: data.worker_attendance_required, description: 'Wajibkan absensi online untuk kategori Tukang/Pekerja' },
+                { key: 'strict_geofencing', value: data.strict_geofencing, description: 'Wajibkan absensi hanya di dalam radius kantor (Kunci Lokasi GPS)' }
             ];
 
             await settingsService.updateSettings(updates);
@@ -468,7 +470,42 @@ export default function SettingsPage() {
                                     </div>
 
                                     <div className="space-y-4">
-                                        <h3 className="text-sm font-bold text-gray-900 border-l-4 border-blue-600 pl-3">Geofencing & WiFi</h3>
+                                        <div className="flex items-center justify-between border-l-4 border-blue-600 pl-3">
+                                            <h3 className="text-sm font-bold text-gray-900">Geofencing & WiFi</h3>
+                                            <Button 
+                                                type="button" 
+                                                variant="outline" 
+                                                size="sm"
+                                                className="gap-2 text-xs h-8"
+                                                onClick={() => {
+                                                    if ("geolocation" in navigator) {
+                                                        navigator.geolocation.getCurrentPosition((position) => {
+                                                            attendanceForm.setValue("office_latitude", position.coords.latitude);
+                                                            attendanceForm.setValue("office_longitude", position.coords.longitude);
+                                                            toast({
+                                                                title: "Lokasi Terdeteksi",
+                                                                description: `Latitude: ${position.coords.latitude.toFixed(6)}, Longitude: ${position.coords.longitude.toFixed(6)}`,
+                                                            });
+                                                        }, (error) => {
+                                                            toast({
+                                                                title: "Gagal Deteksi Lokasi",
+                                                                description: "Pastikan izin lokasi diberikan di browser Bapak.",
+                                                                variant: "destructive"
+                                                            });
+                                                        });
+                                                    } else {
+                                                        toast({
+                                                            title: "Browser Tidak Support",
+                                                            description: "Browser Bapak tidak mendukung fitur GPS.",
+                                                            variant: "destructive"
+                                                        });
+                                                    }
+                                                }}
+                                            >
+                                                <MapPin className="w-3.5 h-3.5" />
+                                                Lacak Lokasi Saya
+                                            </Button>
+                                        </div>
                                         <div className="grid gap-4 md:grid-cols-2">
                                             <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 space-y-3">
                                                 <Label className="font-body text-gray-700">Latitude Kantor</Label>
@@ -502,6 +539,16 @@ export default function SettingsPage() {
                                                     className="font-mono bg-white"
                                                     placeholder="Contoh: MyOfficeWiFi"
                                                     {...attendanceForm.register("office_wifi_ssid")}
+                                                />
+                                            </div>
+                                            <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-100 flex items-center justify-between md:col-span-2">
+                                                <div className="space-y-0.5">
+                                                    <Label className="font-body text-blue-900 text-sm font-bold">Kunci Absensi di Lokasi (Strict Mode)</Label>
+                                                    <p className="text-[10px] text-blue-700">Karyawan TIDAK BISA absen jika di luar radius. Opsi "Absen dengan Alasan" akan dihapus.</p>
+                                                </div>
+                                                <Switch
+                                                    checked={attendanceForm.watch("strict_geofencing")}
+                                                    onCheckedChange={(val) => attendanceForm.setValue("strict_geofencing", val)}
                                                 />
                                             </div>
                                         </div>

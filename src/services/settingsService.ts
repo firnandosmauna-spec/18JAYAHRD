@@ -59,7 +59,8 @@ export const settingsService = {
             'is_auto_nik',
             'restrict_off_hours_access',
             'worker_attendance_required',
-            'attendance_holidays'
+            'attendance_holidays',
+            'strict_geofencing'
         ];
         const settings = await this.getSettings(keys);
 
@@ -94,6 +95,8 @@ export const settingsService = {
                 result.restrict_off_hours_access = setting.value === 'true' || setting.value === true;
             } else if (setting.key === 'worker_attendance_required') {
                 result.worker_attendance_required = setting.value === 'true' || setting.value === true;
+            } else if (setting.key === 'strict_geofencing') {
+                result.strict_geofencing = setting.value === 'true' || setting.value === true;
             } else if (setting.key === 'attendance_holidays') {
                 try {
                     result.attendance_holidays = Array.isArray(setting.value) 
