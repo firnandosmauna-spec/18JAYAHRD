@@ -98,6 +98,7 @@ export interface ConsumerProfile {
     source?: string; // Sumber Konsumen
     bank_process?: string; // Proses Bank
     document_urls?: string[]; // Lampiran Dokumen
+    unreal_data?: any; // Data Perbandingan (Unreal)
 }
 
 export interface ConsumerFollowUp {
@@ -117,26 +118,37 @@ export interface ConsumerPemberkasan {
     consumer_id: string;
     booking: boolean;
     booking_date?: string;
+    booking_file_url?: string;
     slik_ojk: boolean;
     slik_ojk_date?: string;
+    slik_ojk_file_url?: string;
     proses_berkas: boolean;
     proses_berkas_date?: string;
+    proses_berkas_file_url?: string;
     ots: boolean;
     ots_date?: string;
+    ots_file_url?: string;
     penginputan: boolean;
     penginputan_date?: string;
+    penginputan_file_url?: string;
     analis_data: boolean;
     analis_data_date?: string;
+    analis_data_file_url?: string;
     lpa_aprasial: boolean;
     lpa_aprasial_date?: string;
+    lpa_aprasial_file_url?: string;
     pip: boolean;
     pip_date?: string;
+    pip_file_url?: string;
     pk: boolean;
     pk_date?: string;
+    pk_file_url?: string;
     akad: boolean;
     akad_date?: string;
+    akad_file_url?: string;
     pencairan_akad: boolean;
     pencairan_akad_date?: string;
+    pencairan_akad_file_url?: string;
     updated_at: string;
     updated_by?: string;
 }

@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase';
 import { ConsumerProfile, HOUSING_PROJECTS } from './MarketingTypes';
 import { useToast } from '@/components/ui/use-toast';
 import { useProjectLocations } from '@/hooks/useInventory';
+import { ConsumerProfileForm } from './ConsumerProfileForm';
 
 export default function ConsumerDatabaseView() {
     const [consumers, setConsumers] = useState<ConsumerProfile[]>([]);
@@ -21,48 +22,7 @@ export default function ConsumerDatabaseView() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const { toast } = useToast();
-
-    // Form state
-    const [formData, setFormData] = useState<Partial<ConsumerProfile>>({
-        code: '',
-        name: '',
-        id_card_number: '',
-        address: '',
-        phone: '',
-        email: '',
-        sales_person: '',
-        sales_person_id: null,
-        housing_project: '',
-        npwp: '',
-        company_id_number: '',
-        booking_remarks: '',
-        salary: 0,
-        occupation: '',
-        employer_name: '',
-        employer_address: '',
-        employer_phone: '',
-        employer_remarks: '',
-        marital_status: '',
-        spouse_name: '',
-        spouse_phone: '',
-        spouse_occupation: '',
-        spouse_office_address: '',
-        spouse_remarks: '',
-        family_name: '',
-        family_relationship: '',
-        family_phone: '',
-        family_address: '',
-        source: '',
-        bank_process: '',
-        document_urls: []
-    });
-    const [submitting, setSubmitting] = useState(false);
-    const [activeTab, setActiveTab] = useState('data-diri');
-    const [marketingStaff, setMarketingStaff] = useState<any[]>([]);
-    const { locations: projectLocations, loading: loadingProjects } = useProjectLocations();
-    const [projectList, setProjectList] = useState<string[]>([]);
-    const [uploading, setUploading] = useState(false);
-    const [tempFiles, setTempFiles] = useState<{name: string, url: string}[]>([]);
+    const [editingId, setEditingId] = useState<string | null>(null);
 
     const fetchConsumers = async () => {
         setLoading(true);
@@ -86,79 +46,14 @@ export default function ConsumerDatabaseView() {
         }
     };
 
-    const fetchMarketingStaff = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select(`
-                    id, 
-                    name, 
-                    role,
-                    employees!fk_profiles_employee(
-                        position,
-                        department
-                    )
-                `)
-                .order('name');
-            if (error) throw error;
-            if (data) setMarketingStaff(data);
-        } catch (error) {
-            console.error('Error fetching staff:', error);
-        }
-    };
-
-    // Projects are now sourced from inventory project locations via useProjectLocations hook
-    // Removed legacy fetchProjects logic; project list is synced via useProjectLocations hook
-
     useEffect(() => {
         fetchConsumers();
-        fetchMarketingStaff();
     }, []);
-
-    // Sync project list with locations from hook
-    useEffect(() => {
-        if (projectLocations) setProjectList(projectLocations);
-    }, [projectLocations]);
-
-    const [editingId, setEditingId] = useState<string | null>(null);
 
     const [selectedConsumer, setSelectedConsumer] = useState<ConsumerProfile | null>(null);
     const [pemberkasanConsumer, setPemberkasanConsumer] = useState<ConsumerProfile | null>(null);
 
     const handleEdit = (consumer: ConsumerProfile) => {
-        setFormData({
-            code: consumer.code,
-            name: consumer.name,
-            id_card_number: consumer.id_card_number,
-            address: consumer.address,
-            phone: consumer.phone,
-            email: consumer.email,
-            sales_person: consumer.sales_person,
-            sales_person_id: consumer.sales_person_id,
-            housing_project: consumer.housing_project,
-            npwp: consumer.npwp,
-            company_id_number: consumer.company_id_number,
-            booking_remarks: consumer.booking_remarks,
-            salary: consumer.salary,
-            occupation: consumer.occupation,
-            employer_name: consumer.employer_name,
-            employer_address: consumer.employer_address,
-            employer_phone: consumer.employer_phone,
-            employer_remarks: consumer.employer_remarks,
-            marital_status: consumer.marital_status || '',
-            spouse_name: consumer.spouse_name,
-            spouse_phone: consumer.spouse_phone,
-            spouse_occupation: consumer.spouse_occupation,
-            spouse_office_address: consumer.spouse_office_address,
-            spouse_remarks: consumer.spouse_remarks,
-            family_name: consumer.family_name,
-            family_relationship: consumer.family_relationship || '',
-            family_phone: consumer.family_phone,
-            family_address: consumer.family_address,
-            source: consumer.source || '',
-            bank_process: consumer.bank_process || '',
-            document_urls: consumer.document_urls || []
-        });
         setEditingId(consumer.id);
         setIsAddDialogOpen(true);
     };
@@ -178,270 +73,34 @@ export default function ConsumerDatabaseView() {
 
             toast({
                 title: "Berhasil",
-                description: `Data konsumen ${name} berhasil dihapus`,
+                description: "Data konsumen telah dihapus",
             });
-
-            // If the deleted consumer was selected, deselect it
-            if (selectedConsumer?.id === id) {
-                setSelectedConsumer(null);
-            }
-
             fetchConsumers();
         } catch (error: any) {
-            console.error('Error deleting consumer:', error);
             toast({
                 title: "Error",
-                description: "Gagal menghapus data konsumen",
+                description: error.message || "Gagal menghapus data",
                 variant: "destructive"
             });
         }
     };
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+    // Form logic is handled by ConsumerProfileForm component
+    const handleFormSuccess = () => {
+        setIsAddDialogOpen(false);
+        setEditingId(null);
+        fetchConsumers();
     };
 
-    const handleSelectChange = (name: string, value: string) => {
-        setFormData(prev => ({ ...prev, [name]: value }));
+    const handleFormCancel = () => {
+        setIsAddDialogOpen(false);
+        setEditingId(null);
     };
-
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files || e.target.files.length === 0) return;
-
-        const files = Array.from(e.target.files);
-        setUploading(true);
-
-        try {
-            const uploadPromises = files.map(async (file) => {
-                const fileExt = file.name.split('.').pop();
-                const fileName = `${Math.random().toString(36).substring(2, 9)}_${Date.now()}.${fileExt}`;
-                const filePath = `consumers/${fileName}`;
-
-                const { error: uploadError } = await supabase.storage
-                    .from('pipeline-uploads')
-                    .upload(filePath, file);
-
-                if (uploadError) throw uploadError;
-
-                const { data } = supabase.storage
-                    .from('pipeline-uploads')
-                    .getPublicUrl(filePath);
-
-                return { name: file.name, url: data.publicUrl };
-            });
-
-            const uploadedFiles = await Promise.all(uploadPromises);
-            
-            const newUrls = uploadedFiles.map(f => f.url);
-            setFormData(prev => ({
-                ...prev,
-                document_urls: [...(prev.document_urls || []), ...newUrls]
-            }));
-            
-            setTempFiles(prev => [...prev, ...uploadedFiles]);
-
-            toast({
-                title: "Berhasil",
-                description: `${files.length} file berhasil diunggah`,
-            });
-        } catch (error: any) {
-            console.error('Error uploading files:', error);
-            toast({
-                title: "Upload Gagal",
-                description: error.message,
-                variant: 'destructive'
-            });
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    const removeFile = (url: string) => {
-        setFormData(prev => ({
-            ...prev,
-            document_urls: (prev.document_urls || []).filter(u => u !== url)
-        }));
-        setTempFiles(prev => prev.filter(f => f.url !== url));
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setSubmitting(true);
-
-        try {
-            // Prepare Payload
-            const payload: any = {
-                code: formData.code,
-                name: formData.name
-            };
-
-            const safeAdd = (key: string, value: any) => {
-                if (value !== undefined && value !== null && value !== '') {
-                    payload[key] = value;
-                }
-            };
-
-            // Add all optional fields safely
-            safeAdd('address', formData.address);
-            safeAdd('phone', formData.phone);
-            safeAdd('email', formData.email);
-            safeAdd('id_card_number', formData.id_card_number);
-            safeAdd('sales_person', formData.sales_person);
-            safeAdd('sales_person_id', formData.sales_person_id);
-            safeAdd('housing_project', formData.housing_project);
-            safeAdd('npwp', formData.npwp);
-            safeAdd('company_id_number', formData.company_id_number);
-            safeAdd('booking_remarks', formData.booking_remarks);
-
-            // Explicit conversion for numeric fields
-            if (formData.salary !== undefined && formData.salary !== null && (formData.salary as any) !== '') {
-                const numSalary = Number(formData.salary);
-                payload.salary = isNaN(numSalary) ? null : numSalary;
-            }
-
-            safeAdd('occupation', formData.occupation);
-            safeAdd('employer_name', formData.employer_name);
-            safeAdd('employer_address', formData.employer_address);
-            safeAdd('employer_phone', formData.employer_phone);
-            safeAdd('employer_remarks', formData.employer_remarks);
-            safeAdd('marital_status', formData.marital_status);
-            safeAdd('spouse_name', formData.spouse_name);
-            safeAdd('spouse_phone', formData.spouse_phone);
-            safeAdd('spouse_occupation', formData.spouse_occupation);
-            safeAdd('spouse_office_address', formData.spouse_office_address);
-            safeAdd('spouse_remarks', formData.spouse_remarks);
-            safeAdd('family_name', formData.family_name);
-            safeAdd('family_relationship', formData.family_relationship);
-            safeAdd('family_phone', formData.family_phone);
-            safeAdd('family_address', formData.family_address);
-            safeAdd('source', formData.source);
-            safeAdd('bank_process', formData.bank_process);
-            safeAdd('document_urls', formData.document_urls);
-
-            // 2. Database Operation
-            if (editingId) {
-                const { error } = await supabase
-                    .from('consumer_profiles')
-                    .update(payload)
-                    .eq('id', editingId);
-
-                if (error) throw error;
-
-                toast({
-                    title: "Berhasil",
-                    description: "Data konsumen berhasil diperbarui",
-                });
-            } else {
-                const { error } = await supabase
-                    .from('consumer_profiles')
-                    .insert([payload]);
-
-                if (error) throw error;
-
-                toast({
-                    title: "Berhasil",
-                    description: "Data konsumen lengkap berhasil ditambahkan",
-                });
-            }
-
-            setIsAddDialogOpen(false);
-            setEditingId(null);
-            setFormData({
-                code: '',
-                name: '',
-                id_card_number: '',
-                address: '',
-                phone: '',
-                email: '',
-                sales_person: '',
-                sales_person_id: null,
-                housing_project: '',
-                npwp: '',
-                company_id_number: '',
-                booking_remarks: '',
-                salary: 0,
-                occupation: '',
-                employer_name: '',
-                employer_address: '',
-                employer_phone: '',
-                employer_remarks: '',
-                marital_status: '',
-                spouse_name: '',
-                spouse_phone: '',
-                spouse_occupation: '',
-                spouse_office_address: '',
-                spouse_remarks: '',
-                family_name: '',
-                family_relationship: '',
-                family_phone: '',
-                family_address: '',
-                source: '',
-                bank_process: '',
-                document_urls: []
-            });
-            setActiveTab('data-diri');
-            fetchConsumers();
-        } catch (error: any) {
-            let errorMessage = error.message || "Gagal menyimpan data konsumen";
-
-            // Helpful message for missing columns
-            if (error.code === 'PGRST204' || (error.message && error.message.includes('column'))) {
-                errorMessage = "Error database: Kolom baru mungkin belum terdaftar atau ada ketidaksesuaian tipe data.";
-            }
-
-            toast({
-                title: "Error",
-                description: `${errorMessage}. ${error.details || ''}`,
-                variant: "destructive"
-            });
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    // UseEffect to reset form when dialog closes if not editing
-    useEffect(() => {
-        if (!isAddDialogOpen && !editingId) {
-            setFormData({
-                code: '',
-                name: '',
-                id_card_number: '',
-                address: '',
-                phone: '',
-                email: '',
-                sales_person: '',
-                sales_person_id: null,
-                npwp: '',
-                company_id_number: '',
-                booking_remarks: '',
-                salary: 0,
-                occupation: '',
-                employer_name: '',
-                employer_address: '',
-                employer_phone: '',
-                employer_remarks: '',
-                marital_status: '',
-                spouse_name: '',
-                spouse_phone: '',
-                spouse_occupation: '',
-                spouse_office_address: '',
-                spouse_remarks: '',
-                family_name: '',
-                family_relationship: '',
-                family_phone: '',
-
-                family_address: '',
-                source: '',
-                bank_process: ''
-            });
-            setEditingId(null);
-        }
-    }, [isAddDialogOpen, editingId]);
 
 
     const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
     const [selectedProject, setSelectedProject] = useState<string>('all');
+    const { locations: projectLocations } = useProjectLocations();
 
     const filteredConsumers = consumers.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -486,12 +145,12 @@ export default function ConsumerDatabaseView() {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Semua Proyek</SelectItem>
-                            {projectList.length > 0 ? (
-                                projectList.map(project => (
+                            {projectLocations && projectLocations.length > 0 ? (
+                                projectLocations.map(project => (
                                     <SelectItem key={project} value={project}>{project}</SelectItem>
                                 ))
                             ) : (
-                                HOUSING_PROJECTS.map(project => (
+                                HOUSING_PROJECTS && HOUSING_PROJECTS.map(project => (
                                     <SelectItem key={project} value={project}>{project}</SelectItem>
                                 ))
                             )}
@@ -529,360 +188,13 @@ export default function ConsumerDatabaseView() {
                                 </DialogDescription>
                             </DialogHeader>
 
-                            <form onSubmit={handleSubmit} className="space-y-6 mt-4">
-                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                                    <TabsList className="grid w-full grid-cols-5 mb-4">
-                                        <TabsTrigger value="data-diri">Data Diri</TabsTrigger>
-                                        <TabsTrigger value="pekerjaan">Pekerjaan</TabsTrigger>
-                                        <TabsTrigger value="pasangan">Pasangan</TabsTrigger>
-                                        <TabsTrigger value="keluarga">Keluarga</TabsTrigger>
-                                        <TabsTrigger value="lampiran">Lampiran</TabsTrigger>
-                                    </TabsList>
-
-                                    <div className="max-h-[60vh] overflow-y-auto pr-2">
-                                        {/* DATA DIRI */}
-                                        <TabsContent value="data-diri">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="code">Kode Konsumen <span className="text-red-500">*</span></Label>
-                                                    <Input id="code" name="code" value={formData.code} onChange={handleInputChange} required placeholder="Cth: CUST-001" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="npwp">NPWP</Label>
-                                                    <Input id="npwp" name="npwp" value={formData.npwp} onChange={handleInputChange} placeholder="Nomor NPWP" />
-                                                </div>
-                                                <div className="space-y-2 md:col-span-2">
-                                                    <Label htmlFor="name">Nama Lengkap <span className="text-red-500">*</span></Label>
-                                                    <Input id="name" name="name" value={formData.name} onChange={handleInputChange} required placeholder="Nama lengkap sesuai KTP" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="phone">No. HP / WA <span className="text-red-500">*</span></Label>
-                                                    <Input id="phone" name="phone" value={formData.phone} onChange={handleInputChange} required placeholder="08xxxxxxxxxx" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="company_id_number">ID Perusahaan / NIK Karyawan</Label>
-                                                    <Input id="company_id_number" name="company_id_number" value={formData.company_id_number} onChange={handleInputChange} placeholder="ID Karyawan jika ada" />
-                                                </div>
-                                                <div className="space-y-2 md:col-span-2">
-                                                    <Label htmlFor="id_card_number">Nomor KTP (NIK)</Label>
-                                                    <Input id="id_card_number" name="id_card_number" value={formData.id_card_number} onChange={handleInputChange} placeholder="16 digit NIK" />
-                                                </div>
-                                                <div className="space-y-2 md:col-span-2">
-                                                    <Label htmlFor="address">Alamat Lengkap Domisili</Label>
-                                                    <Textarea id="address" name="address" value={formData.address} onChange={handleInputChange} placeholder="Alamat tempat tinggal saat ini" rows={3} />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="email">Email</Label>
-                                                    <Input id="email" name="email" type="email" value={formData.email} onChange={handleInputChange} placeholder="email@example.com" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="salary">Gaji / Penghasilan Per Bulan</Label>
-                                                    <Input
-                                                        id="salary"
-                                                        name="salary"
-                                                        type="number"
-                                                        value={formData.salary}
-                                                        onChange={handleInputChange}
-                                                        placeholder="0"
-                                                    />
-                                                </div>
-                                                <div className="space-y-2 md:col-span-2">
-                                                    <Label htmlFor="booking_remarks">Keterangan / Booking</Label>
-                                                    <Textarea id="booking_remarks" name="booking_remarks" value={formData.booking_remarks} onChange={handleInputChange} placeholder="Catatan booking atau keterangan lainnya" rows={2} />
-                                                </div>
-                                            </div>
-                                            <div className="pt-4 border-t mt-4">
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-2">
-                                                        <Label htmlFor="housing_project">Proyek Perumahan</Label>
-                                                        <div className="relative">
-                                                            <Select
-                                                                value={formData.housing_project || ''}
-                                                                onValueChange={(value) => setFormData({ ...formData, housing_project: value })}
-                                                            >
-                                                                <SelectTrigger className="pl-3">
-                                                                    <SelectValue placeholder="Pilih Proyek" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    {projectList.length > 0 ? (
-                                                                        projectList.map((project) => (
-                                                                            <SelectItem key={project} value={project}>
-                                                                                {project}
-                                                                            </SelectItem>
-                                                                        ))
-                                                                    ) : (
-                                                                        <SelectItem value="none" disabled>Tidak ada proyek aktif</SelectItem>
-                                                                    )}
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <Label htmlFor="sales_person">Nama Sales / Marketing</Label>
-                                                        <Select
-                                                            value={formData.sales_person_id || ''}
-                                                            onValueChange={(val) => {
-                                                                const staff = marketingStaff.find(s => s.id === val);
-                                                                setFormData(prev => ({
-                                                                    ...prev,
-                                                                    sales_person_id: val,
-                                                                    sales_person: staff?.name || ''
-                                                                }));
-                                                            }}
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Pilih Sales/Marketing" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {marketingStaff.map((staff) => (
-                                                                    <SelectItem key={staff.id} value={staff.id}>
-                                                                        <div className="flex flex-col">
-                                                                            <span>{staff.name}</span>
-                                                                            <span className="text-[10px] text-slate-500">
-                                                                                {staff.employees?.position || staff.role}
-                                                                                {staff.employees?.department ? ` - ${staff.employees.department}` : ''}
-                                                                            </span>
-                                                                        </div>
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="md:col-span-2 grid grid-cols-2 gap-4 mt-4">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="source">Sumber Konsumen</Label>
-                                                    <Select
-                                                        value={formData.source}
-                                                        onValueChange={(val) => handleSelectChange('source', val)}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Pilih Sumber" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="Medsos">Medsos (FB/IG/Tiktok)</SelectItem>
-                                                            <SelectItem value="Iklan Online">Iklan Online</SelectItem>
-                                                            <SelectItem value="Iklan Offline">Iklan Offline (Spanduk/Brosur)</SelectItem>
-                                                            <SelectItem value="Teman/Keluarga">Dikenalkan Teman/Keluarga</SelectItem>
-                                                            <SelectItem value="Pameran">Pameran / Event</SelectItem>
-                                                            <SelectItem value="Walk-in">Walk-in / Datang Langsung</SelectItem>
-                                                            <SelectItem value="Website">Website</SelectItem>
-                                                            <SelectItem value="Lainnya">Lainnya</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="bank_process">Proses Bank</Label>
-                                                    <Input
-                                                        id="bank_process"
-                                                        name="bank_process"
-                                                        value={formData.bank_process || ''}
-                                                        onChange={handleInputChange}
-                                                        placeholder=""
-                                                    />
-                                                </div>
-                                            </div>
-                                        </TabsContent>
-
-                                        {/* PEKERJAAN */}
-                                        <TabsContent value="pekerjaan" className="space-y-4">
-                                            <div className="grid grid-cols-1 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="occupation">Pekerjaan</Label>
-                                                    <Input id="occupation" name="occupation" value={formData.occupation} onChange={handleInputChange} placeholder="Jenis pekerjaan" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="employer_name">Nama Perusahaan / Usaha</Label>
-                                                    <Input id="employer_name" name="employer_name" value={formData.employer_name} onChange={handleInputChange} placeholder="Tempat bekerja" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="employer_address">Alamat Perusahaan / Usaha</Label>
-                                                    <Textarea id="employer_address" name="employer_address" value={formData.employer_address} onChange={handleInputChange} placeholder="Alamat tempat kerja" rows={3} />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="employer_phone">No. Telp Perusahaan</Label>
-                                                    <Input id="employer_phone" name="employer_phone" value={formData.employer_phone} onChange={handleInputChange} placeholder="Nomor telepon kantor" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="employer_remarks">Keterangan Pekerjaan</Label>
-                                                    <Textarea id="employer_remarks" name="employer_remarks" value={formData.employer_remarks} onChange={handleInputChange} placeholder="Catatan tambahan mengenai pekerjaan" rows={2} />
-                                                </div>
-                                            </div>
-                                        </TabsContent>
-
-                                        {/* PASANGAN */}
-                                        <TabsContent value="pasangan" className="space-y-4">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="marital_status">Status Pernikahan</Label>
-                                                    <Select
-                                                        value={formData.marital_status}
-                                                        onValueChange={(val) => handleSelectChange('marital_status', val)}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Pilih status" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="single">Belum Menikah</SelectItem>
-                                                            <SelectItem value="married">Menikah</SelectItem>
-                                                            <SelectItem value="divorced">Cerai</SelectItem>
-                                                            <SelectItem value="widowed">Duda/Janda</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="spouse_name">Nama Pasangan</Label>
-                                                    <Input id="spouse_name" name="spouse_name" value={formData.spouse_name} onChange={handleInputChange} placeholder="Nama suami/istri" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="spouse_phone">No. HP / WA Pasangan</Label>
-                                                    <Input id="spouse_phone" name="spouse_phone" value={formData.spouse_phone} onChange={handleInputChange} placeholder="Kontak pasangan" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="spouse_occupation">Pekerjaan Pasangan</Label>
-                                                    <Input id="spouse_occupation" name="spouse_occupation" value={formData.spouse_occupation} onChange={handleInputChange} placeholder="Pekerjaan pasangan" />
-                                                </div>
-                                                <div className="space-y-2 md:col-span-2">
-                                                    <Label htmlFor="spouse_office_address">Alamat Kantor Pasangan</Label>
-                                                    <Textarea id="spouse_office_address" name="spouse_office_address" value={formData.spouse_office_address} onChange={handleInputChange} placeholder="Alamat tempat kerja pasangan" rows={2} />
-                                                </div>
-                                                <div className="space-y-2 md:col-span-2">
-                                                    <Label htmlFor="spouse_remarks">Keterangan Tambahan</Label>
-                                                    <Textarea id="spouse_remarks" name="spouse_remarks" value={formData.spouse_remarks} onChange={handleInputChange} placeholder="Catatan lain tentang pasangan" rows={2} />
-                                                </div>
-                                            </div>
-                                        </TabsContent>
-
-                                        {/* KELUARGA */}
-                                        <TabsContent value="keluarga" className="space-y-4">
-                                            <div className="grid grid-cols-1 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="family_name">Nama Keluarga (Kontak Darurat)</Label>
-                                                    <Input id="family_name" name="family_name" value={formData.family_name} onChange={handleInputChange} placeholder="Nama kerabat yang tidak serumah" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="family_relationship">Hubungan</Label>
-                                                    <Select
-                                                        value={formData.family_relationship}
-                                                        onValueChange={(val) => handleSelectChange('family_relationship', val)}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Pilih hubungan" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="parent">Orang Tua</SelectItem>
-                                                            <SelectItem value="sibling">Saudara Kandung</SelectItem>
-                                                            <SelectItem value="relative">Kerabat Lain</SelectItem>
-                                                            <SelectItem value="friend">Teman</SelectItem>
-                                                            <SelectItem value="other">Lainnya</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="family_phone">No. HP / WA Keluarga</Label>
-                                                    <Input id="family_phone" name="family_phone" value={formData.family_phone} onChange={handleInputChange} placeholder="Kontak kerabat" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="family_address">Alamat Keluarga</Label>
-                                                    <Textarea id="family_address" name="family_address" value={formData.family_address} onChange={handleInputChange} placeholder="Alamat tinggal kerabat" rows={3} />
-                                                </div>
-
-                                            </div>
-                                        </TabsContent>
-
-                                        {/* LAMPIRAN */}
-                                        <TabsContent value="lampiran" className="space-y-4">
-                                            <div className="space-y-4">
-                                                <div className="p-6 border-2 border-dashed rounded-xl border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-100 transition-colors relative">
-                                                    <input 
-                                                        type="file" 
-                                                        multiple 
-                                                        className="absolute inset-0 opacity-0 cursor-pointer" 
-                                                        onChange={handleFileUpload}
-                                                        disabled={uploading}
-                                                    />
-                                                    <div className="bg-white p-3 rounded-full shadow-sm mb-3">
-                                                        <Upload className="w-6 h-6 text-blue-600" />
-                                                    </div>
-                                                    <p className="font-medium text-slate-700">
-                                                        {uploading ? 'Sedang mengunggah...' : 'Klik atau seret file ke sini'}
-                                                    </p>
-                                                    <p className="text-xs text-slate-500 mt-1">
-                                                        Mendukung Gambar (JPG, PNG) atau Dokumen (PDF)
-                                                    </p>
-                                                </div>
-
-                                                {formData.document_urls && formData.document_urls.length > 0 && (
-                                                    <div className="space-y-2">
-                                                        <Label>File Terlampir ({formData.document_urls.length})</Label>
-                                                        <div className="grid grid-cols-1 gap-2">
-                                                            {formData.document_urls.map((url, idx) => {
-                                                                const fileName = url.split('/').pop()?.split('_').slice(1).join('_') || 'Dokumen';
-                                                                const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(url);
-                                                                
-                                                                return (
-                                                                    <div key={idx} className="flex items-center justify-between p-3 bg-white border rounded-lg shadow-sm">
-                                                                        <div className="flex items-center gap-3 overflow-hidden">
-                                                                            {isImage ? (
-                                                                                <img src={url} alt="Preview" className="w-10 h-10 object-cover rounded border" />
-                                                                            ) : (
-                                                                                <div className="w-10 h-10 bg-slate-100 flex items-center justify-center rounded border">
-                                                                                    <FileText className="w-5 h-5 text-slate-400" />
-                                                                                </div>
-                                                                            )}
-                                                                            <div className="overflow-hidden">
-                                                                                <p className="text-sm font-medium text-slate-700 truncate max-w-[200px]">{fileName}</p>
-                                                                                <p className="text-[10px] text-slate-400">Lampiran {idx + 1}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-1">
-                                                                            <Button 
-                                                                                type="button" 
-                                                                                variant="ghost" 
-                                                                                size="icon" 
-                                                                                className="h-8 w-8 text-slate-400 hover:text-blue-600"
-                                                                                onClick={() => window.open(url, '_blank')}
-                                                                            >
-                                                                                <EyeIcon className="w-4 h-4" />
-                                                                            </Button>
-                                                                            <Button 
-                                                                                type="button" 
-                                                                                variant="ghost" 
-                                                                                size="icon" 
-                                                                                className="h-8 w-8 text-slate-400 hover:text-red-500"
-                                                                                onClick={() => removeFile(url)}
-                                                                            >
-                                                                                <X className="w-4 h-4" />
-                                                                            </Button>
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </TabsContent>
-                                    </div>
-
-                                    <div className="flex justify-end gap-2 pt-4 border-t mt-4">
-                                        <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={submitting}>
-                                            Batal
-                                        </Button>
-                                        <Button type="submit" disabled={submitting} className="bg-blue-600 hover:bg-blue-700">
-                                            {submitting ? (
-                                                <>
-                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                    Menyimpan...
-                                                </>
-                                            ) : (
-                                                'Simpan Data Lengkap'
-                                            )}
-                                        </Button>
-                                    </div>
-                                </Tabs>
-                            </form>
+                            <div className="mt-4">
+                                <ConsumerProfileForm
+                                    consumerId={editingId}
+                                    onSuccess={handleFormSuccess}
+                                    onCancel={handleFormCancel}
+                                />
+                            </div>
                         </DialogContent>
                     </Dialog>
                 </div>
