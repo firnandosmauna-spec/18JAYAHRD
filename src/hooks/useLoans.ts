@@ -22,6 +22,13 @@ export function useLoans() {
 
     useEffect(() => {
         fetchLoans();
+
+        // Subscribe to real-time changes
+        const unsubscribe = loanService.subscribeToChanges(fetchLoans);
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
     }, [fetchLoans]);
 
     const addLoan = async (loan: Omit<EmployeeLoan, 'id' | 'created_at' | 'updated_at'>) => {

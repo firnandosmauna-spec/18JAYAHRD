@@ -48,6 +48,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { useLoans, useEmployees } from '@/hooks/useSupabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { notificationService } from '@/services/supabaseService';
 import type { EmployeeLoan } from '@/lib/supabase';
 
 // Helper for formatting currency
@@ -89,17 +90,25 @@ export function LoanManagement() {
         start_date: new Date().toLocaleDateString('en-CA')
     });
 
+    // Role checking - Make it highly flexible for any custom admin/HR roles
+    const normalizedRole = (user?.role || '').toLowerCase();
+    const isAdminRole = normalizedRole === 'administrator' || normalizedRole === 'admin' || normalizedRole === 'manager' || normalizedRole === 'hrd' || normalizedRole === 'owner' || normalizedRole === 'direktur';
+    const hasHRDModule = user?.modules?.some(m => m.toLowerCase() === 'hrd');
+    const isAdminOrHR = isAdminRole || hasHRDModule;
+
     // Filter Logic
     const filteredLoans = loans.filter(loan => {
         const employee = employees.find(e => e.id === loan.employee_id);
-        const matchesSearch = employee?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            loan.reason.toLowerCase().includes(searchQuery.toLowerCase());
+        const searchLower = searchQuery.toLowerCase();
+        const matchesSearch = (employee?.name || '').toLowerCase().includes(searchLower) ||
+            (loan.reason || '').toLowerCase().includes(searchLower);
         const matchesStatus = statusFilter === 'all' || loan.status === statusFilter;
 
-        // Staff filtering: only see own loans
-        const matchesRole = user?.role === 'staff'
-            ? loan.employee_id === user.employee_id
-            : true;
+        // Staff filtering: only see own loans unless they have HRD rights
+        const matchesRole = isAdminOrHR
+            ? true
+            : loan.employee_id === user?.employee_id;
+
 
         return matchesSearch && matchesStatus && matchesRole;
     });
@@ -159,6 +168,21 @@ export function LoanManagement() {
                 status: 'pending',
                 start_date: formData.start_date
             });
+
+            // Send notification
+            try {
+                const requester = employees.find(e => e.id === formData.employee_id);
+                await notificationService.create({
+                    title: 'Pengajuan Kasbon Baru',
+                    message: `${requester?.name || 'Seorang karyawan'} mengajukan kasbon sebesar ${formatCurrency(amount)}.`,
+                    type: 'info',
+                    module: 'Kasbon HRD',
+                    user_id: null, // send to all admins
+                    read: false
+                });
+            } catch (notifErr) {
+                console.warn('Gagal mengirim notifikasi:', notifErr);
+            }
 
             toast({
                 title: 'Sukses',
@@ -319,7 +343,7 @@ export function LoanManagement() {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                {loan.status === 'pending' && user?.role !== 'staff' && (
+                                                {loan.status === 'pending' && isAdminOrHR && (
                                                     <div className="flex justify-end gap-2">
                                                         <Button size="icon" variant="ghost" className="text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => handleApprove(loan.id)}>
                                                             <CheckCircle className="w-4 h-4" />
@@ -329,7 +353,7 @@ export function LoanManagement() {
                                                         </Button>
                                                     </div>
                                                 )}
-                                                {user?.role === 'Administrator' && (
+                                                {(user?.role === 'Administrator' || user?.role === 'manager') && (
                                                     <Button size="icon" variant="ghost" className="text-gray-400 hover:text-red-600" onClick={() => handleDelete(loan.id)}>
                                                         <MoreVertical className="w-4 h-4" />
                                                     </Button>

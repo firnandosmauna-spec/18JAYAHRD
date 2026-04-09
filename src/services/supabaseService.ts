@@ -777,6 +777,7 @@ export const loanService = {
     return data
   },
 
+
   async getByEmployee(employeeId: string) {
     const { data, error } = await supabase
       .from('employee_loans')
@@ -818,6 +819,23 @@ export const loanService = {
       .eq('id', id)
 
     if (error) throw error
+  },
+
+  subscribeToChanges(callback: () => void) {
+    const subscription = supabase
+      .channel('employee_loans_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'employee_loans' },
+        (payload) => {
+          console.log('[Real-time] employee_loans update:', payload)
+          callback()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
   }
 }
 
