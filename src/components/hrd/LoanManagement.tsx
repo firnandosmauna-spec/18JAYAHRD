@@ -90,6 +90,13 @@ export function LoanManagement() {
         start_date: new Date().toLocaleDateString('en-CA')
     });
 
+    // Auto-fill employee_id for staff
+    useEffect(() => {
+        if (user?.role === 'staff' && user?.employee_id) {
+            setFormData(prev => ({ ...prev, employee_id: user.employee_id! }));
+        }
+    }, [user]);
+
     // Role checking - Make it highly flexible for any custom admin/HR roles
     const normalizedRole = (user?.role || '').toLowerCase();
     const isAdminRole = normalizedRole === 'administrator' || normalizedRole === 'admin' || normalizedRole === 'manager' || normalizedRole === 'hrd' || normalizedRole === 'owner' || normalizedRole === 'direktur';
@@ -263,14 +270,6 @@ export function LoanManagement() {
                 </Button>
             </div>
 
-            {/* Diagnostic Info - Only visible to Admin/Managers */}
-            {isAdminOrHR && (
-                <div className="text-[10px] text-gray-400 bg-gray-50 p-2 rounded border border-dashed mb-4">
-                    <p>DIAGNOSTIC: Raw Loans: {loans.length} | Filtered: {filteredLoans.length} | Role: {user?.role} | Modules: {user?.modules?.join(', ')} | employee_id: {user?.employee_id || 'NONE'}</p>
-                    {error && <p className="text-red-500 font-bold">ERROR: {error}</p>}
-                </div>
-            )}
-
             {/* Filters */}
             <Card>
                 <CardContent className="p-4 flex gap-4">
@@ -321,7 +320,17 @@ export function LoanManagement() {
                                 </TableRow>
                             ) : filteredLoans.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground"><span>Tidak ada data kasbon ditemukan</span></TableCell>
+                                    <TableCell colSpan={7} className="text-center py-12">
+                                        <div className="flex flex-col items-center justify-center text-muted-foreground">
+                                            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
+                                                <CreditCard className="w-6 h-6 text-gray-300" />
+                                            </div>
+                                            <p className="font-medium text-gray-900">Tidak ada pengajuan kasbon</p>
+                                            <p className="text-sm max-w-[250px] mx-auto mt-1">
+                                                {searchQuery ? 'Tidak ada hasil pencarian yang cocok.' : 'Saat ini belum ada pengajuan kasbon yang tersimpan di sistem.'}
+                                            </p>
+                                        </div>
+                                    </TableCell>
                                 </TableRow>
                             ) : (
                                 filteredLoans.map((loan) => {
@@ -388,15 +397,24 @@ export function LoanManagement() {
                             <Label><span>Karyawan</span></Label>
                             <Select
                                 value={formData.employee_id}
-                                onValueChange={(val) => setFormData(p => ({ ...p, employee_id: val }))}
+                                onValueChange={(value) => setFormData({ ...formData, employee_id: value })}
+                                disabled={user?.role === 'staff'}
                             >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Pilih Karyawan" />
+                                <SelectTrigger className={user?.role === 'staff' ? "bg-gray-50 opacity-100 cursor-default" : ""}>
+                                    <SelectValue placeholder="Pilih karyawan" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {employees.map(emp => (
-                                        <SelectItem key={emp.id} value={emp.id}><span>{emp.name}</span></SelectItem>
-                                    ))}
+                                    {user?.role === 'staff' ? (
+                                        <SelectItem value={user.employee_id || 'none'}>
+                                            {employees.find(e => e.id === user.employee_id)?.name || user.name || 'Profil Saya'}
+                                        </SelectItem>
+                                    ) : (
+                                        employees.map((emp) => (
+                                            <SelectItem key={emp.id} value={emp.id}>
+                                                {emp.name}
+                                            </SelectItem>
+                                        ))
+                                    )}
                                 </SelectContent>
                             </Select>
                         </div>
