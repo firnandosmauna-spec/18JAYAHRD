@@ -263,6 +263,14 @@ export function LoanManagement() {
                 </Button>
             </div>
 
+            {/* Diagnostic Info - Only visible to Admin/Managers */}
+            {isAdminOrHR && (
+                <div className="text-[10px] text-gray-400 bg-gray-50 p-2 rounded border border-dashed mb-4">
+                    <p>DIAGNOSTIC: Raw Loans: {loans.length} | Filtered: {filteredLoans.length} | Role: {user?.role} | Modules: {user?.modules?.join(', ')} | employee_id: {user?.employee_id || 'NONE'}</p>
+                    {error && <p className="text-red-500 font-bold">ERROR: {error}</p>}
+                </div>
+            )}
+
             {/* Filters */}
             <Card>
                 <CardContent className="p-4 flex gap-4">
