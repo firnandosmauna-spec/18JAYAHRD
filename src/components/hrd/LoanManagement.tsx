@@ -71,7 +71,7 @@ const formatDate = (dateString: string) => {
 };
 
 export function LoanManagement() {
-    const { loans, loading, error, addLoan, updateLoan, deleteLoan } = useLoans();
+    const { loans, loading, error: loansError, addLoan, updateLoan, deleteLoan } = useLoans();
     const { employees } = useEmployees();
     const { user } = useAuth();
     const { toast } = useToast();
@@ -203,11 +203,22 @@ export function LoanManagement() {
                 reason: '',
                 start_date: new Date().toLocaleDateString('en-CA')
             });
-        } catch (error) {
-            console.error(error);
+        } catch (error: any) {
+            console.error('Submission error:', error);
+            
+            // Extract the most descriptive error message
+            let errorMessage = 'Gagal mengajukan kasbon';
+            if (error?.message) {
+                if (error.message.includes('row-level security')) {
+                    errorMessage = 'Keamanan Database: Pengajuan ditolak oleh sistem. Pastikan izin RLS sudah aktif.';
+                } else {
+                    errorMessage = error.message;
+                }
+            }
+
             toast({
-                title: 'Error',
-                description: 'Gagal mengajukan kasbon',
+                title: 'Gagal',
+                description: errorMessage,
                 variant: 'destructive'
             });
         } finally {
@@ -314,6 +325,16 @@ export function LoanManagement() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
+                            {loansError && (
+                                <TableRow>
+                                    <TableCell colSpan={7} className="text-center py-4 bg-red-50 text-red-600 border-b border-red-100 italic text-sm">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <AlertCircle className="w-4 h-4" />
+                                            <span>Error: {loansError}</span>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            )}
                             {loading ? (
                                 <TableRow>
                                     <TableCell colSpan={7} className="text-center py-8"><span>Memuat data...</span></TableCell>

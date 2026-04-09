@@ -39,7 +39,7 @@ export function useLoans() {
         } catch (err: any) {
             const errorMsg = handleSupabaseError(err);
             setError(errorMsg);
-            throw error;
+            throw err;
         }
     };
 
@@ -51,7 +51,7 @@ export function useLoans() {
         } catch (err: any) {
             const errorMsg = handleSupabaseError(err);
             setError(errorMsg);
-            throw error;
+            throw err;
         }
     };
 
@@ -62,7 +62,7 @@ export function useLoans() {
         } catch (err: any) {
             const errorMsg = handleSupabaseError(err);
             setError(errorMsg);
-            throw error;
+            throw err;
         }
     };
 
