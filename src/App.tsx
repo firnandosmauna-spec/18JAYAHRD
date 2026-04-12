@@ -7,13 +7,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 
 // Static imports to fix Suspense hang
-import { AuthPage } from "@/pages/AuthPage";
-import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
-import DashboardPage from "@/pages/DashboardPage";
-import HRDModule from "@/pages/modules/HRDModuleSupabase";
-import InventoryModule from "@/pages/modules/InventoryModule";
-import CustomerServiceModule from "@/pages/modules/CustomerServiceModule";
-import AccountingModule from "@/pages/modules/AccountingModule";
+// Lazy imports for modules to reduce initial bundle size
+const AuthPage = lazy(() => import("@/pages/AuthPage").then(module => ({ default: module.AuthPage })));
+const ResetPasswordPage = lazy(() => import("@/pages/ResetPasswordPage").then(module => ({ default: module.ResetPasswordPage })));
+const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
+const HRDModule = lazy(() => import("@/pages/modules/HRDModuleSupabase"));
+const InventoryModule = lazy(() => import("@/pages/modules/InventoryModule"));
+const CustomerServiceModule = lazy(() => import("@/pages/modules/CustomerServiceModule"));
+const AccountingModule = lazy(() => import("@/pages/modules/AccountingModule"));
 const ProjectModule = lazy(() => import("@/pages/modules/ProjectModule"));
 const SalesModule = lazy(() => import("@/pages/modules/SalesModule"));
 const PurchaseModule = lazy(() => import("@/pages/modules/PurchaseModule"));

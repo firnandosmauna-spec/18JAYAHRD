@@ -149,6 +149,9 @@ export interface ConsumerPemberkasan {
     pencairan_akad: boolean;
     pencairan_akad_date?: string;
     pencairan_akad_file_url?: string;
+    slik_ojk_status?: 'none' | 'pending' | 'approved' | 'rejected';
+    slik_ojk_approved_by?: string;
+    slik_ojk_approved_at?: string;
     updated_at: string;
     updated_by?: string;
 }

@@ -193,10 +193,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             modules: (metadata?.modules as ModuleType[]) || defaultModules,
           }, null);
 
-          // CRITICAL: Await the profile fetch before finishing initialization
-          // This ensures that user.modules is fully populated from the DB 
-          // BEFORE any routing components try to check permissions.
-          await fetchProfile(currentSession.user.id, metadata, currentSession);
+          // NON-BLOCKING: Fetch profile in background
+          // This allows immediate render using metadata, then updates once DB is ready.
+          fetchProfile(currentSession.user.id, metadata, currentSession);
         }
       } catch (error) {
         console.error('Session init error:', error);
@@ -235,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return false;
         });
       }
-    }, 5000);
+    }, 3000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       if (!isMounted.current) return;

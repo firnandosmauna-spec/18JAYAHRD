@@ -13,7 +13,8 @@ import {
   ArrowRight,
   ChevronRight,
   History,
-  Info
+  Info,
+  RefreshCw
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -75,6 +76,7 @@ export function SupplierDebtManagement() {
     reference_number: '',
     notes: ''
   });
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const { toast } = useToast();
 
@@ -183,6 +185,10 @@ export function SupplierDebtManagement() {
       });
 
       setShowPaymentDialog(false);
+      
+      // Sync debts after payment
+      await supplierDebtService.syncAllSupplierDebts();
+      
       loadDebtSummary();
       loadSupplierInvoices(selectedInvoice.supplier_id);
     } catch (error: any) {
@@ -193,6 +199,28 @@ export function SupplierDebtManagement() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSyncAll = async () => {
+    try {
+      setIsSyncing(true);
+      const report = await supplierDebtService.syncAllSupplierDebts();
+      
+      toast({
+        title: 'Sinkronisasi Selesai',
+        description: report,
+      });
+      
+      loadDebtSummary();
+    } catch (error: any) {
+      toast({
+        title: 'Sinkronisasi Gagal',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -223,6 +251,15 @@ export function SupplierDebtManagement() {
           </h2>
           <p className="text-gray-600">Pantau dan kelola tagihan supplier yang belum terbayar</p>
         </div>
+        <Button
+          onClick={handleSyncAll}
+          disabled={isSyncing}
+          variant="outline"
+          className="flex items-center gap-2 border-inventory text-inventory hover:bg-inventory hover:text-white transition-all shadow-sm"
+        >
+          <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+          {isSyncing ? 'Menyinkronkan...' : 'Sinkronisasi Saldo'}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

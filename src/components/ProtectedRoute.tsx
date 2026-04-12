@@ -13,17 +13,6 @@ export default function ProtectedRoute({ children, requiredModule }: ProtectedRo
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, hasModuleAccess, user, logout } = useAuth();
-  const [gracePeriod, setGracePeriod] = useState(true);
-
-  // Grace period to allow background profile loading to finish
-  useEffect(() => {
-    if (!isLoading && isAuthenticated && requiredModule) {
-        const timer = setTimeout(() => {
-            setGracePeriod(false);
-        }, 2000);
-        return () => clearTimeout(timer);
-    }
-  }, [isLoading, isAuthenticated, requiredModule]);
 
   if (isLoading) {
     return (
@@ -51,21 +40,9 @@ export default function ProtectedRoute({ children, requiredModule }: ProtectedRo
     );
   }
 
-  // Permission Check with Grace Period
+  // Permission Check
   if (requiredModule && !hasModuleAccess(requiredModule)) {
-    if (gracePeriod) {
-        return (
-            <div className="min-h-screen bg-[#FAFAF9] flex items-center justify-center">
-                <div className="text-center">
-                    <Loader2 className="w-10 h-10 animate-spin text-hrd mx-auto mb-4" />
-                    <p className="text-muted-foreground font-body">MENYIAPKAN AKSES...</p>
-                    <p className="text-[10px] text-gray-400 mt-2">Memverifikasi perizinan modul {requiredModule}...</p>
-                </div>
-            </div>
-        );
-    }
-
-    // After grace period, show Restriction Screen instead of Redirecting
+    // Show Restriction Screen instead of Redirecting
     return (
         <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white font-body">
             <div className="max-w-md w-full text-center space-y-8 animate-in fade-in zoom-in duration-500">

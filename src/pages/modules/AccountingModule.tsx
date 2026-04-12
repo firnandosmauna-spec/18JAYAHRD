@@ -7,12 +7,14 @@ import { LedgerView } from '../../components/accounting/LedgerView';
 import { CashInView } from '../../components/accounting/CashInView';
 import { CashOutView } from '../../components/accounting/CashOutView';
 import { CashBookView } from '../../components/accounting/CashBookView';
+import { BankBookView } from '../../components/accounting/BankBookView';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import {
     LayoutDashboard,
     Wallet,
+    Landmark,
     BookOpen,
     FileText,
     BarChart3,
@@ -36,6 +38,7 @@ export default function AccountingModule() {
     const navItems = [
         { label: 'Dashboard', href: '/accounting/dashboard', icon: LayoutDashboard },
         { label: 'Buku Kas', href: '/accounting/cash-book', icon: Wallet },
+        { label: 'Buku Bank', href: '/accounting/bank-book', icon: Landmark },
         { label: 'Buku Besar', href: '/accounting/ledger', icon: BookOpen },
         { label: 'Jurnal Umum', href: '/accounting/journal', icon: FileText },
         { label: 'Laporan', href: '/accounting/reports', icon: BarChart3 },
@@ -54,6 +57,7 @@ export default function AccountingModule() {
                 <Route index element={<Navigate to={resumePath} replace />} />
                 <Route path="dashboard" element={<AccountingDashboard navigate={navigate} />} />
                 <Route path="cash-book" element={<CashBookView />} />
+                <Route path="bank-book" element={<BankBookView />} />
                 <Route path="ledger" element={<LedgerView />} />
                 <Route path="journal" element={<JournalEntryView />} />
                 <Route path="reports" element={<ReportsView />} />
@@ -89,16 +93,30 @@ function AccountingDashboard({ navigate }: DashboardProps) {
             acc.code.startsWith('1-1'))
     );
 
-    const cashBalance = cashAccounts.reduce((sum, acc) => sum + acc.balance, 0);
+    // Calculate Cash vs Bank Balance
+    const cashAccountsOnly = cashAccounts.filter(acc => !acc.name.toLowerCase().includes('bank'));
+    const bankAccountsOnly = cashAccounts.filter(acc => acc.name.toLowerCase().includes('bank'));
+
+    const cashBalanceOnly = cashAccountsOnly.reduce((sum, acc) => sum + acc.balance, 0);
+    const bankBalanceOnly = bankAccountsOnly.reduce((sum, acc) => sum + acc.balance, 0);
 
     const stats = [
         {
-            label: 'Total Saldo Kas & Bank',
-            value: cashBalance || 0,
+            label: 'Total Saldo Kas',
+            value: cashBalanceOnly || 0,
             icon: Wallet,
-            color: 'text-blue-600',
-            bgColor: 'bg-blue-50',
-            trend: 'Real-time',
+            color: 'text-emerald-600',
+            bgColor: 'bg-emerald-50',
+            trend: 'Tunai',
+            isPositive: true,
+        },
+        {
+            label: 'Total Saldo Bank',
+            value: bankBalanceOnly || 0,
+            icon: Landmark,
+            color: 'text-indigo-600',
+            bgColor: 'bg-indigo-50',
+            trend: 'Perbankan',
             isPositive: true,
         },
         {
@@ -109,15 +127,6 @@ function AccountingDashboard({ navigate }: DashboardProps) {
             bgColor: 'bg-green-50',
             trend: '+8.2%',
             isPositive: true,
-        },
-        {
-            label: 'Beban (YTD)',
-            value: pl?.total_expense || 0,
-            icon: ArrowDownRight,
-            color: 'text-rose-600',
-            bgColor: 'bg-rose-50',
-            trend: '+2.4%',
-            isPositive: false,
         },
         {
             label: 'Laba Bersih',

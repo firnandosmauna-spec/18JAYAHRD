@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, CheckCircle2, Circle, Upload, FileText, X, Eye, Paperclip } from 'lucide-react';
+import { Loader2, CheckCircle2, Circle, Upload, FileText, X, Eye, Paperclip, Printer } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,10 @@ import { ConsumerPemberkasan as ConsumerPemberkasanType } from './MarketingTypes
 import { cn } from "@/lib/utils";
 import { ConsumerProfileForm } from './ConsumerProfileForm';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNotificationsContext } from '@/contexts/NotificationContext';
+import { Badge } from '@/components/ui/badge';
+import { Check, RotateCcw, ThumbsUp, ThumbsDown, Clock } from 'lucide-react';
 
 interface ConsumerPemberkasanProps {
     consumerId: string;
@@ -39,6 +43,9 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const [isMasterFormOpen, setIsMasterFormOpen] = useState(false);
     const [formMode, setFormMode] = useState<'edit' | 'preview'>('edit');
+    const { user } = useAuth();
+    const { addNotification } = useNotificationsContext();
+    const isAdmin = user?.role?.toLowerCase() === 'administrator' || user?.role === 'Administrator';
 
     const fetchPemberkasan = async () => {
         try {
@@ -135,6 +142,80 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
         }
     };
 
+    const handleApproveSlik = async () => {
+        if (!data || !isAdmin) return;
+
+        try {
+            setSaving(true);
+            const updates: any = {
+                slik_ojk: true,
+                slik_ojk_date: new Date().toISOString(),
+                slik_ojk_status: 'approved',
+                slik_ojk_approved_by: user?.id,
+                slik_ojk_approved_at: new Date().toISOString()
+            };
+
+            const { error } = await supabase
+                .from('consumer_pemberkasan')
+                .update(updates)
+                .eq('consumer_id', consumerId);
+
+            if (error) throw error;
+
+            setData(prev => prev ? { ...prev, ...updates } : null);
+
+            toast({
+                title: "SLIK OJK Disetujui",
+                description: "Status persetujuan SLIK OJK berhasil diperbarui oleh Administrator",
+            });
+        } catch (error: any) {
+            console.error('Error approving slik:', error);
+            toast({
+                title: "Gagal menyetujui",
+                description: error.message,
+                variant: 'destructive'
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleRejectSlik = async () => {
+        if (!data || !isAdmin) return;
+
+        try {
+            setSaving(true);
+            const updates: any = {
+                slik_ojk: false,
+                slik_ojk_date: null,
+                slik_ojk_status: 'rejected',
+            };
+
+            const { error } = await supabase
+                .from('consumer_pemberkasan')
+                .update(updates)
+                .eq('consumer_id', consumerId);
+
+            if (error) throw error;
+
+            setData(prev => prev ? { ...prev, ...updates } : null);
+
+            toast({
+                title: "SLIK OJK Ditolak",
+                description: "Status SLIK OJK telah ditandai sebagai ditolak",
+            });
+        } catch (error: any) {
+            console.error('Error rejecting slik:', error);
+            toast({
+                title: "Gagal menolak",
+                description: error.message,
+                variant: 'destructive'
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleDateChange = async (key: string, dateStr: string) => {
         if (!data) return;
 
@@ -196,12 +277,19 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
             // Update Database
             const updates: any = {
                 [`${activeKey}_file_url`]: publicUrl,
-                [activeKey]: true, // Automatically check if file is uploaded
             };
 
-            // If it wasn't checked before, add timestamp
-            if (!(data as any)[activeKey]) {
-                updates[`${activeKey}_date`] = new Date().toISOString();
+            // Business logic: slik_ojk requires admin approval
+            if (activeKey === 'slik_ojk') {
+                updates.slik_ojk = false; // Stay false until approved
+                updates.slik_ojk_status = 'pending';
+                updates.slik_ojk_date = new Date().toISOString(); // Still record upload date
+            } else {
+                updates[activeKey] = true; // Automatically check if file is uploaded for other items
+                // If it wasn't checked before, add timestamp
+                if (!(data as any)[activeKey]) {
+                    updates[`${activeKey}_date`] = new Date().toISOString();
+                }
             }
 
             const { error: dbError } = await supabase
@@ -212,6 +300,16 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
             if (dbError) throw dbError;
 
             setData(prev => prev ? { ...prev, ...updates } : null);
+
+            // Trigger notification for SLIK OJK upload
+            if (activeKey === 'slik_ojk') {
+                addNotification({
+                    title: "Pengajuan SLIK OJK Baru",
+                    message: `Konsumen ${consumerName} telah mengunggah dokumen SLIK OJK. Mohon segera diperiksa.`,
+                    type: 'warning',
+                    module: 'Marketing',
+                });
+            }
 
             toast({
                 title: "File Terunggah",
@@ -238,7 +336,18 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
 
         try {
             setSaving(true);
-            const updates: any = { [`${key}_file_url`]: null };
+            const updates: any = { 
+                [`${key}_file_url`]: null,
+                [key]: false // Reset completion if file is removed
+            };
+
+            // Reset SLIK OJK specific fields
+            if (key === 'slik_ojk') {
+                updates.slik_ojk_status = 'none';
+                updates.slik_ojk_date = null;
+                updates.slik_ojk_approved_by = null;
+                updates.slik_ojk_approved_at = null;
+            }
 
             const { error } = await supabase
                 .from('consumer_pemberkasan')
@@ -362,7 +471,17 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
                                 <div className="flex-shrink-0">
                                     <Checkbox
                                         checked={isCompleted}
-                                        onCheckedChange={(checked) => handleToggle(item.key, !!checked)}
+                                        disabled={item.key === 'slik_ojk' && !isAdmin}
+                                        onCheckedChange={(checked) => {
+                                            if (item.key === 'slik_ojk' && !isAdmin) {
+                                                toast({
+                                                    title: "Akses Dibatasi",
+                                                    description: "Hanya Administrator yang dapat menyetujui SLIK OJK",
+                                                });
+                                                return;
+                                            }
+                                            handleToggle(item.key, !!checked);
+                                        }}
                                         className={cn(
                                             "rounded-full h-5 w-5 border-2",
                                             isCompleted ? "border-emerald-500 bg-emerald-500" : "border-slate-200"
@@ -370,6 +489,56 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
                                     />
                                 </div>
                             </div>
+
+                            {/* Approval Status Overlay for Slik OJK */}
+                            {item.key === 'slik_ojk' && (data as any).slik_ojk_status && (data as any).slik_ojk_status !== 'none' && (
+                                <div className="mt-2 flex items-center gap-2">
+                                    {(data as any).slik_ojk_status === 'pending' && (
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <Badge variant="outline" className={cn(
+                                                "text-[9px] flex items-center gap-1 shrink-0",
+                                                isAdmin ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-amber-50 text-amber-700 border-amber-200"
+                                            )}>
+                                                <Clock className="w-2.5 h-2.5" /> 
+                                                {isAdmin ? 'Butuh Verifikasi Anda' : 'Menunggu Persetujuan Admin'}
+                                            </Badge>
+                                            
+                                            {isAdmin && (
+                                                <div className="flex gap-1.5">
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm" 
+                                                        className="h-6 px-2 text-[8px] bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-700 font-bold"
+                                                        onClick={(e) => { e.stopPropagation(); handleApproveSlik(); }}
+                                                        disabled={saving}
+                                                    >
+                                                        <Check className="w-2.5 h-2.5 mr-1" /> SETUJUI
+                                                    </Button>
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm" 
+                                                        className="h-6 px-2 text-[8px] bg-red-600 text-white border-red-500 hover:bg-red-700 font-bold"
+                                                        onClick={(e) => { e.stopPropagation(); handleRejectSlik(); }}
+                                                        disabled={saving}
+                                                    >
+                                                        <X className="w-2.5 h-2.5 mr-1" /> TOLAK
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {(data as any).slik_ojk_status === 'approved' && (
+                                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[9px] flex items-center gap-1">
+                                            <ThumbsUp className="w-2.5 h-2.5" /> Disetujui Admin
+                                        </Badge>
+                                    )}
+                                    {(data as any).slik_ojk_status === 'rejected' && (
+                                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[9px] flex items-center gap-1">
+                                            <ThumbsDown className="w-2.5 h-2.5" /> Ditolak Admin
+                                        </Badge>
+                                    )}
+                                </div>
+                            )}
 
                             {/* File Upload Section */}
                             <div className="mt-3 flex flex-col gap-2 border-t border-dashed border-slate-200 pt-3">
@@ -386,24 +555,35 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
                                                 Lengkapi Form Master
                                             </Button>
                                         ) : (
-                                            <div className="flex gap-2 mb-1 w-full">
+                                            <div className="flex flex-col gap-2 mb-1 w-full">
+                                                <div className="flex gap-2 w-full">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="w-1/2 text-[10px] h-8 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                                        onClick={() => { setFormMode('preview'); setIsMasterFormOpen(true); }}
+                                                    >
+                                                        <Eye className="h-3 w-3 mr-1" />
+                                                        Preview
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="w-1/2 text-[10px] h-8 bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                                                        onClick={() => { setFormMode('edit'); setIsMasterFormOpen(true); }}
+                                                    >
+                                                        <FileText className="h-3 w-3 mr-1" />
+                                                        Edit
+                                                    </Button>
+                                                </div>
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="w-1/2 text-[10px] h-8 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                                    className="w-full text-[10px] h-8 bg-slate-800 text-white border-slate-700 hover:bg-slate-900"
                                                     onClick={() => { setFormMode('preview'); setIsMasterFormOpen(true); }}
                                                 >
-                                                    <Eye className="h-3 w-3 mr-1" />
-                                                    Preview Data
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="w-1/2 text-[10px] h-8 bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                                                    onClick={() => { setFormMode('edit'); setIsMasterFormOpen(true); }}
-                                                >
-                                                    <FileText className="h-3 w-3 mr-1" />
-                                                    Edit Form
+                                                    <Printer className="h-3 w-3 mr-1" />
+                                                    Cetak Data Konsumen
                                                 </Button>
                                             </div>
                                         )}

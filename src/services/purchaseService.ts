@@ -41,13 +41,11 @@ export class PurchaseService {
       }, {});
 
       const result = (suppliers || []).map(s => {
-        const method = (s.payment_method || '').trim().toLowerCase();
-        const isHutang = method === 'hutang';
         const debtFromInvoices = debtMap[s.id] || 0;
         
         return {
           ...s,
-          total_debt: isHutang ? (debtFromInvoices || Number(s.total_debt || 0)) : (debtFromInvoices > 0 ? debtFromInvoices : 0)
+          total_debt: debtFromInvoices > 0 ? debtFromInvoices : 0
         };
       });
 

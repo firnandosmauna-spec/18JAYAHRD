@@ -563,6 +563,90 @@ export const stockMovementService = {
       }
     }
 
+    // NEW: Handle 'Hutang' (Debt) payment method for material purchases
+    if (movement.movement_type === 'in' && movement.payment_method_id) {
+      try {
+        const { data: pm } = await supabase
+          .from('payment_methods')
+          .select('name')
+          .eq('id', movement.payment_method_id)
+          .single();
+
+        const pmName = pm?.name?.toLowerCase() || '';
+        const isHutang = pmName.includes('hutang') || pmName.includes('tempo') || pmName.includes('kredit');
+        
+        if (isHutang) {
+          const { data: prod } = await supabase
+            .from('products')
+            .select('supplier_id, name, sku, cost')
+            .eq('id', movement.product_id)
+            .single();
+
+          if (prod?.supplier_id) {
+            const price = movement.unit_price || (prod as any).cost || 0;
+            const totalAmount = movement.quantity * price;
+            
+            if (totalAmount > 0) {
+              console.log(`[Inventory] Creating auto-invoice for '${pmName}' purchase. Supplier: ${prod.supplier_id}`);
+              
+              // 1. Create the purchase invoice
+              const invoiceNumber = `INV-AUTO-${Date.now().toString().slice(-6)}`;
+              const { data: invoiceData, error: invoiceError } = await supabase
+                .from('purchase_invoices')
+                .insert({
+                  supplier_id: prod.supplier_id,
+                  invoice_number: invoiceNumber,
+                  invoice_date: new Date().toISOString().split('T')[0],
+                  due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 30 days
+                  status: 'received',
+                  payment_status: 'unpaid',
+                  subtotal: totalAmount,
+                  tax_amount: 0,
+                  discount_amount: 0,
+                  total_amount: totalAmount,
+                  paid_amount: 0,
+                  notes: `Auto-generated from Material Purchase: ${prod.name}. Ref: ${movement.reference || 'None'}`,
+                  created_by: (movement as any).created_by || 'system'
+                })
+                .select()
+                .single();
+
+              if (!invoiceError && invoiceData) {
+                // 2. Create the invoice item
+                await supabase.from('purchase_invoice_items').insert({
+                  purchase_invoice_id: invoiceData.id,
+                  product_id: movement.product_id,
+                  quantity: movement.quantity,
+                  unit_price: price,
+                  discount_percentage: 0,
+                  line_total: totalAmount,
+                  notes: `Linked to Stock Movement: ${movementData.id}`
+                });
+
+                // 3. Update stock movement reference if it was empty or manual prefix
+                if (!movement.reference || movement.reference.startsWith('MSK')) {
+                  await supabase
+                    .from('stock_movements')
+                    .update({ reference: invoiceNumber })
+                    .eq('id', movementData.id);
+                  
+                  // Update local returned data
+                  movementData.reference = invoiceNumber;
+                }
+                console.log(`[Inventory] Auto-invoice ${invoiceNumber} created successfully.`);
+              } else if (invoiceError) {
+                console.error('[Inventory] Error creating auto-invoice:', invoiceError);
+              }
+            }
+          } else {
+            console.warn(`[Inventory] Skip auto-invoice: Product '${prod?.name}' has no supplier_id assigned.`);
+          }
+        }
+      } catch (err) {
+        console.error('[Inventory] Fatal error in auto-invoice logic:', err);
+      }
+    }
+
     return movementData
   },
 
@@ -695,6 +779,23 @@ export const stockMovementService = {
 
 
     await supabase.from('supplier_deposits').delete().eq('reference_id', id).eq('type', 'usage');
+    
+    // Cleanup auto-generated invoices if the movement is deleted
+    if (movement.reference && movement.reference.startsWith('INV-AUTO-')) {
+      const { data: invoice } = await supabase
+        .from('purchase_invoices')
+        .select('id')
+        .eq('invoice_number', movement.reference)
+        .single();
+      
+      if (invoice) {
+        // Delete items first
+        await supabase.from('purchase_invoice_items').delete().eq('purchase_invoice_id', invoice.id);
+        // Delete invoice
+        await supabase.from('purchase_invoices').delete().eq('id', invoice.id);
+      }
+    }
+
     const { error } = await supabase.from('stock_movements').delete().eq('id', id)
     if (error) throw error
   }

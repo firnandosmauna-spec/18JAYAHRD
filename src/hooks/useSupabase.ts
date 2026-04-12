@@ -743,7 +743,32 @@ export function useNotifications(userId?: string) {
   const unreadCount = notifications.filter(n => !n.read).length
 
   useEffect(() => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+    
     fetchNotifications()
+
+    // Real-time subscription
+    const channel = supabase
+      .channel(`notifications_${userId}`)
+      .on('postgres_changes', 
+        { 
+            event: '*', 
+            schema: 'public', 
+            table: 'notifications',
+            filter: `user_id=eq.${userId}` 
+        }, 
+        () => {
+          fetchNotifications()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [userId])
 
   return {

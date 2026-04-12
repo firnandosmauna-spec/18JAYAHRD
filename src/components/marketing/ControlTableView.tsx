@@ -147,7 +147,19 @@ export default function ControlTableView() {
                                             <TableCell className="text-slate-600 text-sm truncate max-w-[140px]">{consumer.sales_person || '-'}</TableCell>
 
                                             <TableCell className="text-center text-xs font-mono text-slate-600 bg-slate-50/50">{formatDate(prep?.booking_date)}</TableCell>
-                                            <TableCell className="text-center text-xs font-mono text-slate-600">{formatDate(prep?.slik_ojk_date)}</TableCell>
+                                            <TableCell className="text-center text-xs font-mono text-slate-600">
+                                                {prep?.slik_ojk_status === 'pending' ? (
+                                                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] px-1 py-0">
+                                                        Pending
+                                                    </Badge>
+                                                ) : prep?.slik_ojk_status === 'rejected' ? (
+                                                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[10px] px-1 py-0">
+                                                        Rejected
+                                                    </Badge>
+                                                ) : (
+                                                    formatDate(prep?.slik_ojk_date)
+                                                )}
+                                            </TableCell>
                                             <TableCell className="text-center text-xs font-mono text-slate-600 bg-slate-50/50">{formatDate(prep?.proses_berkas_date)}</TableCell>
                                             <TableCell className="text-center text-xs font-mono text-slate-600">{formatDate(prep?.ots_date)}</TableCell>
                                             <TableCell className="text-center text-xs font-mono text-slate-600 bg-slate-50/50">{formatDate(prep?.penginputan_date)}</TableCell>

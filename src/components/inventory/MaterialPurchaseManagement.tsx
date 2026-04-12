@@ -55,7 +55,9 @@ import { useToast } from '../ui/use-toast';
 import { format } from 'date-fns';
 import { paymentMethodService, PaymentMethod } from '../../services/paymentMethodService';
 import { PurchaseService } from '../../services/purchaseService';
+import { supplierDebtService } from '../../services/supplierDebtService';
 import { cn } from '../../lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Product } from '../../lib/supabase';
 import type { PurchaseInvoice, Supplier } from '@/types/purchase';
 
@@ -86,6 +88,7 @@ export function MaterialPurchaseManagement() {
     const { invoices } = usePurchaseInvoices();
     const { suppliers, loading: loadingSuppliers, refetch: refetchSuppliers } = useSuppliers();
     const { toast } = useToast();
+    const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [showEditDialog, setShowEditDialog] = useState(false);
@@ -238,8 +241,9 @@ export function MaterialPurchaseManagement() {
                 unit_price: parseFloat(formData.unit_price) || 0,
                 reference_type: 'manual_entry',
                 payment_method_id: formData.payment_method_id || null,
-                project_location: formData.project_location || null
-            });
+                project_location: formData.project_location || null,
+                created_by: user?.name || 'User'
+            } as any);
 
             toast({ title: 'Berhasil', description: 'Stok masuk berhasil dicatat' });
             setShowAddDialog(false);
@@ -255,6 +259,10 @@ export function MaterialPurchaseManagement() {
             });
             refetch();
             refetchProducts();
+            
+            // Sync supplier debt after adding material
+            await supplierDebtService.syncAllSupplierDebts();
+            await refetchSuppliers();
         } catch (error: any) {
             toast({
                 title: 'Error',
@@ -295,14 +303,19 @@ export function MaterialPurchaseManagement() {
                 notes: formData.notes.trim() || null,
                 unit_price: parseFloat(formData.unit_price) || 0,
                 payment_method_id: formData.payment_method_id || null,
-                project_location: formData.project_location || null
-            });
+                project_location: formData.project_location || null,
+                created_by: user?.name || 'User'
+            } as any);
 
             toast({ title: 'Berhasil', description: 'Belanja material berhasil diperbarui' });
             setShowEditDialog(false);
             setEditingMovement(null);
             refetch();
             refetchProducts();
+            
+            // Sync supplier debt after update
+            await supplierDebtService.syncAllSupplierDebts();
+            await refetchSuppliers();
         } catch (error: any) {
             toast({
                 title: 'Error',
@@ -322,6 +335,10 @@ export function MaterialPurchaseManagement() {
             toast({ title: 'Berhasil', description: 'Data belanja material berhasil dihapus' });
             refetch();
             refetchProducts();
+            
+            // Sync supplier debt after delete
+            await supplierDebtService.syncAllSupplierDebts();
+            await refetchSuppliers();
         } catch (error: any) {
             toast({
                 title: 'Error',
