@@ -180,7 +180,8 @@ export function LoanManagement() {
             await addLoan({
                 employee_id: formData.employee_id,
                 amount: amount,
-                remaining_amount: amount, // Awalnya sisa hutang = total hutang
+                requested_amount: amount,
+                remaining_amount: amount,
                 installment_amount: installment,
                 reason: formData.reason,
                 status: 'pending',

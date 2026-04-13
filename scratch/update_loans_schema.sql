@@ -24,10 +24,14 @@ CREATE TABLE IF NOT EXISTS public.employee_loan_payments (
 ALTER TABLE public.employee_loan_payments ENABLE ROW LEVEL SECURITY;
 
 -- 5. Buat policy RLS (Sesuaikan dengan kebijakan keamanan Anda)
+-- Hapus policy lama jika ada agar tidak error saat running ulang
+DROP POLICY IF EXISTS "Admins can do everything on loan payments" ON public.employee_loan_payments;
+DROP POLICY IF EXISTS "Staff can view their own loan payments" ON public.employee_loan_payments;
+
 -- Admin bisa semua aksi
 CREATE POLICY "Admins can do everything on loan payments" 
 ON public.employee_loan_payments FOR ALL 
-USING (auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'Administrator'));
+USING (auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'Administrator' OR role = 'admin'));
 
 -- Staff bisa melihat cicilan miliknya sendiri
 CREATE POLICY "Staff can view their own loan payments"

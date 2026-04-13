@@ -10,6 +10,7 @@ import type {
   RewardTypeMaster,
   NotificationRecord,
   EmployeeLoan,
+  LoanPayment,
   Position,
   EmployeeContract,
   JobHistory,
