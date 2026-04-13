@@ -792,12 +792,67 @@ export const loanService = {
   async create(loan: Omit<EmployeeLoan, 'id' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase
       .from('employee_loans')
-      .insert(loan)
+      .insert({
+        ...loan,
+        requested_amount: loan.amount // Record initial request
+      })
       .select()
       .single()
 
     if (error) throw error
     return data
+  },
+
+  async payInstallment(payment: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at'>) {
+    // 1. Get current loan state
+    const { data: loan, error: fetchError } = await supabase
+      .from('employee_loans')
+      .select('remaining_amount, status')
+      .eq('id', payment.loan_id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // 2. Insert payment record
+    const { data: newPayment, error: payError } = await supabase
+      .from('employee_loan_payments')
+      .insert(payment)
+      .select()
+      .single();
+
+    if (payError) throw payError;
+
+    // 3. Update loan balance
+    const newRemaining = Math.max(0, loan.remaining_amount - payment.amount);
+    const newStatus = newRemaining <= 0 ? 'paid_off' : loan.status;
+
+    const { error: updateError } = await supabase
+      .from('employee_loans')
+      .update({
+        remaining_amount: newRemaining,
+        status: newStatus
+      })
+      .eq('id', payment.loan_id);
+
+    if (updateError) throw updateError;
+
+    return newPayment;
+  },
+
+  async getPayments(loanId: string) {
+    const { data, error } = await supabase
+      .from('employee_loan_payments')
+      .select('*')
+      .eq('loan_id', loanId)
+      .order('payment_date', { ascending: false });
+
+    if (error) {
+      if (error.code === 'PGRST116' || error.code === '42P01' || error.message?.includes('does not exist')) {
+        return [];
+      }
+      throw error;
+    }
+    return data;
   },
 
   async update(id: string, updates: Partial<Omit<EmployeeLoan, 'id' | 'created_at'>>) {

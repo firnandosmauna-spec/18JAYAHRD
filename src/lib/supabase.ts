@@ -99,6 +99,11 @@ export interface Database {
         Insert: Omit<EmployeeLoan, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<EmployeeLoan, 'id' | 'created_at'>>
       }
+      employee_loan_payments: {
+        Row: LoanPayment
+        Insert: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<LoanPayment, 'id' | 'created_at'>>
+      }
       employee_contracts: {
         Row: EmployeeContract
         Insert: Omit<EmployeeContract, 'id' | 'created_at' | 'updated_at'>
@@ -393,11 +398,26 @@ export interface EmployeeLoan {
   id: string
   employee_id: string
   amount: number
+  requested_amount: number
   remaining_amount: number
   installment_amount: number
   reason: string
   status: 'pending' | 'approved' | 'rejected' | 'paid_off'
+  admin_notes?: string
+  approved_by?: string
+  approved_at?: string
   start_date: string
+  created_at: string
+  updated_at: string
+}
+
+export interface LoanPayment {
+  id: string
+  loan_id: string
+  amount: number
+  payment_date: string
+  payment_method: 'cash' | 'payroll' | 'transfer'
+  notes?: string
   created_at: string
   updated_at: string
 }

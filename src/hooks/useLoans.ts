@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { loanService, handleSupabaseError } from '@/services/supabaseService';
-import type { EmployeeLoan } from '@/lib/supabase';
+import type { EmployeeLoan, LoanPayment } from '@/lib/supabase';
 
 export function useLoans() {
     const [loans, setLoans] = useState<EmployeeLoan[]>([]);
@@ -66,6 +66,27 @@ export function useLoans() {
         }
     };
 
+    const payInstallment = async (payment: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at'>) => {
+        try {
+            const newPayment = await loanService.payInstallment(payment);
+            await fetchLoans(); // Refresh balances
+            return newPayment;
+        } catch (err: any) {
+            const errorMsg = handleSupabaseError(err);
+            setError(errorMsg);
+            throw err;
+        }
+    };
+
+    const fetchPayments = async (loanId: string) => {
+        try {
+            return await loanService.getPayments(loanId);
+        } catch (err: any) {
+            console.error('Error fetching loan payments:', err);
+            return [];
+        }
+    };
+
     return {
         loans,
         loading,
@@ -73,6 +94,8 @@ export function useLoans() {
         addLoan,
         updateLoan,
         deleteLoan,
+        payInstallment,
+        fetchPayments,
         refetch: fetchLoans
     };
 }
