@@ -109,7 +109,7 @@ export function LoanManagement() {
 
     // Role checking - Make it highly flexible for any custom admin/HR roles
     const normalizedRole = (user?.role || '').toLowerCase();
-    const isOnlyAdmin = normalizedRole === 'administrator';
+    const isOnlyAdmin = normalizedRole === 'administrator' || normalizedRole === 'admin';
     const isAdminRole = isOnlyAdmin || normalizedRole === 'admin' || normalizedRole === 'manager' || normalizedRole === 'hrd' || normalizedRole === 'owner' || normalizedRole === 'direktur';
     const hasHRDModule = user?.modules?.some(m => m.toLowerCase() === 'hrd');
     const isAdminOrHR = isAdminRole || hasHRDModule;
