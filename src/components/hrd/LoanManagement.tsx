@@ -502,7 +502,7 @@ export function LoanManagement() {
                                                     </Avatar>
                                                     <div>
                                                         <p className="font-medium font-body"><span>{employee?.name || 'Unknown'}</span></p>
-                                                        <p className="text-xs text-muted-foreground font-body"><span>{loan.reason}</span></p>
+                                                        <p className="text-[10px] text-muted-foreground font-body"><span>Mulai: {formatDate(loan.start_date)}</span></p>
                                                     </div>
                                                 </div>
                                             </TableCell>
@@ -527,12 +527,12 @@ export function LoanManagement() {
                                                  </div>
                                              </TableCell>
                                              <TableCell className="font-mono">{formatCurrency(loan.installment_amount)}</TableCell>
-                                             <TableCell className="font-body text-sm">
-                                                 <div>
-                                                     <p>{formatDate(loan.start_date)}</p>
+                                             <TableCell className="font-body text-sm max-w-[200px]">
+                                                 <div className="flex flex-col">
+                                                     <p className="truncate" title={loan.reason}>{loan.reason}</p>
                                                      {loan.admin_notes && (
-                                                         <p className="text-[10px] text-muted-foreground italic truncate max-w-[100px]">
-                                                             "{loan.admin_notes}"
+                                                         <p className="text-[10px] text-blue-600 italic truncate" title={loan.admin_notes}>
+                                                             Note: {loan.admin_notes}
                                                          </p>
                                                      )}
                                                  </div>
