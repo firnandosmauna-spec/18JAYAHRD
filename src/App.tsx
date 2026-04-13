@@ -63,28 +63,49 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
   render() {
     if (this.state.hasError) {
+      const isChunkError = this.state.error?.message?.includes('Loading chunk') || 
+                          this.state.error?.message?.includes('Failed to load module') ||
+                          this.state.error?.message?.includes('MIME type');
+
       return (
         <div className="min-h-screen flex items-center justify-center p-4 bg-red-50 text-red-900">
           <div className="max-w-md bg-white p-6 rounded shadow border border-red-200">
-            <h1 className="text-xl font-bold mb-2">Terjadi Kesalahan Aplikasi</h1>
-            <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto mb-4 font-mono max-h-[200px]">
+            <h1 className="text-xl font-bold mb-2">
+              {isChunkError ? 'Pembaruan Aplikasi Tersedia' : 'Terjadi Kesalahan Aplikasi'}
+            </h1>
+            <p className="text-sm text-gray-600 mb-4">
+              {isChunkError 
+                ? 'Versi baru aplikasi telah tersedia. Silakan muat ulang halaman untuk menggunakan versi terbaru.'
+                : 'Terjadi kesalahan sistem yang tidak terduga.'}
+            </p>
+            <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto mb-4 font-mono max-h-[150px]">
               {typeof this.state.error === 'object'
                 ? JSON.stringify(this.state.error, Object.getOwnPropertyNames(this.state.error), 2)
                 : String(this.state.error)}
             </pre>
-            <div className="text-[10px] text-gray-500 mb-4 font-mono truncate">
-              URL: {window.location.href}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem('chunk_retry_count');
+                  window.location.reload();
+                }}
+                className="bg-[#0D7377] text-white px-4 py-2 rounded text-sm hover:bg-[#0D7377]/90 flex-1 font-bold"
+              >
+                Muat Ulang Sekarang
+              </button>
+              {!isChunkError && (
+                <button
+                  onClick={() => {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.reload();
+                  }}
+                  className="bg-gray-200 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-300"
+                >
+                  Reset & Pesan
+                </button>
+              )}
             </div>
-            <button
-              onClick={() => {
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.reload();
-              }}
-              className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700"
-            >
-              Reset & Reload
-            </button>
           </div>
         </div>
       );
