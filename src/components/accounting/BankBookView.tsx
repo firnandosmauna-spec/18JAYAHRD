@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 export function BankBookView() {
     const navigate = useNavigate();
     const { accounts, loading: loadingAccounts } = useAccounts();
-    const { entries, loading: loadingEntries, refresh } = useJournalEntries();
+    const { entries, loading: loadingEntries, refresh } = useJournalEntries(2000); // Higher limit for full view
     const [searchTerm, setSearchTerm] = React.useState('');
     const [selectedAccountId, setSelectedAccountId] = React.useState<string>('all');
     const [filterType, setFilterType] = React.useState<'all' | 'in' | 'out'>('all');

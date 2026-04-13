@@ -34,13 +34,13 @@ class AccountingService {
     }
 
     // Journal Entries
-    async getJournalEntries(): Promise<JournalEntry[]> {
+    async getJournalEntries(limit: number = 5000): Promise<JournalEntry[]> {
         const { data, error } = await supabase
             .from('accounting_journals')
             .select('*, items:accounting_journal_items(*)')
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
-            .limit(5000);
+            .limit(limit);
 
         if (error) throw error;
         return data || [];

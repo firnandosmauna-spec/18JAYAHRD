@@ -71,7 +71,7 @@ export function useAccounts() {
     return { accounts, loading, error, refresh: fetchAccounts, createAccount, deleteAccount };
 }
 
-export function useJournalEntries() {
+export function useJournalEntries(limit: number = 50) {
     const [entries, setEntries] = useState<JournalEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -79,7 +79,7 @@ export function useJournalEntries() {
     const fetchEntries = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await accountingService.getJournalEntries();
+            const data = await accountingService.getJournalEntries(limit);
             setEntries(data);
             setError(null);
         } catch (err: any) {

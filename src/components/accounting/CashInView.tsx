@@ -13,7 +13,7 @@ import { Account } from '../../types/accounting';
 
 export function CashInView() {
     const { accounts, loading: loadingAccounts } = useAccounts();
-    const { refresh } = useJournalEntries();
+    const { refresh } = useJournalEntries(500);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
 
     const [formData, setFormData] = React.useState({

@@ -75,32 +75,39 @@ interface DashboardProps {
 }
 
 function AccountingDashboard({ navigate }: DashboardProps) {
-    const startDate = new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
-    const endDate = new Date().toISOString().split('T')[0];
-    const { pl, bs, loading: loadingReports } = useAccountingReports(startDate, endDate);
+    const { startDate, endDate } = React.useMemo(() => ({
+        startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0]
+    }), []);
+
+    const { pl, loading: loadingReports } = useAccountingReports(startDate, endDate);
     const { accounts, loading: loadingAccounts } = useAccounts();
-    const { entries, loading: loadingEntries } = useJournalEntries();
+    const { entries, loading: loadingEntries } = useJournalEntries(50); // Optimized for dashboard
 
-    // Calculate Cash Balance
-    const cashAccounts = accounts.filter(acc =>
-        acc.type === 'asset' &&
-        (acc.name.toLowerCase().includes('kas') ||
-            acc.name.toLowerCase().includes('bank') ||
-            acc.name.toLowerCase().includes('cash') ||
-            acc.code.startsWith('10') ||
-            acc.code.startsWith('11') ||
-            acc.code.startsWith('1-0') ||
-            acc.code.startsWith('1-1'))
-    );
+    // Memoize derived account lists and balances
+    const { cashBalanceOnly, bankBalanceOnly, cashAccountIds } = React.useMemo(() => {
+        const cashAccs = accounts.filter(acc =>
+            acc.type === 'asset' &&
+            (acc.name.toLowerCase().includes('kas') ||
+                acc.name.toLowerCase().includes('bank') ||
+                acc.name.toLowerCase().includes('cash') ||
+                acc.code.startsWith('10') ||
+                acc.code.startsWith('11') ||
+                acc.code.startsWith('1-0') ||
+                acc.code.startsWith('1-1'))
+        );
 
-    // Calculate Cash vs Bank Balance
-    const cashAccountsOnly = cashAccounts.filter(acc => !acc.name.toLowerCase().includes('bank'));
-    const bankAccountsOnly = cashAccounts.filter(acc => acc.name.toLowerCase().includes('bank'));
+        const cashOnly = cashAccs.filter(acc => !acc.name.toLowerCase().includes('bank'));
+        const bankOnly = cashAccs.filter(acc => acc.name.toLowerCase().includes('bank'));
 
-    const cashBalanceOnly = cashAccountsOnly.reduce((sum, acc) => sum + acc.balance, 0);
-    const bankBalanceOnly = bankAccountsOnly.reduce((sum, acc) => sum + acc.balance, 0);
+        return {
+            cashBalanceOnly: cashOnly.reduce((sum, acc) => sum + acc.balance, 0),
+            bankBalanceOnly: bankOnly.reduce((sum, acc) => sum + acc.balance, 0),
+            cashAccountIds: new Set(cashAccs.map(acc => acc.id))
+        };
+    }, [accounts]);
 
-    const stats = [
+    const stats = React.useMemo(() => [
         {
             label: 'Total Saldo Kas',
             value: cashBalanceOnly || 0,
@@ -137,27 +144,27 @@ function AccountingDashboard({ navigate }: DashboardProps) {
             trend: '+15.3%',
             isPositive: true,
         },
-    ];
+    ], [cashBalanceOnly, bankBalanceOnly, pl]);
 
-    // Get Recent Transactions (Cash mutations)
-    const recentTransactions = entries.flatMap(entry => {
-        return (entry.items || [])
-            .filter(item => {
-                return cashAccounts.some(ca => ca.id === item.account_id);
-            })
-            .map(item => ({
-                id: `${entry.id}-${item.account_id}`,
-                date: entry.date,
-                created_at: entry.created_at,
-                description: item.description || entry.description,
-                amount: item.debit - item.credit,
-                account_name: item.account_name
-            }));
-    }).sort((a, b) => {
-        const dateCompare = new Date(b.date).getTime() - new Date(a.date).getTime();
-        if (dateCompare !== 0) return dateCompare;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    }).slice(0, 5);
+    // Optimize transactions calculation
+    const recentTransactions = React.useMemo(() => {
+        return entries.flatMap(entry => {
+            return (entry.items || [])
+                .filter(item => cashAccountIds.has(item.account_id))
+                .map(item => ({
+                    id: `${entry.id}-${item.id || item.account_id}`,
+                    date: entry.date,
+                    created_at: entry.created_at,
+                    description: item.description || entry.description,
+                    amount: item.debit - item.credit,
+                    account_name: item.account_name
+                }));
+        }).sort((a, b) => {
+            const dateCompare = new Date(b.date).getTime() - new Date(a.date).getTime();
+            if (dateCompare !== 0) return dateCompare;
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        }).slice(0, 5);
+    }, [entries, cashAccountIds]);
 
     return (
         <div className="p-6 md:p-8 space-y-8 print:p-0 print:m-0">

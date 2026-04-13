@@ -12,7 +12,7 @@ import { formatCurrency } from '../../lib/utils';
 
 export function CashOutView() {
     const { accounts, loading: loadingAccounts } = useAccounts();
-    const { refresh } = useJournalEntries();
+    const { refresh } = useJournalEntries(500);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
 
     const [formData, setFormData] = React.useState({
