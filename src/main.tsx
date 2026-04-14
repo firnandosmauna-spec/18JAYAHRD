@@ -7,8 +7,9 @@ import { HashRouter } from "react-router-dom";
 const basename = import.meta.env.BASE_URL;
 
 // App version - increment this to force cache clear
-const APP_VERSION = "1.4.2";
+const APP_VERSION = "1.4.3";
 const STORED_VERSION = localStorage.getItem("app_version");
+    
 
 // Clear cache if version changed
 if (STORED_VERSION !== APP_VERSION) {

@@ -556,7 +556,7 @@ export function MaterialPurchaseManagement() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-blue-900">
-                            {formatCurrency(suppliers.reduce((acc, s) => acc + (s.deposit_balance || 0), 0))}
+                            {formatCurrency(suppliers.reduce((acc, s) => acc + Math.max(0, s.deposit_balance || 0), 0))}
                         </div>
                         <p className="text-xs text-blue-600 mt-1">Saldo di seluruh supplier</p>
                     </CardContent>
@@ -570,7 +570,7 @@ export function MaterialPurchaseManagement() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-red-900">
-                            {formatCurrency(suppliers.reduce((acc, s) => acc + (s.total_debt || 0), 0))}
+                            {formatCurrency(suppliers.reduce((acc, s) => acc + Math.max(0, s.total_debt || 0), 0))}
                         </div>
                         <p className="text-xs text-red-600 mt-1">Estimasi hutang ke supplier</p>
                     </CardContent>

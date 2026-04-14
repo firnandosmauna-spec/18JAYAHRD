@@ -145,7 +145,7 @@ function App() {
     <AuthProvider>
       {/* Version Tag for Debugging - Force Hash Update v1.4.1 */}
       <div className="fixed bottom-0 left-0 z-[9999] bg-black/80 text-white text-[8px] px-2 py-0.5 pointer-events-none font-mono">
-        v1.4.1-STABLE-RELOAD
+        v1.4.3-STABLE-ATOMIC
       </div>
       <RoutePersister />
       <SopOverlay />

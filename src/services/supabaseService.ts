@@ -805,39 +805,16 @@ export const loanService = {
   },
 
   async payInstallment(payment: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at'>) {
-    // 1. Get current loan state
-    const { data: loan, error: fetchError } = await supabase
-      .from('employee_loans')
-      .select('remaining_amount, status')
-      .eq('id', payment.loan_id)
-      .single();
+    const { data, error } = await supabase.rpc('process_loan_payment', {
+      p_loan_id: payment.loan_id,
+      p_amount: payment.amount,
+      p_payment_date: payment.payment_date,
+      p_payment_method: payment.payment_method,
+      p_notes: payment.notes
+    });
 
-    if (fetchError) throw fetchError;
-
-    // 2. Insert payment record
-    const { data: newPayment, error: payError } = await supabase
-      .from('employee_loan_payments')
-      .insert(payment)
-      .select()
-      .single();
-
-    if (payError) throw payError;
-
-    // 3. Update loan balance
-    const newRemaining = Math.max(0, loan.remaining_amount - payment.amount);
-    const newStatus = newRemaining <= 0 ? 'paid_off' : loan.status;
-
-    const { error: updateError } = await supabase
-      .from('employee_loans')
-      .update({
-        remaining_amount: newRemaining,
-        status: newStatus
-      })
-      .eq('id', payment.loan_id);
-
-    if (updateError) throw updateError;
-
-    return newPayment;
+    if (error) throw error;
+    return data;
   },
 
   async getPayments(loanId: string) {

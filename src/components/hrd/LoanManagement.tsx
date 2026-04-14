@@ -16,7 +16,9 @@ import {
     History,
     Receipt,
     Wallet,
-    Pencil
+    Pencil,
+    Loader2,
+    Printer
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -88,6 +90,7 @@ export function LoanManagement() {
     const [showPaymentDialog, setShowPaymentDialog] = useState(false);
     const [showHistoryDialog, setShowHistoryDialog] = useState(false);
     const [showEditDialog, setShowEditDialog] = useState(false);
+    const [showPrintDialog, setShowPrintDialog] = useState(false);
     const [selectedLoan, setSelectedLoan] = useState<EmployeeLoan | null>(null);
     const [loanPayments, setLoanPayments] = useState<any[]>([]);
 
@@ -115,6 +118,18 @@ export function LoanManagement() {
     const isAdminOrHR = isAdminRole || hasHRDModule;
 
     // Filter Logic
+    const FullPageLoader = () => (
+        <div className="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-4 text-center border border-slate-100">
+                <Loader2 className="w-12 h-12 text-hrd animate-spin" />
+                <div>
+                    <h3 className="text-lg font-bold text-slate-900 font-display">Memproses Transaksi</h3>
+                    <p className="text-sm text-slate-500 font-body">Mohon tunggu sebentar, data sedang diupdate ke database...</p>
+                </div>
+            </div>
+        </div>
+    );
+
     const filteredLoans = loans.filter(loan => {
         const employee = employees.find(e => e.id === loan.employee_id);
         const searchLower = searchQuery.toLowerCase();
@@ -283,14 +298,20 @@ export function LoanManagement() {
     const [paymentFormData, setPaymentFormData] = useState({
         amount: '',
         method: 'cash' as any,
+        date: new Date().toLocaleDateString('en-CA'),
         notes: ''
     });
 
-    const handlePaymentClick = (loan: EmployeeLoan) => {
+    const handlePaymentClick = async (loan: EmployeeLoan) => {
         setSelectedLoan(loan);
+        // Fetch history to calculate total paid for preview
+        const history = await fetchPayments(loan.id);
+        setLoanPayments(history);
+        
         setPaymentFormData({
             amount: loan.installment_amount.toString(),
             method: 'cash',
+            date: new Date().toLocaleDateString('en-CA'),
             notes: ''
         });
         setShowPaymentDialog(true);
@@ -305,7 +326,7 @@ export function LoanManagement() {
             await payInstallment({
                 loan_id: selectedLoan.id,
                 amount: parseFloat(paymentFormData.amount),
-                payment_date: new Date().toISOString(),
+                payment_date: new Date(paymentFormData.date).toISOString(),
                 payment_method: paymentFormData.method,
                 notes: paymentFormData.notes
             });
@@ -324,6 +345,71 @@ export function LoanManagement() {
         const history = await fetchPayments(loan.id);
         setLoanPayments(history);
         setShowHistoryDialog(true);
+    };
+
+    const handlePrintClick = async (loan: EmployeeLoan) => {
+        setSelectedLoan(loan);
+        const history = await fetchPayments(loan.id);
+        setLoanPayments(history);
+        setShowPrintDialog(true);
+    };
+
+    const handlePrint = () => {
+        const printContent = document.getElementById('print-area-kasbon');
+        if (printContent) {
+            const printWindow = window.open('', '_blank');
+            if (printWindow) {
+                printWindow.document.write(`
+                    <html>
+                    <head>
+                        <title>Cetak Kasbon</title>
+                        <style>
+                            body { font-family: monospace; padding: 20px; color: #000; }
+                            .text-center { text-align: center; }
+                            .mb-6 { margin-bottom: 1.5rem; }
+                            .font-bold { font-weight: bold; }
+                            .text-lg { font-size: 1.125rem; }
+                            .uppercase { text-transform: uppercase; }
+                            .tracking-wider { letter-spacing: 0.05em; }
+                            .text-xs { font-size: 0.75rem; }
+                            .text-gray-500 { color: #6b7280; }
+                            .text-gray-800 { color: #1f2937; }
+                            .flex { display: flex; }
+                            .justify-between { justify-content: space-between; }
+                            .border-b { border-bottom: 1px dashed #ccc; }
+                            .pb-2 { padding-bottom: 0.5rem; margin-bottom: 0.5rem; }
+                            .space-y-4 > * + * { margin-top: 1rem; }
+                            .space-y-2 > * + * { margin-top: 0.5rem; }
+                            .mt-4 { margin-top: 1rem; }
+                            .pt-2 { padding-top: 0.5rem; }
+                            .mb-2 { margin-bottom: 0.5rem; }
+                            .underline { text-decoration: underline; }
+                            .italic { font-style: italic; }
+                            .mt-12 { margin-top: 3rem; }
+                            .pt-8 { padding-top: 2rem; }
+                            .mb-12 { margin-bottom: 3rem; }
+                            .border-t { border-top: 1px solid #000; }
+                            .pt-1 { padding-top: 0.25rem; }
+                            .px-4 { padding-left: 1rem; padding-right: 1rem; }
+                            .whitespace-nowrap { white-space: nowrap; }
+                            @media print {
+                                body { -webkit-print-color-adjust: exact; }
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        ${printContent.innerHTML}
+                    </body>
+                    </html>
+                `);
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(() => {
+                    printWindow.print();
+                    printWindow.close();
+                }, 250);
+            }
+        }
     };
 
     const [editFormData, setEditFormData] = useState({
@@ -404,7 +490,8 @@ export function LoanManagement() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 relative">
+            {isSubmitting && <FullPageLoader />}
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold font-display text-[#1C1C1E]"><span>Manajemen Kasbon</span></h2>
@@ -564,6 +651,9 @@ export function LoanManagement() {
                                                              </Button>
                                                          </>
                                                      )}
+                                                     <Button size="icon" variant="ghost" title="Cetak Kertas Putih" className="text-purple-600 hover:text-purple-700 hover:bg-purple-50" onClick={() => handlePrintClick(loan)}>
+                                                         <Printer className="w-4 h-4" />
+                                                     </Button>
                                                      {isOnlyAdmin && (
                                                          <Button size="icon" variant="ghost" title="Edit Nominal" className="text-amber-600 hover:text-amber-700 hover:bg-amber-50" onClick={() => handleEditClick(loan)}>
                                                              <Pencil className="w-4 h-4" />
@@ -740,6 +830,14 @@ export function LoanManagement() {
                             />
                         </div>
                         <div className="grid gap-2">
+                            <Label>Tanggal Pembayaran</Label>
+                            <Input
+                                type="date"
+                                value={paymentFormData.date}
+                                onChange={(e) => setPaymentFormData(p => ({ ...p, date: e.target.value }))}
+                            />
+                        </div>
+                        <div className="grid gap-2">
                             <Label>Metode Pembayaran</Label>
                             <Select 
                                 value={paymentFormData.method} 
@@ -755,6 +853,33 @@ export function LoanManagement() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
+                            <div className="flex flex-col gap-2 text-blue-800">
+                                <span className="text-[10px] uppercase font-bold opacity-70">Pratinjau Perhitungan (Formula Akuntansi)</span>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-body text-xs">
+                                    <span>Pinjaman Awal:</span>
+                                    <span className="text-right font-mono">{formatCurrency(selectedLoan?.amount || 0)}</span>
+                                    
+                                    <span>Total Terbayar:</span>
+                                    <span className="text-right font-mono text-green-600">
+                                        - {formatCurrency(loanPayments.reduce((sum, p) => sum + p.amount, 0))}
+                                    </span>
+                                    
+                                    <span>Bayar Sekarang:</span>
+                                    <span className="text-right font-mono text-red-600">
+                                        - {formatCurrency(parseFloat(paymentFormData.amount) || 0)}
+                                    </span>
+                                    
+                                    <div className="col-span-2 border-t border-blue-200 mt-1 pt-1 flex justify-between font-bold text-sm">
+                                        <span>Sisa Saldo Baru:</span>
+                                        <span className="font-mono underline">
+                                            {formatCurrency(Math.max(0, (selectedLoan?.amount || 0) - (loanPayments.reduce((sum, p) => sum + p.amount, 0) + (parseFloat(paymentFormData.amount) || 0))))}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="grid gap-2">
                             <Label>Keterangan</Label>
                             <Input
@@ -869,6 +994,105 @@ export function LoanManagement() {
                         <Button variant="outline" onClick={() => setShowEditDialog(false)}>Batal</Button>
                         <Button onClick={handleEditConfirm} disabled={isSubmitting} className="bg-amber-600 hover:bg-amber-700 text-white">
                             {isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Print Preview Dialog */}
+            <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
+                <DialogContent className="max-w-md bg-gray-100">
+                    <DialogHeader>
+                        <DialogTitle className="sr-only">Preview Kertas Putih Kasbon</DialogTitle>
+                    </DialogHeader>
+                    
+                    {/* Kertas Putih Preview */}
+                    <div className="bg-white p-6 border border-gray-300 shadow-sm mx-auto overflow-y-auto max-h-[60vh] w-full relative" id="print-area-kasbon">
+                        {selectedLoan?.status === 'paid_off' && (
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-10 pointer-events-none transform -rotate-45 font-bold text-6xl text-green-600 border-8 border-green-600 rounded-lg p-2 uppercase">
+                                LUNAS
+                            </div>
+                        )}
+                        <div className="text-center mb-6 border-b border-black pb-4">
+                            <h3 className="font-bold text-lg uppercase tracking-wider mb-1">BUKTI KASBON KARYAWAN</h3>
+                            <p className="text-xs text-gray-600 font-medium">PT. 18 JAYA TEMPO</p>
+                        </div>
+                        
+                        <div className="space-y-3 text-sm font-mono text-black relative z-10">
+                            <div className="flex justify-between border-b border-gray-200 pb-2">
+                                <span>Tanggal Cetak:</span>
+                                <span>{new Date().toLocaleDateString('id-ID')}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2">
+                                <span>Nama Karyawan:</span>
+                                <span className="font-bold">{employees.find(e => e.id === selectedLoan?.employee_id)?.name}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2">
+                                <span>Mulai Potong:</span>
+                                <span>{selectedLoan ? formatDate(selectedLoan.start_date) : '-'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2">
+                                <span>Total Pinjaman:</span>
+                                <span>{formatCurrency(selectedLoan?.amount || 0)}</span>
+                            </div>
+                             <div className="flex justify-between border-b border-gray-200 pb-2">
+                                <span>Potongan / Bulan:</span>
+                                <span>{formatCurrency(selectedLoan?.installment_amount || 0)}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2">
+                                <span>Sisa Saldo:</span>
+                                <span className="font-bold text-red-600">{formatCurrency(selectedLoan?.remaining_amount || 0)}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2">
+                                <span>Status:</span>
+                                <span className="uppercase font-bold">{statusLabels[selectedLoan?.status || 'pending']}</span>
+                            </div>
+                            
+                            <div className="mt-6 pt-2">
+                                <p className="mb-2 font-bold bg-gray-100 p-1 text-center border-y border-gray-300">Riwayat Pembayaran</p>
+                                {loanPayments.length === 0 ? (
+                                    <p className="text-xs italic text-gray-500 text-center py-2">Belum ada history pembayaran</p>
+                                ) : (
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between text-xs font-bold border-b border-gray-200 pb-1 mb-1">
+                                            <span>Tanggal</span>
+                                            <span>Metode</span>
+                                            <span>Nominal</span>
+                                        </div>
+                                        {loanPayments.map((pay, idx) => (
+                                            <div key={idx} className="flex justify-between text-xs border-b border-gray-100 pb-1">
+                                                <span>{new Date(pay.payment_date).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'})}</span>
+                                                <span className="capitalize text-gray-600">{pay.payment_method}</span>
+                                                <span>{formatCurrency(pay.amount)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-10 pt-4 flex justify-between text-center text-xs pb-4">
+                                <div>
+                                    <p className="mb-14">Disetujui Oleh,</p>
+                                    <p className="border-t border-black pt-1 shrink-0 px-4 whitespace-nowrap">HRD / Management</p>
+                                </div>
+                                <div>
+                                    <p className="mb-14">Karyawan,</p>
+                                    <p className="border-t border-black pt-1 shrink-0 px-4 whitespace-nowrap font-bold">
+                                        {employees.find(e => e.id === selectedLoan?.employee_id)?.name}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <DialogFooter className="mt-2">
+                        <Button variant="outline" onClick={() => setShowPrintDialog(false)}>Batal</Button>
+                        <Button 
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
+                            onClick={handlePrint}
+                        >
+                            <Printer className="w-4 h-4 mr-2" />
+                            Cetak Kertas Putih
                         </Button>
                     </DialogFooter>
                 </DialogContent>
