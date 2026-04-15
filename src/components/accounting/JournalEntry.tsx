@@ -14,7 +14,10 @@ import { Badge } from '../../components/ui/badge';
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
+import { useAuth } from '../../contexts/AuthContext';
+
 export function JournalEntryView() {
+    const { user } = useAuth();
     const { entries, loading: loadingEntries, refresh } = useJournalEntries(1000); // Higher limit for management list
     const { accounts } = useAccounts();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -152,7 +155,7 @@ export function JournalEntryView() {
             const entryPayload = {
                 ...formData,
                 items: formattedItems as any,
-                created_by: 'Administrator',
+                created_by: user?.id || null,
             };
 
             if (editingId) {

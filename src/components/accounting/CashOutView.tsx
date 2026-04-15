@@ -10,7 +10,10 @@ import { accountingService } from '../../services/accountingService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { formatCurrency } from '../../lib/utils';
 
+import { useAuth } from '../../contexts/AuthContext';
+
 export function CashOutView() {
+    const { user } = useAuth();
     const { accounts, loading: loadingAccounts } = useAccounts();
     const { refresh } = useJournalEntries(500);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -67,7 +70,7 @@ export function CashOutView() {
                         credit: Number(formData.amount)
                     }
                 ],
-                created_by: 'Administrator'
+                created_by: user?.id || null
             };
 
             await accountingService.createJournalEntry(journalData as any);

@@ -60,7 +60,10 @@ import type { PurchaseOrder } from '@/types/purchase';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
 
+import { useAuth } from '@/contexts/AuthContext';
+
 export function PurchaseOrderManagement() {
+  const { user } = useAuth();
   const { orders, loading, error, createOrder, updateOrder, deleteOrder } = usePurchaseOrders();
   const { suppliers } = useSuppliers();
   const { products } = useProducts();
@@ -169,7 +172,7 @@ export function PurchaseOrderManagement() {
         discount_amount: 0,
         total_amount: totalAmount,
         notes: formData.notes,
-        created_by: 'system', 
+        created_by: user?.id || null, 
       };
 
       const finalItems = orderItems.map(item => ({

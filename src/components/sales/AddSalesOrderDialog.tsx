@@ -29,7 +29,10 @@ interface AddSalesOrderDialogProps {
     onSuccess: () => void;
 }
 
+import { useAuth } from '@/contexts/AuthContext';
+
 export function AddSalesOrderDialog({ open, onOpenChange, onSuccess }: AddSalesOrderDialogProps) {
+    const { user } = useAuth();
     const { customers } = useCustomers();
     const { products } = useProducts();
     const { createOrder } = useSalesOrders();
@@ -135,7 +138,7 @@ export function AddSalesOrderDialog({ open, onOpenChange, onSuccess }: AddSalesO
                 total_amount: subtotal,
                 payment_method: formData.payment_method,
                 notes: formData.notes,
-                created_by: 'System', // Replace with actual user ID if available
+                created_by: user?.id || null,
             }, items);
 
             toast({

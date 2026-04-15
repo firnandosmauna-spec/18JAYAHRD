@@ -749,21 +749,30 @@ export const stockMovementService = {
   },
 
   async delete(id: string) {
+    console.log(`[InventoryService] Attempting to delete stock movement: ${id}`);
+    
+    // 1. Fetch the movement
     const { data: movement, error: fetchError } = await supabase
       .from('stock_movements')
       .select('*')
       .eq('id', id)
       .single()
 
-    if (fetchError) throw fetchError
+    if (fetchError) {
+      console.error(`[InventoryService] Error fetching movement ${id}:`, fetchError);
+      throw new Error(`Data mutasi stok tidak ditemukan: ${fetchError.message}`);
+    }
 
-    const { data: product } = await supabase
+    // 2. Revert product stock
+    const { data: product, error: productFetchError } = await supabase
       .from('products')
       .select('stock')
       .eq('id', movement.product_id)
       .single()
 
-    if (product) {
+    if (productFetchError) {
+      console.warn(`[InventoryService] Could not find product ${movement.product_id} to revert stock`);
+    } else if (product) {
       let currentStock = product.stock || 0
       if (movement.movement_type === 'in' || movement.movement_type === 'adjustment') {
         currentStock -= movement.quantity
@@ -771,32 +780,84 @@ export const stockMovementService = {
         currentStock += movement.quantity
       }
 
-      await supabase
+      console.log(`[InventoryService] Reverting stock for product ${movement.product_id}: ${product.stock} -> ${currentStock}`);
+      const { error: stockUpdateError } = await supabase
         .from('products')
         .update({ stock: currentStock })
         .eq('id', movement.product_id)
-    }
-
-
-    await supabase.from('supplier_deposits').delete().eq('reference_id', id).eq('type', 'usage');
-    
-    // Cleanup auto-generated invoices if the movement is deleted
-    if (movement.reference && movement.reference.startsWith('INV-AUTO-')) {
-      const { data: invoice } = await supabase
-        .from('purchase_invoices')
-        .select('id')
-        .eq('invoice_number', movement.reference)
-        .single();
       
-      if (invoice) {
-        // Delete items first
-        await supabase.from('purchase_invoice_items').delete().eq('purchase_invoice_id', invoice.id);
-        // Delete invoice
-        await supabase.from('purchase_invoices').delete().eq('id', invoice.id);
+      if (stockUpdateError) {
+        console.error(`[InventoryService] Failed to revert stock:`, stockUpdateError);
+        throw new Error(`Gagal menyesuaikan stok barang: ${stockUpdateError.message}`);
       }
     }
 
-    const { error } = await supabase.from('stock_movements').delete().eq('id', id)
-    if (error) throw error
+    // 3. Delete associated supplier deposits (usage records)
+    const { error: depositDeleteError } = await supabase
+      .from('supplier_deposits')
+      .delete()
+      .eq('reference_id', id)
+      .eq('type', 'usage');
+    
+    if (depositDeleteError) {
+      console.warn(`[InventoryService] Error deleting related supplier deposits:`, depositDeleteError);
+    }
+    
+    // 4. Cleanup auto-generated invoices if applicable
+    if (movement.reference && movement.reference.startsWith('INV-AUTO-')) {
+      console.log(`[InventoryService] Checking for auto-generated invoice: ${movement.reference}`);
+      const { data: invoice, error: invoiceFetchError } = await supabase
+        .from('purchase_invoices')
+        .select('id')
+        .eq('invoice_number', movement.reference)
+        .maybeSingle();
+      
+      if (invoiceFetchError) {
+        console.warn(`[InventoryService] Error fetching invoice ${movement.reference}:`, invoiceFetchError);
+      } else if (invoice) {
+        // 4a. Check for payments linked to this invoice
+        const { data: payments, error: paymentsFetchError } = await supabase
+          .from('purchase_payments')
+          .select('id')
+          .eq('invoice_id', invoice.id);
+        
+        if (paymentsFetchError) {
+          console.error(`[InventoryService] Error checking for payments:`, paymentsFetchError);
+        } else if (payments && payments.length > 0) {
+          throw new Error(`Tidak dapat menghapus: Transaksi ini sudah memiliki ${payments.length} pembayaran pada invoice ${movement.reference}. Hapus pembayaran terlebih dahulu melalui modul Keuangan.`);
+        }
+
+        console.log(`[InventoryService] Deleting invoice ${invoice.id} and its items`);
+        // Note: purchase_invoice_items should have ON DELETE CASCADE on purchase_invoice_id
+        // But we explicitly delete items first for safety.
+        await supabase
+          .from('purchase_invoice_items')
+          .delete()
+          .eq('purchase_invoice_id', invoice.id);
+
+        const { error: invoiceDeleteError } = await supabase
+          .from('purchase_invoices')
+          .delete()
+          .eq('id', invoice.id);
+        
+        if (invoiceDeleteError) {
+          console.error(`[InventoryService] Error deleting invoice:`, invoiceDeleteError);
+          throw new Error(`Gagal menghapus invoice otomatis: ${invoiceDeleteError.message}`);
+        }
+      }
+    }
+
+    // 5. Finally, delete the movement record itself
+    const { error: movementDeleteError } = await supabase
+      .from('stock_movements')
+      .delete()
+      .eq('id', id)
+    
+    if (movementDeleteError) {
+      console.error(`[InventoryService] Error deleting movement record:`, movementDeleteError);
+      throw new Error(`Gagal menghapus mutasi stok: ${movementDeleteError.message}`);
+    }
+
+    console.log(`[InventoryService] Successfully deleted movement ${id}`);
   }
 }

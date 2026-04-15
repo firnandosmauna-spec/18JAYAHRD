@@ -242,7 +242,7 @@ export function MaterialPurchaseManagement() {
                 reference_type: 'manual_entry',
                 payment_method_id: formData.payment_method_id || null,
                 project_location: formData.project_location || null,
-                created_by: user?.name || 'User'
+                created_by: user?.id || null
             } as any);
 
             toast({ title: 'Berhasil', description: 'Stok masuk berhasil dicatat' });
@@ -304,7 +304,7 @@ export function MaterialPurchaseManagement() {
                 unit_price: parseFloat(formData.unit_price) || 0,
                 payment_method_id: formData.payment_method_id || null,
                 project_location: formData.project_location || null,
-                created_by: user?.name || 'User'
+                created_by: user?.id || null
             } as any);
 
             toast({ title: 'Berhasil', description: 'Belanja material berhasil diperbarui' });
@@ -556,7 +556,7 @@ export function MaterialPurchaseManagement() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-blue-900">
-                            {formatCurrency(suppliers.reduce((acc, s) => acc + Math.max(0, s.deposit_balance || 0), 0))}
+                            {formatCurrency(suppliers.reduce((acc, s) => acc + Number(s.deposit_balance || 0), 0))}
                         </div>
                         <p className="text-xs text-blue-600 mt-1">Saldo di seluruh supplier</p>
                     </CardContent>
@@ -570,7 +570,7 @@ export function MaterialPurchaseManagement() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-red-900">
-                            {formatCurrency(suppliers.reduce((acc, s) => acc + Math.max(0, s.total_debt || 0), 0))}
+                            {formatCurrency(suppliers.reduce((acc, s) => acc + Number(s.total_debt || 0), 0))}
                         </div>
                         <p className="text-xs text-red-600 mt-1">Estimasi hutang ke supplier</p>
                     </CardContent>
@@ -584,15 +584,15 @@ export function MaterialPurchaseManagement() {
                     </CardHeader>
                     <CardContent className="max-h-[120px] overflow-y-auto px-4">
                         <div className="space-y-2">
-                            {suppliers.filter(s => (s.deposit_balance || 0) > 0 || (s.total_debt || 0) > 0).length === 0 ? (
+                            {suppliers.filter(s => Number(s.deposit_balance || 0) !== 0 || Number(s.total_debt || 0) !== 0).length === 0 ? (
                                 <p className="text-xs text-muted-foreground italic py-4">Belum ada saldo deposit atau hutang.</p>
                             ) : (
-                                suppliers.filter(s => (s.deposit_balance || 0) > 0 || (s.total_debt || 0) > 0).map(s => (
+                                suppliers.filter(s => Number(s.deposit_balance || 0) !== 0 || Number(s.total_debt || 0) !== 0).map(s => (
                                     <div key={s.id} className="flex items-center justify-between text-xs border-b border-gray-100 pb-1">
-                                        <span className="font-medium truncate max-w-[150px]">{s.name}</span>
-                                        <div className="flex gap-2">
-                                            {(s.deposit_balance || 0) > 0 && <span className="text-blue-600">Dep: {formatCurrency(s.deposit_balance || 0)}</span>}
-                                            {(s.total_debt || 0) > 0 && <span className="text-red-600">Hut: {formatCurrency(s.total_debt || 0)}</span>}
+                                        <span className="font-medium text-gray-700">{s.name}</span>
+                                        <div className="flex gap-3">
+                                            {Number(s.deposit_balance || 0) !== 0 && <span className="text-blue-600 font-bold">Dep: {formatCurrency(s.deposit_balance || 0)}</span>}
+                                            {Number(s.total_debt || 0) !== 0 && <span className="text-red-500 font-bold">Hut: {formatCurrency(s.total_debt || 0)}</span>}
                                         </div>
                                     </div>
                                 ))

@@ -29,7 +29,10 @@ interface AddSalesInvoiceDialogProps {
     onSuccess: () => void;
 }
 
+import { useAuth } from '@/contexts/AuthContext';
+
 export function AddSalesInvoiceDialog({ open, onOpenChange, onSuccess }: AddSalesInvoiceDialogProps) {
+    const { user } = useAuth();
     const { customers } = useCustomers();
     const { products } = useProducts();
     const { orders } = useSalesOrders();
@@ -164,7 +167,7 @@ export function AddSalesInvoiceDialog({ open, onOpenChange, onSuccess }: AddSale
                 payment_status: 'unpaid',
                 payment_method: formData.payment_method,
                 notes: formData.notes,
-                created_by: 'System', // Replace with actual user ID
+                created_by: user?.id || null,
             }, items);
 
             toast({
