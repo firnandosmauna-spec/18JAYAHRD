@@ -59,6 +59,20 @@ export function WorkerPayrollManagement() {
     const [selectedProjectId, setSelectedProjectId] = useState<string>('');
     const [showAddForm, setShowAddForm] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const getDefaultFormData = () => ({
+        payment_type: 'Harian' as 'Harian' | 'Borongan',
+        employee_id: '',
+        working_days: '1',
+        daily_rate: '',
+        late_deduction: '0',
+        activity_detail: '',
+        progress_percentage: '0',
+        worker_count: '1',
+        payment_date: new Date().toLocaleDateString('en-CA'),
+        labor_rate_id: 'none',
+        quantity: '1',
+        unit: ''
+    });
 
     // Initial project selection from query param
     useEffect(() => {
@@ -105,16 +119,7 @@ export function WorkerPayrollManagement() {
         }
     }, [selectedLocation, projects, initialProjectId]);
 
-    const [formData, setFormData] = useState({
-        employee_id: '',
-        working_days: '1',
-        daily_rate: '',
-        late_deduction: '0',
-        activity_detail: '',
-        progress_percentage: '0',
-        worker_count: '1',
-        payment_date: new Date().toLocaleDateString('en-CA')
-    });
+    const [formData, setFormData] = useState(getDefaultFormData());
 
     const tukangEmployees = employees.filter(emp => 
         emp.position?.toLowerCase().includes('tukang') || 
@@ -127,28 +132,53 @@ export function WorkerPayrollManagement() {
     const { workers, loading: workersLoading } = useProjectWorkers(selectedProjectId);
     const { payments, loading: paymentsLoading, addPayment, deletePayment, refetch: refetchPayments } = useProjectWorkerPayments(selectedProjectId);
     const { rates } = useProjectLaborRates();
+    const { addActivity, refetch: refetchActivities } = useProjectWorkerActivities(selectedProjectId);
 
     // Load worker details when selected
     useEffect(() => {
-        if (formData.employee_id) {
-            const employee = employees.find(e => e.id === formData.employee_id);
-            if (employee) {
-                // Find if already a worker in this project to get their specific rate
-                const projectWorker = workers.find(w => w.employee_id === formData.employee_id);
-                setFormData(prev => ({
-                    ...prev,
-                    daily_rate: projectWorker?.daily_rate?.toString() || employee.salary?.toString() || ''
-                }));
+        if (!formData.employee_id || formData.payment_type !== 'Harian') return;
+
+        const employee = employees.find(e => e.id === formData.employee_id);
+        if (!employee) return;
+
+        const projectWorker = workers.find(w => w.employee_id === formData.employee_id);
+        const nextRate = projectWorker?.daily_rate?.toString() || employee.salary?.toString() || '';
+
+        setFormData(prev => prev.daily_rate === nextRate ? prev : {
+            ...prev,
+            daily_rate: nextRate
+        });
+    }, [formData.employee_id, formData.payment_type, employees, workers]);
+
+    useEffect(() => {
+        if (formData.payment_type !== 'Borongan' || formData.labor_rate_id === 'none') return;
+
+        const selectedRate = rates.find(rate => rate.id === formData.labor_rate_id);
+        if (!selectedRate) return;
+
+        setFormData(prev => {
+            const nextRate = selectedRate.default_rate?.toString() || '';
+            const nextUnit = selectedRate.unit || '';
+            if (prev.daily_rate === nextRate && prev.unit === nextUnit) {
+                return prev;
             }
-        }
-    }, [formData.employee_id, employees, workers]);
+            return {
+                ...prev,
+                daily_rate: nextRate,
+                unit: nextUnit
+            };
+        });
+    }, [formData.payment_type, formData.labor_rate_id, rates]);
 
     // Derived Calculations
     const calculateTotal = () => {
-        const days = parseFloat(formData.working_days) || 0;
         const rate = parseFloat(formData.daily_rate) || 0;
         const deduction = parseFloat(formData.late_deduction) || 0;
-        return (days * rate) - deduction;
+        const baseTotal = formData.payment_type === 'Borongan'
+            ? (parseFloat(formData.quantity) || 0) * rate
+            : (parseFloat(formData.working_days) || 0) * rate;
+
+        return Math.max(0, baseTotal - deduction);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -165,6 +195,29 @@ export function WorkerPayrollManagement() {
         try {
             setIsSubmitting(true);
             const totalAmount = calculateTotal();
+            const selectedLaborRate = rates.find(rate => rate.id === formData.labor_rate_id);
+            const resolvedUnit = formData.unit?.trim() || selectedLaborRate?.unit || '';
+            const isBorongan = formData.payment_type === 'Borongan';
+
+            if (isBorongan) {
+                if (formData.labor_rate_id === 'none') {
+                    toast({
+                        title: "Error",
+                        description: "Mohon pilih jenis pekerjaan borongan",
+                        variant: "destructive"
+                    });
+                    return;
+                }
+
+                if ((parseFloat(formData.quantity) || 0) <= 0 || (parseFloat(formData.daily_rate) || 0) <= 0) {
+                    toast({
+                        title: "Error",
+                        description: "Volume dan tarif borongan harus lebih dari 0",
+                        variant: "destructive"
+                    });
+                    return;
+                }
+            }
             
             // 0. Ensure worker is assigned to project
             let workerIdToUse = '';
@@ -179,12 +232,24 @@ export function WorkerPayrollManagement() {
                     project_id: selectedProjectId,
                     employee_id: formData.employee_id,
                     role: employee?.position || 'Tukang',
-                    daily_rate: parseFloat(formData.daily_rate) || 0,
+                    daily_rate: isBorongan ? Number(employee?.salary || 0) : parseFloat(formData.daily_rate) || 0,
                     status: 'active',
                     joined_at: new Date().toISOString()
                 });
                 workerIdToUse = newWorker.id;
             }
+
+            const boronganDetail = isBorongan
+                ? [
+                    selectedLaborRate?.name || 'Pekerjaan borongan',
+                    `${parseFloat(formData.quantity) || 0} ${resolvedUnit}`.trim(),
+                    `x ${formatCurrency(parseFloat(formData.daily_rate) || 0)}`
+                ].join(' ')
+                : formData.activity_detail;
+
+            const finalActivityDetail = isBorongan && formData.activity_detail.trim()
+                ? `${boronganDetail} | ${formData.activity_detail.trim()}`
+                : boronganDetail;
 
             // 1. Add Payment
             await addPayment({
@@ -192,14 +257,28 @@ export function WorkerPayrollManagement() {
                 worker_id: workerIdToUse,
                 amount: totalAmount,
                 payment_date: formData.payment_date,
-                working_days: parseFloat(formData.working_days),
+                working_days: isBorongan ? parseFloat(formData.quantity) : parseFloat(formData.working_days),
                 daily_rate: parseFloat(formData.daily_rate),
                 late_deduction: parseFloat(formData.late_deduction),
-                activity_detail: formData.activity_detail,
+                activity_detail: finalActivityDetail,
                 progress_percentage: parseFloat(formData.progress_percentage),
                 worker_count: parseInt(formData.worker_count),
-                payment_type: 'Harian'
+                payment_type: formData.payment_type,
+                notes: isBorongan ? formData.activity_detail.trim() || null : null
             });
+
+            if (isBorongan) {
+                await addActivity({
+                    project_id: selectedProjectId,
+                    worker_id: workerIdToUse,
+                    activity_id: formData.labor_rate_id,
+                    quantity: parseFloat(formData.quantity),
+                    unit: resolvedUnit || null,
+                    rate: parseFloat(formData.daily_rate) || 0,
+                    activity_date: formData.payment_date,
+                    notes: formData.activity_detail.trim() || null
+                });
+            }
 
             // 2. Update Project Progress and Spent Amount
             const project = projects.find(p => p.id === selectedProjectId);
@@ -219,17 +298,9 @@ export function WorkerPayrollManagement() {
             });
             
             setShowAddForm(false);
-            setFormData({
-                employee_id: '',
-                working_days: '1',
-                daily_rate: '',
-                late_deduction: '0',
-                activity_detail: '',
-                progress_percentage: '0',
-                worker_count: '1',
-                payment_date: new Date().toLocaleDateString('en-CA')
-            });
+            setFormData(getDefaultFormData());
             refetchPayments();
+            refetchActivities();
         } catch (error) {
             console.error(error);
             toast({
@@ -410,11 +481,11 @@ export function WorkerPayrollManagement() {
                                     <Hammer className="w-5 h-5 text-hrd" />
                                     Form Penggajian & Kegiatan Tukang
                                 </CardTitle>
-                                <CardDescription>Input rincian gaji dan laporan kegiatan harian</CardDescription>
+                                <CardDescription>Input gaji tukang harian maupun borongan beserta progres pekerjaan</CardDescription>
                             </CardHeader>
                             <CardContent className="pt-6">
                                 <form onSubmit={handleSubmit} className="space-y-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                         <div className="space-y-2">
                                             <Label>Nama Tukang</Label>
                                             <Select 
@@ -445,6 +516,29 @@ export function WorkerPayrollManagement() {
                                         </div>
 
                                         <div className="space-y-2">
+                                            <Label>Jenis Gaji</Label>
+                                            <Select
+                                                value={formData.payment_type}
+                                                onValueChange={(val: 'Harian' | 'Borongan') => setFormData(prev => ({
+                                                    ...prev,
+                                                    payment_type: val,
+                                                    labor_rate_id: val === 'Borongan' ? prev.labor_rate_id : 'none',
+                                                    quantity: val === 'Borongan' ? (prev.quantity || '1') : '1',
+                                                    working_days: val === 'Harian' ? (prev.working_days || '1') : '1',
+                                                    unit: val === 'Harian' ? '' : prev.unit
+                                                }))}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Pilih jenis gaji" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Harian">Harian</SelectItem>
+                                                    <SelectItem value="Borongan">Borongan</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="space-y-2">
                                             <Label>Jumlah Tukang (Personil)</Label>
                                             <Input 
                                                 type="number" 
@@ -455,17 +549,59 @@ export function WorkerPayrollManagement() {
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
+                                        {formData.payment_type === 'Borongan' ? (
+                                            <>
+                                                <div className="space-y-2 md:col-span-2">
+                                                    <Label className="text-xs uppercase text-muted-foreground font-bold">Master Pekerjaan</Label>
+                                                    <Select
+                                                        value={formData.labor_rate_id}
+                                                        onValueChange={(val) => setFormData(prev => ({ ...prev, labor_rate_id: val }))}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Pilih pekerjaan borongan" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {rates.map(rate => (
+                                                                <SelectItem key={rate.id} value={rate.id}>
+                                                                    {rate.name} ({rate.unit}) - {formatCurrency(rate.default_rate || 0)}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label className="text-xs uppercase text-muted-foreground font-bold">Volume</Label>
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={formData.quantity}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label className="text-xs uppercase text-muted-foreground font-bold">Satuan</Label>
+                                                    <Input
+                                                        value={formData.unit}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, unit: e.target.value }))}
+                                                        placeholder="m2 / m3 / titik"
+                                                    />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                <Label className="text-xs uppercase text-muted-foreground font-bold">Hari Kerja</Label>
+                                                <Input 
+                                                    type="number" 
+                                                    step="0.5"
+                                                    value={formData.working_days}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, working_days: e.target.value }))}
+                                                />
+                                            </div>
+                                        )}
                                         <div className="space-y-2">
-                                            <Label className="text-xs uppercase text-muted-foreground font-bold">Hari Kerja</Label>
-                                            <Input 
-                                                type="number" 
-                                                step="0.5"
-                                                value={formData.working_days}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, working_days: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs uppercase text-muted-foreground font-bold">Gaji Harian (Rp)</Label>
+                                            <Label className="text-xs uppercase text-muted-foreground font-bold">
+                                                {formData.payment_type === 'Borongan' ? 'Tarif Borongan / Satuan (Rp)' : 'Gaji Harian (Rp)'}
+                                            </Label>
                                             <Input 
                                                 type="number" 
                                                 value={formData.daily_rate}
@@ -490,9 +626,11 @@ export function WorkerPayrollManagement() {
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-2">
-                                            <Label>Rincian Kegiatan Tukang</Label>
+                                            <Label>{formData.payment_type === 'Borongan' ? 'Catatan Pekerjaan Borongan' : 'Rincian Kegiatan Tukang'}</Label>
                                             <Textarea 
-                                                placeholder="Contoh: Pasang keramik lantai kamar mandi, Finishing cat dinding luar"
+                                                placeholder={formData.payment_type === 'Borongan'
+                                                    ? "Contoh: Area belakang rumah, finishing nat abu-abu"
+                                                    : "Contoh: Pasang keramik lantai kamar mandi, Finishing cat dinding luar"}
                                                 className="h-24"
                                                 value={formData.activity_detail}
                                                 onChange={(e) => setFormData(prev => ({ ...prev, activity_detail: e.target.value }))}
@@ -555,8 +693,10 @@ export function WorkerPayrollManagement() {
                                     <TableRow>
                                         <TableHead>Tanggal</TableHead>
                                         <TableHead>Tukang</TableHead>
+                                        <TableHead>Jenis</TableHead>
                                         <TableHead>Kegiatan</TableHead>
-                                        <TableHead className="text-right">Hari</TableHead>
+                                        <TableHead className="text-right">Volume / Hari</TableHead>
+                                        <TableHead className="text-right">Tarif</TableHead>
                                         <TableHead className="text-right">Total Gaji</TableHead>
                                         <TableHead className="text-center">Progress</TableHead>
                                         <TableHead className="text-right">Aksi</TableHead>
@@ -565,7 +705,7 @@ export function WorkerPayrollManagement() {
                                 <TableBody>
                                     {payments.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                                                 Belum ada data history untuk proyek ini
                                             </TableCell>
                                         </TableRow>
@@ -582,12 +722,29 @@ export function WorkerPayrollManagement() {
                                                         <div className="font-medium">{emp?.name || 'Tukang'}</div>
                                                         <div className="text-xs text-muted-foreground">{worker?.role}</div>
                                                     </TableCell>
+                                                    <TableCell>
+                                                        <Badge
+                                                            variant="outline"
+                                                            className={p.payment_type === 'Borongan'
+                                                                ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                                                : 'bg-blue-50 text-blue-700 border-blue-200'}
+                                                        >
+                                                            {p.payment_type || 'Harian'}
+                                                        </Badge>
+                                                    </TableCell>
                                                     <TableCell className="max-w-[250px]">
                                                         <p className="truncate text-sm" title={p.activity_detail}>
                                                             {p.activity_detail || '-'}
                                                         </p>
                                                     </TableCell>
-                                                    <TableCell className="text-right">{p.working_days}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        {p.payment_type === 'Borongan'
+                                                            ? `${p.working_days || 0}`
+                                                            : `${p.working_days || 0} Hari`}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        {formatCurrency(p.daily_rate || 0)}
+                                                    </TableCell>
                                                     <TableCell className="text-right font-bold text-hrd">
                                                         {formatCurrency(p.amount)}
                                                     </TableCell>

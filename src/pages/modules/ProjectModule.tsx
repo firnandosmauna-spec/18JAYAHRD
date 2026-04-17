@@ -1463,8 +1463,24 @@ function ProjectPayrollSummary({ projectId }: { projectId: string }) {
                   </div>
                   <div className="text-right">
                     <p className="font-mono font-bold text-sm text-[#E76F51]">{formatCurrency(p.amount)}</p>
-                    <p className="text-[10px] text-slate-400 uppercase font-medium">{p.working_days} Hari Kerja</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-medium">
+                      {p.payment_type === 'Borongan'
+                        ? `${p.working_days} Volume Borongan`
+                        : `${p.working_days} Hari Kerja`}
+                    </p>
                   </div>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    p.payment_type === 'Borongan'
+                      ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                      : 'bg-blue-50 text-blue-700 border border-blue-200'
+                  }`}>
+                    {p.payment_type || 'Harian'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    Tarif {formatCurrency(p.daily_rate || 0)}
+                  </span>
                 </div>
                 {p.activity_detail && (
                   <div className="mt-2 pt-2 border-t border-slate-200/50">
