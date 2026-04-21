@@ -6,6 +6,8 @@ export function useLoans() {
     const [loans, setLoans] = useState<EmployeeLoan[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [pendingPayments, setPendingPayments] = useState<any[]>([]);
+    const [pendingLoading, setPendingLoading] = useState(false);
 
     const fetchLoans = useCallback(async () => {
         try {
@@ -20,16 +22,33 @@ export function useLoans() {
         }
     }, []);
 
+    const fetchPendingPayments = useCallback(async () => {
+        try {
+            setPendingLoading(true);
+            const data = await loanService.getPendingPaymentRequests();
+            setPendingPayments(data || []);
+        } catch (err: any) {
+            console.warn('Could not load pending payments:', err);
+            setPendingPayments([]);
+        } finally {
+            setPendingLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         fetchLoans();
+        fetchPendingPayments();
 
         // Subscribe to real-time changes
-        const unsubscribe = loanService.subscribeToChanges(fetchLoans);
+        const unsubscribe = loanService.subscribeToChanges(() => {
+            fetchLoans();
+            fetchPendingPayments();
+        });
 
         return () => {
             if (unsubscribe) unsubscribe();
         };
-    }, [fetchLoans]);
+    }, [fetchLoans, fetchPendingPayments]);
 
     const addLoan = async (loan: Omit<EmployeeLoan, 'id' | 'created_at' | 'updated_at'>) => {
         try {
@@ -66,11 +85,59 @@ export function useLoans() {
         }
     };
 
+    // Admin: directly pay installment
     const payInstallment = async (payment: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at'>) => {
         try {
             const newPayment = await loanService.payInstallment(payment);
             await fetchLoans(); // Refresh balances
             return newPayment;
+        } catch (err: any) {
+            const errorMsg = handleSupabaseError(err);
+            setError(errorMsg);
+            throw err;
+        }
+    };
+
+    // Employee: submit payment request for admin approval
+    const submitPaymentRequest = async (payment: {
+        loan_id: string;
+        amount: number;
+        payment_date: string;
+        payment_method: string;
+        notes?: string;
+        requested_by?: string;
+    }) => {
+        try {
+            const result = await loanService.submitPaymentRequest(payment);
+            await fetchPendingPayments();
+            return result;
+        } catch (err: any) {
+            const errorMsg = handleSupabaseError(err);
+            setError(errorMsg);
+            throw err;
+        }
+    };
+
+    // Admin: approve a pending payment request
+    const approvePaymentRequest = async (paymentId: string, approvedBy?: string) => {
+        try {
+            const result = await loanService.approvePaymentRequest(paymentId, approvedBy);
+            await fetchLoans();
+            await fetchPendingPayments();
+            return result;
+        } catch (err: any) {
+            const errorMsg = handleSupabaseError(err);
+            setError(errorMsg);
+            throw err;
+        }
+    };
+
+    // Admin: reject a pending payment request
+    const rejectPaymentRequest = async (paymentId: string, approvedBy?: string, reason?: string) => {
+        try {
+            const result = await loanService.rejectPaymentRequest(paymentId, approvedBy, reason);
+            await fetchPendingPayments();
+            return result;
         } catch (err: any) {
             const errorMsg = handleSupabaseError(err);
             setError(errorMsg);
@@ -91,11 +158,17 @@ export function useLoans() {
         loans,
         loading,
         error,
+        pendingPayments,
+        pendingLoading,
         addLoan,
         updateLoan,
         deleteLoan,
         payInstallment,
+        submitPaymentRequest,
+        approvePaymentRequest,
+        rejectPaymentRequest,
         fetchPayments,
-        refetch: fetchLoans
+        refetch: fetchLoans,
+        refetchPending: fetchPendingPayments,
     };
 }

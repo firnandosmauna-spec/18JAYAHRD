@@ -100,6 +100,15 @@ export function MaterialPurchaseManagement() {
     const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
     const [supplierFilter, setSupplierFilter] = useState('all');
     const [sortSupplier, setSortSupplier] = useState<'none' | 'asc' | 'desc'>('none');
+    // Auto-refresh supplier data when page gets focus (e.g., user switches tabs/pages)
+    React.useEffect(() => {
+        const handleFocus = () => {
+            refetchSuppliers();
+        };
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
+    }, [refetchSuppliers]);
+
 
     React.useEffect(() => {
         const fetchPaymentMethods = async () => {

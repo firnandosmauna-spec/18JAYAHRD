@@ -804,6 +804,7 @@ export const loanService = {
     return data
   },
 
+  // Admin: directly record a payment (old behaviour, admin-only)
   async payInstallment(payment: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase.rpc('process_loan_payment', {
       p_loan_id: payment.loan_id,
@@ -811,6 +812,51 @@ export const loanService = {
       p_payment_date: payment.payment_date,
       p_payment_method: payment.payment_method,
       p_notes: payment.notes
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Employee: submit a payment request that needs admin approval
+  async submitPaymentRequest(payment: {
+    loan_id: string;
+    amount: number;
+    payment_date: string;
+    payment_method: string;
+    notes?: string;
+    requested_by?: string;
+  }) {
+    const { data, error } = await supabase.rpc('submit_loan_payment_request', {
+      p_loan_id: payment.loan_id,
+      p_amount: payment.amount,
+      p_payment_date: payment.payment_date,
+      p_payment_method: payment.payment_method,
+      p_notes: payment.notes || null,
+      p_requested_by: payment.requested_by || null,
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Admin: approve a pending payment request
+  async approvePaymentRequest(paymentId: string, approvedBy?: string) {
+    const { data, error } = await supabase.rpc('approve_loan_payment', {
+      p_payment_id: paymentId,
+      p_approved_by: approvedBy || null,
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Admin: reject a pending payment request
+  async rejectPaymentRequest(paymentId: string, approvedBy?: string, reason?: string) {
+    const { data, error } = await supabase.rpc('reject_loan_payment', {
+      p_payment_id: paymentId,
+      p_approved_by: approvedBy || null,
+      p_reason: reason || null,
     });
 
     if (error) throw error;
@@ -831,6 +877,36 @@ export const loanService = {
       throw error;
     }
     return data;
+  },
+
+  // Get all pending payment requests (for admin review)
+  async getPendingPaymentRequests() {
+    const { data, error } = await supabase
+      .from('employee_loan_payments')
+      .select(`
+        *,
+        employee_loans (
+          id,
+          employee_id,
+          amount,
+          remaining_amount,
+          employees (
+            id,
+            name,
+            position
+          )
+        )
+      `)
+      .eq('payment_status', 'pending_approval')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      if (error.code === 'PGRST116' || error.code === '42P01' || error.message?.includes('does not exist')) {
+        return [];
+      }
+      throw error;
+    }
+    return data || [];
   },
 
   async update(id: string, updates: Partial<Omit<EmployeeLoan, 'id' | 'created_at'>>) {

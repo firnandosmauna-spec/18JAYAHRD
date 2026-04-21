@@ -4,11 +4,11 @@ import { accountingService } from '../../services/accountingService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Button } from '../../components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Label } from '../../components/ui/label';
 import { Input } from '../../components/ui/input';
 import { Calendar, Download, Printer, Search, Loader2 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
+import { AccountingNativeSelect } from './AccountingNativeSelect';
 
 export function LedgerView() {
     const { accounts } = useAccounts();
@@ -75,18 +75,17 @@ export function LedgerView() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
                             <Label>Pilih Akun</Label>
-                            <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Pilih akun..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {accounts.map(acc => (
-                                        <SelectItem key={acc.id} value={acc.id}>
-                                            {acc.code} - {acc.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <AccountingNativeSelect
+                                value={selectedAccountId}
+                                onChange={(e) => setSelectedAccountId(e.target.value)}
+                            >
+                                <option value="">Pilih akun...</option>
+                                {accounts.map(acc => (
+                                    <option key={acc.id} value={acc.id}>
+                                        {acc.code} - {acc.name}
+                                    </option>
+                                ))}
+                            </AccountingNativeSelect>
                         </div>
                         <div className="space-y-2">
                             <Label>Tanggal Mulai</Label>

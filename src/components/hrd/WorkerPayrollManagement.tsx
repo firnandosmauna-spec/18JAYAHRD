@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Label } from '@/components/ui/label';
 import {
     DollarSign,
@@ -27,7 +26,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import {
     Table,
@@ -45,6 +43,31 @@ import { useProjects, useProjectWorkers, useProjectWorkerPayments, useProjectLab
 import { useEmployees } from '@/hooks/useSupabase';
 import { useProjectLocations } from '@/hooks/useInventory';
 import { projectService } from '@/services/projectService';
+
+function NativeSelect({
+    value,
+    onChange,
+    className = '',
+    children,
+    disabled = false,
+}: {
+    value: string;
+    onChange: (value: string) => void;
+    className?: string;
+    children: React.ReactNode;
+    disabled?: boolean;
+}) {
+    return (
+        <select
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
+            className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+        >
+            {children}
+        </select>
+    );
+}
 
 export function WorkerPayrollManagement() {
     const { projects, loading: projectsLoading } = useProjects();
@@ -71,7 +94,8 @@ export function WorkerPayrollManagement() {
         payment_date: new Date().toLocaleDateString('en-CA'),
         labor_rate_id: 'none',
         quantity: '1',
-        unit: ''
+        unit: '',
+        loan_deduction: '0'
     });
 
     // Initial project selection from query param
@@ -173,12 +197,13 @@ export function WorkerPayrollManagement() {
     // Derived Calculations
     const calculateTotal = () => {
         const rate = parseFloat(formData.daily_rate) || 0;
-        const deduction = parseFloat(formData.late_deduction) || 0;
+        const lateDeduction = parseFloat(formData.late_deduction) || 0;
+        const loanDeduction = parseFloat(formData.loan_deduction) || 0;
         const baseTotal = formData.payment_type === 'Borongan'
             ? (parseFloat(formData.quantity) || 0) * rate
             : (parseFloat(formData.working_days) || 0) * rate;
 
-        return Math.max(0, baseTotal - deduction);
+        return Math.max(0, baseTotal - lateDeduction - loanDeduction);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -260,6 +285,7 @@ export function WorkerPayrollManagement() {
                 working_days: isBorongan ? parseFloat(formData.quantity) : parseFloat(formData.working_days),
                 daily_rate: parseFloat(formData.daily_rate),
                 late_deduction: parseFloat(formData.late_deduction),
+                loan_deduction: parseFloat(formData.loan_deduction),
                 activity_detail: finalActivityDetail,
                 progress_percentage: parseFloat(formData.progress_percentage),
                 worker_count: parseInt(formData.worker_count),
@@ -361,37 +387,19 @@ export function WorkerPayrollManagement() {
                 <div className="flex flex-col items-end gap-2">
                     <div className="flex items-center gap-3">
                         <div className="flex flex-col gap-2">
-                            <Select value={selectedLocation} onValueChange={setSelectedLocation} disabled={locationsLoading}>
-                                <SelectTrigger className="w-[350px]">
-                                    <div className="flex items-center gap-2">
-                                        {locationsLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
-                                        <MapPin className="w-4 h-4 text-muted-foreground" />
-                                        <SelectValue placeholder={locationsLoading ? "Memuat lokasi..." : "Pilih Lokasi Proyek"} />
-                                    </div>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {locations.map(loc => {
-                                        const isProject = projectNames.includes(loc);
-                                        return (
-                                            <SelectItem key={loc} value={loc}>
-                                                <div className="flex items-center gap-2">
-                                                    {isProject ? (
-                                                        <Hammer className="w-3.5 h-3.5 text-orange-500" />
-                                                    ) : (
-                                                        <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                                                    )}
-                                                    <span className="font-body text-xs">{loc}</span>
-                                                    {isProject && (
-                                                        <Badge variant="outline" className="text-[9px] h-4 px-1 ml-auto bg-blue-50 text-blue-600 border-blue-100">
-                                                            PROYEK
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                            </SelectItem>
-                                        );
-                                    })}
-                                </SelectContent>
-                            </Select>
+                            <NativeSelect
+                                value={selectedLocation}
+                                onChange={setSelectedLocation}
+                                disabled={locationsLoading}
+                                className="w-[350px]"
+                            >
+                                <option value="">{locationsLoading ? "Memuat lokasi..." : "Pilih Lokasi Proyek"}</option>
+                                {locations.map(loc => (
+                                    <option key={loc} value={loc}>
+                                        {projectNames.includes(loc) ? `[PROYEK] ${loc}` : loc}
+                                    </option>
+                                ))}
+                            </NativeSelect>
 
                             {!selectedProjectId && selectedLocation && (
                                 <div className="flex items-center gap-2 animate-in slide-in-from-left-2 fade-in duration-300">
@@ -399,18 +407,18 @@ export function WorkerPayrollManagement() {
                                         <AlertCircle className="w-3 h-3" />
                                         HUBUNGKAN MANUAL:
                                     </div>
-                                    <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                                        <SelectTrigger className="h-7 text-[11px] w-[220px] bg-white border-orange-200 focus:ring-orange-500">
-                                            <SelectValue placeholder="Pilih Proyek Sistem..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {projects.map(p => (
-                                                <SelectItem key={p.id} value={p.id!} className="text-[11px]">
-                                                    {p.location || p.name} ({p.status})
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <NativeSelect
+                                        value={selectedProjectId}
+                                        onChange={setSelectedProjectId}
+                                        className="h-7 w-[220px] border-orange-200 bg-white text-[11px] focus-visible:ring-orange-500"
+                                    >
+                                        <option value="">Pilih Proyek Sistem...</option>
+                                        {projects.map(p => (
+                                            <option key={p.id} value={p.id!}>
+                                                {p.location || p.name} ({p.status})
+                                            </option>
+                                        ))}
+                                    </NativeSelect>
                                 </div>
                             )}
                         </div>
@@ -468,13 +476,8 @@ export function WorkerPayrollManagement() {
                 </div>
             </div>
 
-            <AnimatePresence>
-                {showAddForm && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                    >
+            {showAddForm && (
+                    <div>
                         <Card className="border-hrd/20 shadow-lg">
                             <CardHeader className="bg-hrd/5 pb-4">
                                 <CardTitle className="text-lg flex items-center gap-2">
@@ -488,21 +491,17 @@ export function WorkerPayrollManagement() {
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                         <div className="space-y-2">
                                             <Label>Nama Tukang</Label>
-                                            <Select 
+                                            <NativeSelect 
                                                 value={formData.employee_id} 
-                                                onValueChange={(val) => setFormData(prev => ({ ...prev, employee_id: val }))}
+                                                onChange={(val) => setFormData(prev => ({ ...prev, employee_id: val }))}
                                             >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Pilih Tukang dari Master Karyawan" />
-                                                </SelectTrigger>
-                                                <SelectContent>
+                                                <option value="">Pilih Tukang dari Master Karyawan</option>
                                                     {tukangEmployees.map(emp => (
-                                                        <SelectItem key={emp.id} value={emp.id}>
+                                                        <option key={emp.id} value={emp.id}>
                                                             {emp.name} - {emp.position}
-                                                        </SelectItem>
+                                                        </option>
                                                     ))}
-                                                </SelectContent>
-                                            </Select>
+                                            </NativeSelect>
                                             <p className="text-[10px] text-muted-foreground italic">Pekerja otomatis ditambahkan ke proyek jika belum terdaftar</p>
                                         </div>
 
@@ -517,25 +516,20 @@ export function WorkerPayrollManagement() {
 
                                         <div className="space-y-2">
                                             <Label>Jenis Gaji</Label>
-                                            <Select
+                                            <NativeSelect
                                                 value={formData.payment_type}
-                                                onValueChange={(val: 'Harian' | 'Borongan') => setFormData(prev => ({
+                                                onChange={(val) => setFormData(prev => ({
                                                     ...prev,
-                                                    payment_type: val,
+                                                    payment_type: val as 'Harian' | 'Borongan',
                                                     labor_rate_id: val === 'Borongan' ? prev.labor_rate_id : 'none',
                                                     quantity: val === 'Borongan' ? (prev.quantity || '1') : '1',
                                                     working_days: val === 'Harian' ? (prev.working_days || '1') : '1',
                                                     unit: val === 'Harian' ? '' : prev.unit
                                                 }))}
                                             >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Pilih jenis gaji" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Harian">Harian</SelectItem>
-                                                    <SelectItem value="Borongan">Borongan</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                                <option value="Harian">Harian</option>
+                                                <option value="Borongan">Borongan</option>
+                                            </NativeSelect>
                                         </div>
 
                                         <div className="space-y-2">
@@ -553,21 +547,17 @@ export function WorkerPayrollManagement() {
                                             <>
                                                 <div className="space-y-2 md:col-span-2">
                                                     <Label className="text-xs uppercase text-muted-foreground font-bold">Master Pekerjaan</Label>
-                                                    <Select
+                                                    <NativeSelect
                                                         value={formData.labor_rate_id}
-                                                        onValueChange={(val) => setFormData(prev => ({ ...prev, labor_rate_id: val }))}
+                                                        onChange={(val) => setFormData(prev => ({ ...prev, labor_rate_id: val }))}
                                                     >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Pilih pekerjaan borongan" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
+                                                        <option value="none">Pilih pekerjaan borongan</option>
                                                             {rates.map(rate => (
-                                                                <SelectItem key={rate.id} value={rate.id}>
+                                                                <option key={rate.id} value={rate.id}>
                                                                     {rate.name} ({rate.unit}) - {formatCurrency(rate.default_rate || 0)}
-                                                                </SelectItem>
+                                                                </option>
                                                             ))}
-                                                        </SelectContent>
-                                                    </Select>
+                                                    </NativeSelect>
                                                 </div>
                                                 <div className="space-y-2">
                                                     <Label className="text-xs uppercase text-muted-foreground font-bold">Volume</Label>
@@ -614,6 +604,15 @@ export function WorkerPayrollManagement() {
                                                 type="number" 
                                                 value={formData.late_deduction}
                                                 onChange={(e) => setFormData(prev => ({ ...prev, late_deduction: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs uppercase text-muted-foreground font-bold">Potongan Pinjaman (Rp)</Label>
+                                            <Input 
+                                                type="number" 
+                                                value={formData.loan_deduction}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, loan_deduction: e.target.value }))}
+                                                placeholder="0"
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -665,9 +664,8 @@ export function WorkerPayrollManagement() {
                                 </form>
                             </CardContent>
                         </Card>
-                    </motion.div>
+                    </div>
                 )}
-            </AnimatePresence>
 
             <Card>
                 <CardHeader>
@@ -697,6 +695,7 @@ export function WorkerPayrollManagement() {
                                         <TableHead>Kegiatan</TableHead>
                                         <TableHead className="text-right">Volume / Hari</TableHead>
                                         <TableHead className="text-right">Tarif</TableHead>
+                                        <TableHead className="text-right text-red-500">Potongan</TableHead>
                                         <TableHead className="text-right">Total Gaji</TableHead>
                                         <TableHead className="text-center">Progress</TableHead>
                                         <TableHead className="text-right">Aksi</TableHead>
@@ -744,6 +743,11 @@ export function WorkerPayrollManagement() {
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         {formatCurrency(p.daily_rate || 0)}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-xs text-red-500">
+                                                        {p.late_deduction > 0 && <div>L: {formatCurrency(p.late_deduction)}</div>}
+                                                        {p.loan_deduction > 0 && <div>P: {formatCurrency(p.loan_deduction)}</div>}
+                                                        {!(p.late_deduction > 0 || p.loan_deduction > 0) && '-'}
                                                     </TableCell>
                                                     <TableCell className="text-right font-bold text-hrd">
                                                         {formatCurrency(p.amount)}

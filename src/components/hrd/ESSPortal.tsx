@@ -39,6 +39,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEmployees, useAttendance, useLeaveRequests, usePayroll, useDepartments } from '@/hooks/useSupabase';
+import { useLoans } from '@/hooks/useLoans';
 import { useNotificationsContext } from '@/contexts/NotificationContext';
 import { UserAttendance } from './UserAttendance';
 import { LeaveManagement } from './LeaveManagement';
@@ -52,6 +53,10 @@ export function ESSPortal() {
     const { user, profile, updateProfile, restoreAdminSession } = useAuth();
     const { employees } = useEmployees();
     const { departments } = useDepartments(); // Fetch departments to map IDs to names
+    const { loans: allLoans } = useLoans();
+    // Active loans for the current employee
+    const myLoans = allLoans.filter(l => l.employee_id === user?.employee_id && (l.status === 'approved'));
+    const totalRemainingLoan = myLoans.reduce((sum, l) => sum + (l.remaining_amount || 0), 0);
     const { markAllAsRead, unreadCount, notifications, loading, refetch: refetchNotifications } = useNotificationsContext(); // Use notification context
     const { toast } = useToast();
 
@@ -378,6 +383,17 @@ export function ESSPortal() {
                                         <p className="text-sm text-muted-foreground font-body"><span>Sisa Cuti</span></p>
                                         <p className="font-semibold text-hrd font-mono text-lg"><span>12 Hari</span></p>
                                     </div>
+                                    {myLoans.length > 0 && (
+                                        <div className="col-span-2">
+                                            <p className="text-sm text-muted-foreground font-body"><span>Sisa Kasbon Aktif</span></p>
+                                            <p className="font-semibold text-red-600 font-mono text-lg">
+                                                <span>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(totalRemainingLoan)}</span>
+                                            </p>
+                                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                                                {myLoans.length} pinjaman aktif &bull; Cicilan: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(myLoans.reduce((s, l) => s + l.installment_amount, 0))}/bln
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>

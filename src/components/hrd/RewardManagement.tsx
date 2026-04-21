@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Award,
   Star,
@@ -11,7 +10,6 @@ import {
   Plus,
   Search,
   Filter,
-  MoreVertical,
   User,
   Calendar,
   CheckCircle,
@@ -28,9 +26,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -39,26 +34,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { Checkbox } from '@/components/ui/checkbox';
 
 // Hooks
 import { useRewards, useEmployees, useRewardTypes } from '@/hooks/useSupabase';
@@ -133,6 +112,78 @@ function formatDate(dateString: string) {
     month: 'long',
     year: 'numeric'
   });
+}
+
+function NativeSelect({
+  value,
+  onChange,
+  className = '',
+  children,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+    >
+      {children}
+    </select>
+  );
+}
+
+function InlineModal({
+  title,
+  description,
+  onClose,
+  maxWidth = 'max-w-md',
+  children,
+}: {
+  title: string;
+  description: string;
+  onClose: () => void;
+  maxWidth?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className={`w-full ${maxWidth} max-h-[90vh] overflow-y-auto rounded-lg border bg-background p-6 shadow-lg`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 space-y-1">
+          <h3 className="font-display text-lg font-semibold">{title}</h3>
+          <p className="font-body text-sm text-muted-foreground">{description}</p>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function InlineCheckbox({
+  checked,
+  disabled = false,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      readOnly
+      disabled={disabled}
+      className="h-4 w-4 rounded border-gray-300 text-hrd accent-[#0D7377]"
+    />
+  );
 }
 
 export function RewardManagement() {
@@ -434,11 +485,7 @@ export function RewardManagement() {
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0 }}
-        >
+        <div>
           <Card className="border-gray-200">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -455,13 +502,9 @@ export function RewardManagement() {
               </div>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
+        <div>
           <Card className="border-gray-200">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -478,13 +521,9 @@ export function RewardManagement() {
               </div>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
+        <div>
           <Card className="border-gray-200">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -501,13 +540,9 @@ export function RewardManagement() {
               </div>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
+        <div>
           <Card className="border-gray-200">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -528,7 +563,7 @@ export function RewardManagement() {
               </div>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       </div>
 
       {/* Search and Filter */}
@@ -548,24 +583,29 @@ export function RewardManagement() {
         </Button>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
-        <TabsList className="bg-gray-100/50 p-1">
-          <TabsTrigger value="all" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">
-            <span>Semua</span>
-          </TabsTrigger>
-          <TabsTrigger value="active" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">
-            <span>Aktif</span>
-          </TabsTrigger>
-          <TabsTrigger value="claimed" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">
-            <span>Klaim</span>
-          </TabsTrigger>
-          <TabsTrigger value="expired" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">
-            <span>Kedaluwarsa</span>
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex flex-wrap gap-2 rounded-lg bg-gray-100/50 p-1">
+        {[
+          { value: 'all', label: 'Semua' },
+          { value: 'active', label: 'Aktif' },
+          { value: 'claimed', label: 'Klaim' },
+          { value: 'expired', label: 'Kedaluwarsa' },
+        ].map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => setActiveTab(tab.value as typeof activeTab)}
+            className={`rounded-md px-4 py-2 text-sm ${
+              activeTab === tab.value
+                ? 'bg-white shadow-sm text-[#1C1C1E]'
+                : 'text-muted-foreground hover:bg-white/70'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        <TabsContent value={activeTab} className="mt-6">
+      <div className="mt-6">
           <Card className="border-gray-200">
             <CardContent className="p-0">
               <Table>
@@ -583,20 +623,13 @@ export function RewardManagement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <AnimatePresence>
                     {filteredRewards.map((reward) => {
                       const employee = employees.find(emp => emp.id === reward.employee_id);
                       const StatusIcon = statusIcons[reward.status as RewardStatus];
                       const TypeIcon = dynamicRewardTypeIcons[reward.type] || Award;
 
                       return (
-                        <motion.tr
-                          key={reward.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -20 }}
-                          className="group"
-                        >
+                        <TableRow key={reward.id} className="group">
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <Avatar className="w-8 h-8">
@@ -643,92 +676,91 @@ export function RewardManagement() {
                           </TableCell>
                           {user?.role !== 'staff' && (
                             <TableCell className="text-right">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon">
-                                    <MoreVertical className="w-4 h-4" />
+                              <div className="flex flex-wrap justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="font-body"
+                                  onClick={() => handleViewReward(reward)}
+                                >
+                                  <Eye className="w-4 h-4 mr-1" />
+                                  Detail
+                                </Button>
+                                {reward.status === 'active' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="font-body text-blue-600 hover:text-blue-700"
+                                    onClick={() => handleClaimReward(reward.id)}
+                                  >
+                                    <Gift className="w-4 h-4 mr-1" />
+                                    Klaim
                                   </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    className="font-body"
-                                    onClick={() => handleViewReward(reward)}
-                                  >
-                                    <Eye className="w-4 h-4 mr-2" />
-                                    Lihat Detail
-                                  </DropdownMenuItem>
-                                  {reward.status === 'active' && (
-                                    <DropdownMenuItem
-                                      className="font-body text-blue-600"
-                                      onClick={() => handleClaimReward(reward.id)}
-                                    >
-                                      <Gift className="w-4 h-4 mr-2" />
-                                      Klaim
-                                    </DropdownMenuItem>
-                                  )}
-                                  <DropdownMenuItem
-                                    className="font-body"
-                                    onClick={() => handleEditReward(reward)}
-                                  >
-                                    <Edit className="w-4 h-4 mr-2" />
-                                    Ubah
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    className="font-body text-red-600"
-                                    onClick={() => {
-                                      setRewardToDelete(reward.id);
-                                      setShowDeleteDialog(true);
-                                    }}
-                                  >
-                                    <Trash2 className="w-4 h-4 mr-2" />
-                                    Hapus
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="font-body"
+                                  onClick={() => handleEditReward(reward)}
+                                >
+                                  <Edit className="w-4 h-4 mr-1" />
+                                  Ubah
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="font-body text-red-600 hover:text-red-700"
+                                  onClick={() => {
+                                    setRewardToDelete(reward.id);
+                                    setShowDeleteDialog(true);
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-1" />
+                                  Hapus
+                                </Button>
+                              </div>
                             </TableCell>
                           )}
-                        </motion.tr>
+                        </TableRow>
                       );
                     })}
-                  </AnimatePresence>
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+      </div>
 
       {/* Add Reward Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={(open) => { if (!open) resetForm(); setShowAddDialog(open); }}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-display">
-              {isEditing ? 'Ubah Penghargaan' : 'Beri Penghargaan'}
-            </DialogTitle>
-            <DialogDescription className="font-body">
-              Berikan penghargaan kepada karyawan berprestasi
-            </DialogDescription>
-          </DialogHeader>
+      {showAddDialog && (
+        <InlineModal
+          title={isEditing ? 'Ubah Penghargaan' : 'Beri Penghargaan'}
+          description="Berikan penghargaan kepada karyawan berprestasi"
+          onClose={() => {
+            resetForm();
+            setShowAddDialog(false);
+          }}
+          maxWidth="max-w-md"
+        >
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="font-body">Karyawan <span className="text-red-500">*</span></Label>
-              <Select value={formData.employee_id} onValueChange={(value) => setFormData({ ...formData, employee_id: value })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih karyawan" />
-                </SelectTrigger>
-                <SelectContent>
+              <NativeSelect
+                value={formData.employee_id}
+                onChange={(value) => setFormData({ ...formData, employee_id: value })}
+                className="font-body"
+              >
+                <option value="">Pilih karyawan</option>
                   {employees.map(emp => (
-                    <SelectItem key={emp.id} value={emp.id} className="font-body">
+                    <option key={emp.id} value={emp.id}>
                       {emp.name} - {emp.position}
-                    </SelectItem>
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
+              </NativeSelect>
             </div>
 
             <div className="space-y-3">
               <Label className="font-body">Jenis Penghargaan <span className="text-red-500">*</span></Label>
-              <ScrollArea className="h-[200px] w-full rounded-xl border border-gray-100 p-4 bg-gray-50/30">
+              <div className="h-[200px] w-full overflow-y-auto rounded-xl border border-gray-100 bg-gray-50/30 p-4">
                 <div className="space-y-4">
                   {isEditing ? (
                     (() => {
@@ -738,7 +770,7 @@ export function RewardManagement() {
                       const IconComponent = dynamicRewardTypeIcons[typeCode] || Award;
                       return (
                         <div className="flex items-center space-x-3 p-2 rounded-lg bg-yellow-50/50 border border-yellow-100">
-                          <Checkbox id={`type-${typeCode}`} checked={true} disabled />
+                          <InlineCheckbox checked={true} disabled />
                           <div className="flex items-center gap-3 flex-1">
                             <div className="bg-yellow-100 p-1.5 rounded-md">
                               <IconComponent className="w-4 h-4 text-yellow-600" />
@@ -766,11 +798,7 @@ export function RewardManagement() {
                             setFormData(prev => ({ ...prev, types: newTypes }));
                           }}
                         >
-                          <Checkbox
-                            id={`type-${code}`}
-                            checked={isSelected}
-                            onCheckedChange={() => { }} // Handled by div onClick for better UX
-                          />
+                          <InlineCheckbox checked={isSelected} />
                           <div className="flex items-center gap-3 flex-1">
                             <div className={`p-1.5 rounded-md ${isSelected ? 'bg-yellow-100' : 'bg-gray-100'}`}>
                               <IconComponent className={`w-4 h-4 ${isSelected ? 'text-yellow-600' : 'text-gray-500'}`} />
@@ -784,7 +812,7 @@ export function RewardManagement() {
                     })
                   )}
                 </div>
-              </ScrollArea>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -869,7 +897,7 @@ export function RewardManagement() {
               </div>
             )}
           </div>
-          <DialogFooter>
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); }} className="font-body">
               Batal
             </Button>
@@ -877,20 +905,19 @@ export function RewardManagement() {
               <Award className="w-4 h-4 mr-2" />
               {isEditing ? 'Simpan Perubahan' : 'Berikan Penghargaan'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle className="font-display">Hapus Penghargaan</DialogTitle>
-            <DialogDescription className="font-body">
-              Apakah Anda yakin ingin menghapus penghargaan ini? Tindakan ini tidak dapat dibatalkan.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+      {showDeleteDialog && (
+        <InlineModal
+          title="Hapus Penghargaan"
+          description="Apakah Anda yakin ingin menghapus penghargaan ini? Tindakan ini tidak dapat dibatalkan."
+          onClose={() => setShowDeleteDialog(false)}
+          maxWidth="max-w-[400px]"
+        >
+          <div className="flex justify-end gap-2">
             <Button
               variant="outline"
               onClick={() => {
@@ -909,19 +936,18 @@ export function RewardManagement() {
               <Trash2 className="w-4 h-4 mr-2" />
               Hapus
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
 
       {/* View Reward Details Dialog */}
-      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display">Detail Penghargaan</DialogTitle>
-            <DialogDescription className="font-body">
-              Informasi lengkap penghargaan karyawan
-            </DialogDescription>
-          </DialogHeader>
+      {showViewDialog && (
+        <InlineModal
+          title="Detail Penghargaan"
+          description="Informasi lengkap penghargaan karyawan"
+          onClose={() => setShowViewDialog(false)}
+          maxWidth="max-w-lg"
+        >
           {selectedReward && (
             <div className="space-y-4">
               {/* Status Badge */}
@@ -988,7 +1014,7 @@ export function RewardManagement() {
               </div>
             </div>
           )}
-          <DialogFooter>
+          <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={() => setShowViewDialog(false)} className="font-body">
               Tutup
             </Button>
@@ -1008,9 +1034,9 @@ export function RewardManagement() {
               <Send className="w-4 h-4 mr-2" />
               Kirim Notifikasi
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
     </div>
   );
 }

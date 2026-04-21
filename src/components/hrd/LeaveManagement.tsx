@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Calendar,
   Clock,
@@ -9,7 +8,6 @@ import {
   Plus,
   Search,
   Filter,
-  MoreVertical,
   User,
   FileText,
   Send,
@@ -25,7 +23,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -35,18 +32,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -112,6 +102,28 @@ function calculateDays(startDate: string, endDate: string): number {
   const diffTime = Math.abs(end.getTime() - start.getTime());
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   return diffDays;
+}
+
+function NativeSelect({
+  value,
+  onChange,
+  className = '',
+  children,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+    >
+      {children}
+    </select>
+  );
 }
 
 // Fungsi untuk menghitung hari kerja (termasuk Sabtu, kecuali Minggu dan Libur)
@@ -236,6 +248,18 @@ export function LeaveManagement() {
   });
 
   const [showPayoutDialog, setShowPayoutDialog] = useState(false);
+
+  const selectedEmployee = selectedLeave
+    ? employees.find((emp) => emp.id === selectedLeave.employee_id) ?? null
+    : null;
+
+  const handoverEmployee = selectedLeave?.handover_to
+    ? employees.find((emp) => emp.id === selectedLeave.handover_to) ?? null
+    : null;
+
+  const approverEmployee = selectedLeave?.approved_by
+    ? employees.find((emp) => emp.id === selectedLeave.approved_by) ?? null
+    : null;
 
   // Filter leave requests based on active tab and search
   const filteredLeaveRequests = leaveRequests.filter(req => {
@@ -619,17 +643,24 @@ export function LeaveManagement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <AnimatePresence>
-                    {filteredLeaveRequests.map((leave) => {
+                    {filteredLeaveRequests.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="py-10 text-center">
+                          <div className="space-y-1">
+                            <p className="font-body text-sm font-medium text-slate-700">Belum ada data cuti yang cocok.</p>
+                            <p className="font-body text-xs text-muted-foreground">
+                              Coba ubah tab status atau kosongkan pencarian untuk melihat semua data.
+                            </p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredLeaveRequests.map((leave) => {
                       const employee = employees.find(emp => emp.id === leave.employee_id);
                       const StatusIcon = statusIcons[leave.status as LeaveStatus];
 
                       return (
-                        <motion.tr
+                        <TableRow
                           key={leave.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -20 }}
                           className="group"
                         >
                           <TableCell>
@@ -667,67 +698,69 @@ export function LeaveManagement() {
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreVertical className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  className="font-body"
-                                  onClick={() => handleViewLeave(leave)}
-                                >
-                                  <Eye className="w-4 h-4 mr-2" />
-                                  Lihat Detail
-                                </DropdownMenuItem>
-                                {leave.status === 'pending' && (
-                                  <>
-                                    <DropdownMenuItem
-                                      className="font-body text-blue-600"
-                                      onClick={() => handleEditLeave(leave)}
-                                    >
-                                      <Edit className="w-4 h-4 mr-2" />
-                                      Edit
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      className="font-body text-red-600"
-                                      onClick={() => handleDeleteLeave(leave.id)}
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Hapus
-                                    </DropdownMenuItem>
-                                    {user?.role === 'Administrator' && (
-                                      <>
-                                        <DropdownMenuItem
-                                          className="font-body text-green-600"
-                                          onClick={() => handleApproveLeave(leave.id)}
-                                        >
-                                          <CheckCircle className="w-4 h-4 mr-2" />
-                                          Setujui
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          className="font-body text-red-600"
-                                          onClick={() => handleRejectLeave(leave.id)}
-                                        >
-                                          <XCircle className="w-4 h-4 mr-2" />
-                                          Tolak
-                                        </DropdownMenuItem>
-                                      </>
-                                    )}
-                                  </>
-                                )}
-                                <DropdownMenuItem className="font-body">
-                                  <Download className="w-4 h-4 mr-2" />
-                                  Export PDF
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <div className="flex flex-wrap justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="font-body"
+                                onClick={() => handleViewLeave(leave)}
+                              >
+                                <Eye className="w-4 h-4 mr-1" />
+                                Detail
+                              </Button>
+                              {leave.status === 'pending' && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="font-body text-blue-600 hover:text-blue-700"
+                                    onClick={() => handleEditLeave(leave)}
+                                  >
+                                    <Edit className="w-4 h-4 mr-1" />
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="font-body text-red-600 hover:text-red-700"
+                                    onClick={() => handleDeleteLeave(leave.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-1" />
+                                    Hapus
+                                  </Button>
+                                  {user?.role === 'Administrator' && (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="font-body text-green-600 hover:text-green-700"
+                                        onClick={() => handleApproveLeave(leave.id)}
+                                      >
+                                        <CheckCircle className="w-4 h-4 mr-1" />
+                                        Setujui
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="font-body text-red-600 hover:text-red-700"
+                                        onClick={() => handleRejectLeave(leave.id)}
+                                      >
+                                        <XCircle className="w-4 h-4 mr-1" />
+                                        Tolak
+                                      </Button>
+                                    </>
+                                  )}
+                                </>
+                              )}
+                              <Button variant="ghost" size="sm" className="font-body">
+                                <Download className="w-4 h-4 mr-1" />
+                                Export
+                              </Button>
+                            </div>
                           </TableCell>
-                        </motion.tr>
+                        </TableRow>
                       );
                     })}
-                  </AnimatePresence>
                 </TableBody>
               </Table>
             </CardContent>
@@ -755,34 +788,33 @@ export function LeaveManagement() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="font-body">Karyawan <span className="text-red-500">*</span></Label>
-              <Select value={formData.employee_id} onValueChange={(value) => setFormData({ ...formData, employee_id: value })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih karyawan" />
-                </SelectTrigger>
-                <SelectContent>
+              <NativeSelect
+                value={formData.employee_id}
+                onChange={(value) => setFormData({ ...formData, employee_id: value })}
+                className="font-body"
+              >
+                <option value="">Pilih karyawan</option>
                   {employees.map(emp => (
-                    <SelectItem key={emp.id} value={emp.id} className="font-body">
+                    <option key={emp.id} value={emp.id}>
                       {emp.name} - {emp.position}
-                    </SelectItem>
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
+              </NativeSelect>
             </div>
 
             <div className="space-y-2">
               <Label className="font-body">Jenis Cuti/Izin <span className="text-red-500">*</span></Label>
-              <Select value={formData.leave_type} onValueChange={(value) => setFormData({ ...formData, leave_type: value as LeaveType })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih jenis cuti" />
-                </SelectTrigger>
-                <SelectContent>
+              <NativeSelect
+                value={formData.leave_type}
+                onChange={(value) => setFormData({ ...formData, leave_type: value as LeaveType })}
+                className="font-body"
+              >
                   {Object.entries(leaveTypeLabels).map(([key, label]) => (
-                    <SelectItem key={key} value={key} className="font-body">
+                    <option key={key} value={key}>
                       {label}
-                    </SelectItem>
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
+              </NativeSelect>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -858,18 +890,18 @@ export function LeaveManagement() {
 
             <div className="space-y-2">
               <Label className="font-body">Serahkan Tugas Kepada</Label>
-              <Select value={formData.handover_to} onValueChange={(value) => setFormData({ ...formData, handover_to: value })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih karyawan pengganti" />
-                </SelectTrigger>
-                <SelectContent>
+              <NativeSelect
+                value={formData.handover_to || ''}
+                onChange={(value) => setFormData({ ...formData, handover_to: value })}
+                className="font-body"
+              >
+                <option value="">Pilih karyawan pengganti</option>
                   {employees.filter(emp => emp.id !== formData.employee_id).map(emp => (
-                    <SelectItem key={emp.id} value={emp.id} className="font-body">
+                    <option key={emp.id} value={emp.id}>
                       {emp.name} - {emp.position}
-                    </SelectItem>
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
+              </NativeSelect>
             </div>
           </div>
           <DialogFooter>
@@ -886,7 +918,80 @@ export function LeaveManagement() {
 
       {/* View Leave Details Dialog */}
       <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        {/* ... existing view dialog content ... */}
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">Detail Pengajuan Cuti</DialogTitle>
+            <DialogDescription className="font-body">
+              Informasi lengkap pengajuan cuti atau izin yang dipilih.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedLeave ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Karyawan</p>
+                  <p className="font-body text-sm text-[#1C1C1E]">{selectedEmployee?.name || 'Unknown'}</p>
+                  <p className="font-body text-xs text-muted-foreground">{selectedEmployee?.position || '-'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Status</p>
+                  <Badge className={`${statusColors[selectedLeave.status as LeaveStatus]} font-body w-fit`}>
+                    {selectedLeave.status === 'pending' ? 'Menunggu' :
+                      selectedLeave.status === 'approved' ? 'Disetujui' : 'Ditolak'}
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Jenis Cuti</p>
+                  <p className="font-body text-sm text-[#1C1C1E]">{leaveTypeLabels[selectedLeave.leave_type as LeaveType]}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Durasi</p>
+                  <p className="font-body text-sm text-[#1C1C1E]">{selectedLeave.days} hari</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Tanggal Mulai</p>
+                  <p className="font-body text-sm text-[#1C1C1E]">{formatDate(selectedLeave.start_date)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Tanggal Selesai</p>
+                  <p className="font-body text-sm text-[#1C1C1E]">{formatDate(selectedLeave.end_date)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Kontak Darurat</p>
+                  <p className="font-body text-sm text-[#1C1C1E]">{selectedLeave.emergency_contact || '-'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Serah Tugas</p>
+                  <p className="font-body text-sm text-[#1C1C1E]">{handoverEmployee?.name || '-'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Disetujui Oleh</p>
+                  <p className="font-body text-sm text-[#1C1C1E]">{approverEmployee?.name || '-'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Tanggal Persetujuan</p>
+                  <p className="font-body text-sm text-[#1C1C1E]">
+                    {selectedLeave.approved_at ? formatDate(selectedLeave.approved_at) : '-'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Alasan</p>
+                <div className="rounded-lg border bg-slate-50 p-3 text-sm font-body text-slate-700">
+                  {selectedLeave.reason}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowViewDialog(false)} className="font-body">
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
       {/* Year-End Payout Dialog */}

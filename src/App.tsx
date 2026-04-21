@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -24,7 +24,7 @@ const PositionsPage = lazy(() => import("@/pages/hrd/PositionsPage"));
 const MarketingModule = lazy(() => import("@/pages/modules/MarketingModule"));
 import { AccessGuard } from "@/components/AccessGuard";
 
-// Global Debug Listener
+/* // Global Debug Listener
 if (typeof window !== 'undefined') {
   window.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
@@ -36,6 +36,7 @@ if (typeof window !== 'undefined') {
 }
 
 
+*/
 function LoadingFallback() {
   return (
     <div className="min-h-screen bg-[#FAFAF9] flex items-center justify-center">
@@ -137,6 +138,26 @@ function ConfigErrorScreen() {
 import { RoutePersister } from "@/components/RoutePersister";
 
 function App() {
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    const handleGlobalDebugClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+
+      if (target?.innerText?.includes("Tambah Karyawan")) {
+        console.log("GLOBAL CLICK DETECTED ON:", target);
+      }
+    };
+
+    window.addEventListener("click", handleGlobalDebugClick, true);
+
+    return () => {
+      window.removeEventListener("click", handleGlobalDebugClick, true);
+    };
+  }, []);
+
   if (!isSupabaseConfigured) {
     return <ConfigErrorScreen />;
   }

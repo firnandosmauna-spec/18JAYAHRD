@@ -17,10 +17,9 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from '../../components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Label } from '../../components/ui/label';
+import { AccountingNativeSelect } from './AccountingNativeSelect';
 
 export function CoAView() {
     const { accounts, loading, refresh, createAccount, deleteAccount } = useAccounts();
@@ -119,12 +118,10 @@ export function CoAView() {
                     <p className="text-muted-foreground">Kelola daftar akun akuntansi perusahaan</p>
                 </div>
                 <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="bg-accounting hover:bg-accounting-dark text-white">
-                            <Plus className="w-4 h-4 mr-2" />
-                            Tambah Akun
-                        </Button>
-                    </DialogTrigger>
+                    <Button className="bg-accounting hover:bg-accounting-dark text-white" onClick={() => setIsAddDialogOpen(true)}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        Tambah Akun
+                    </Button>
                     <DialogContent className="sm:max-w-[425px]">
                         <form onSubmit={handleSubmit}>
                             <DialogHeader>
@@ -159,21 +156,16 @@ export function CoAView() {
                                 <div className="grid grid-cols-4 items-center gap-4">
                                     <Label htmlFor="type" className="text-right">Tipe</Label>
                                     <div className="col-span-3">
-                                        <Select
+                                        <AccountingNativeSelect
                                             value={newAccount.type}
-                                            onValueChange={(value) => setNewAccount({ ...newAccount, type: value })}
+                                            onChange={(e) => setNewAccount({ ...newAccount, type: e.target.value })}
                                         >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Pilih tipe" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="asset">ASET</SelectItem>
-                                                <SelectItem value="liability">KEWAJIBAN</SelectItem>
-                                                <SelectItem value="equity">EKUITAS</SelectItem>
-                                                <SelectItem value="revenue">PENDAPATAN</SelectItem>
-                                                <SelectItem value="expense">BEBAN</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                            <option value="asset">ASET</option>
+                                            <option value="liability">KEWAJIBAN</option>
+                                            <option value="equity">EKUITAS</option>
+                                            <option value="revenue">PENDAPATAN</option>
+                                            <option value="expense">BEBAN</option>
+                                        </AccountingNativeSelect>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-4 items-center gap-4">
@@ -234,21 +226,16 @@ export function CoAView() {
                                 <div className="grid grid-cols-4 items-center gap-4">
                                     <Label htmlFor="edit-type" className="text-right">Tipe</Label>
                                     <div className="col-span-3">
-                                        <Select
+                                        <AccountingNativeSelect
                                             value={editingAccount.type}
-                                            onValueChange={(value) => setEditingAccount({ ...editingAccount, type: value })}
+                                            onChange={(e) => setEditingAccount({ ...editingAccount, type: e.target.value })}
                                         >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="asset">ASET</SelectItem>
-                                                <SelectItem value="liability">KEWAJIBAN</SelectItem>
-                                                <SelectItem value="equity">EKUITAS</SelectItem>
-                                                <SelectItem value="revenue">PENDAPATAN</SelectItem>
-                                                <SelectItem value="expense">BEBAN</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                            <option value="asset">ASET</option>
+                                            <option value="liability">KEWAJIBAN</option>
+                                            <option value="equity">EKUITAS</option>
+                                            <option value="revenue">PENDAPATAN</option>
+                                            <option value="expense">BEBAN</option>
+                                        </AccountingNativeSelect>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-4 items-center gap-4">

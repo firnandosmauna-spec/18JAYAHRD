@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import { HashRouter } from "react-router-dom";
+import { installSafeDomGuards } from "./lib/safeDom";
 
 const basename = import.meta.env.BASE_URL;
 
@@ -24,6 +25,8 @@ if (STORED_VERSION !== APP_VERSION) {
 
 // Global handler for ChunkLoadError (MIME type text/html error)
 if (typeof window !== 'undefined') {
+  installSafeDomGuards();
+
   window.addEventListener('error', (event) => {
     // Check if it's a script loading error
     const isScriptError = event.target && (event.target as any).tagName === 'SCRIPT';

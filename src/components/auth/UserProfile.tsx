@@ -1,34 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { User, Settings, LogOut, Edit } from 'lucide-react';
+import { Settings, LogOut, Edit, X } from 'lucide-react';
 
 export function UserProfile() {
   const { user, logout, updateProfile, updatePassword } = useAuth();
   const navigate = useNavigate();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [editForm, setEditForm] = useState({
     name: user?.name || '',
     newPassword: '',
@@ -36,7 +22,7 @@ export function UserProfile() {
   });
 
   // Sync state when dialog opens to prevent stale data
-  React.useEffect(() => {
+  useEffect(() => {
     if (isEditDialogOpen && user) {
       setEditForm({
         name: user.name || '',
@@ -46,6 +32,33 @@ export function UserProfile() {
       setShowPasswordSection(false);
     }
   }, [isEditDialogOpen, user]);
+
+  useEffect(() => {
+    if (!isMenuOpen && !isEditDialogOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMenuOpen(false);
+        setIsEditDialogOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isMenuOpen, isEditDialogOpen]);
 
   if (!user) return null;
 
@@ -122,139 +135,174 @@ export function UserProfile() {
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={user.avatar} alt={user.name} />
-            <AvatarFallback>
-              {getUserInitials(user.name)}
-            </AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-80" align="end" forceMount>
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-2">
-            <div className="flex items-center space-x-2">
-              <Avatar className="h-10 w-10">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback>
-                  {getUserInitials(user.name)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1">
-                <p className="text-sm font-medium leading-none">{user.name}</p>
-                <p className="text-xs leading-none text-muted-foreground mt-1">
-                  {user.email}
-                </p>
+    <>
+      <div ref={containerRef} className="relative">
+          <Button
+            variant="ghost"
+            className="relative h-8 w-8 rounded-full"
+            onClick={() => setIsMenuOpen((prev) => !prev)}
+          >
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={user.avatar} alt={user.name} />
+              <AvatarFallback>
+                {getUserInitials(user.name)}
+              </AvatarFallback>
+            </Avatar>
+          </Button>
+        {isMenuOpen && (
+        <div className="absolute right-0 top-10 z-50 w-80 rounded-lg border bg-background p-3 shadow-lg">
+          <div className="font-normal">
+            <div className="flex flex-col space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center space-x-2">
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={user.avatar} alt={user.name} />
+                  <AvatarFallback>
+                    {getUserInitials(user.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <p className="text-sm font-medium leading-none">{user.name}</p>
+                  <p className="text-xs leading-none text-muted-foreground mt-1">
+                    {user.email}
+                  </p>
+                </div>
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsMenuOpen(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              <Badge className={getRoleBadgeColor(user.role)}>
-                {user.role.toUpperCase()}
-              </Badge>
-              {user.modules.map((module) => (
-                <Badge key={module} variant="outline" className="text-xs">
-                  {module.toUpperCase()}
+              <div className="flex flex-wrap gap-1">
+                <Badge className={getRoleBadgeColor(user.role)}>
+                  {user.role.toUpperCase()}
                 </Badge>
-              ))}
+                {user.modules.map((module) => (
+                  <Badge key={module} variant="outline" className="text-xs">
+                    {module.toUpperCase()}
+                  </Badge>
+                ))}
+              </div>
             </div>
           </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+          <div className="my-2 h-px bg-muted" />
 
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogTrigger asChild>
-            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-              <Edit className="mr-2 h-4 w-4" />
-              <span>Edit Profil</span>
-            </DropdownMenuItem>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Edit Profil</DialogTitle>
-              <DialogDescription>
-                Ubah informasi profil Anda di sini.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Nama
-                </Label>
-                <Input
-                  id="name"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="col-span-3"
-                />
-              </div>
+          <button
+            className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onClick={() => {
+              setIsMenuOpen(false);
+              setIsEditDialogOpen(true);
+            }}
+          >
+            <Edit className="mr-2 h-4 w-4" />
+            <span>Edit Profil</span>
+          </button>
 
-              <div className="border-t pt-4 mt-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowPasswordSection(!showPasswordSection)}
-                  className="w-full justify-start text-muted-foreground"
-                >
-                  <Settings className="mr-2 h-4 w-4" />
-                  {showPasswordSection ? 'Batal Ganti Password' : 'Ganti Password?'}
-                </Button>
+          <button
+            className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onClick={() => {
+              setIsMenuOpen(false);
+              navigate('/hrd/settings');
+            }}
+          >
+            <Settings className="mr-2 h-4 w-4" />
+            <span>Pengaturan</span>
+          </button>
+          <div className="my-2 h-px bg-muted" />
+          <button className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent" onClick={handleLogout}>
+            <LogOut className="mr-2 h-4 w-4" />
+            <span>Keluar</span>
+          </button>
+        </div>
+        )}
+      </div>
 
-                {showPasswordSection && (
-                  <div className="space-y-4 mt-4 animate-in slide-in-from-top-2 duration-200">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="new-password" title="Password Baru" className="text-right text-xs">
-                        Baru
-                      </Label>
-                      <Input
-                        id="new-password"
-                        type="password"
-                        value={editForm.newPassword}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, newPassword: e.target.value }))}
-                        className="col-span-3"
-                        placeholder="Minimal 6 karakter"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="confirm-password" title="Konfirmasi Password" className="text-right text-xs">
-                        Konfirmasi
-                      </Label>
-                      <Input
-                        id="confirm-password"
-                        type="password"
-                        value={editForm.confirmPassword}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                        className="col-span-3"
-                        placeholder="Ulangi password baru"
-                      />
-                    </div>
+      {isEditDialogOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setIsEditDialogOpen(false)}
+        >
+        <div
+          className="w-full max-w-[425px] rounded-lg border bg-background p-6 shadow-lg"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+            <h3 className="text-lg font-semibold leading-none tracking-tight">Edit Profil</h3>
+            <p className="text-sm text-muted-foreground">
+              Ubah informasi profil Anda di sini.
+            </p>
+            </div>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsEditDialogOpen(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">
+                Nama
+              </Label>
+              <Input
+                id="name"
+                value={editForm.name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                className="col-span-3"
+              />
+            </div>
+
+            <div className="border-t pt-4 mt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPasswordSection(!showPasswordSection)}
+                className="w-full justify-start text-muted-foreground"
+              >
+                <Settings className="mr-2 h-4 w-4" />
+                {showPasswordSection ? 'Batal Ganti Password' : 'Ganti Password?'}
+              </Button>
+
+              {showPasswordSection && (
+                <div className="space-y-4 mt-4 animate-in slide-in-from-top-2 duration-200">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="new-password" title="Password Baru" className="text-right text-xs">
+                      Baru
+                    </Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      value={editForm.newPassword}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                      className="col-span-3"
+                      placeholder="Minimal 6 karakter"
+                    />
                   </div>
-                )}
-              </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="confirm-password" title="Konfirmasi Password" className="text-right text-xs">
+                      Konfirmasi
+                    </Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      value={editForm.confirmPassword}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                      className="col-span-3"
+                      placeholder="Ulangi password baru"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-                Batal
-              </Button>
-              <Button onClick={handleUpdateProfile}>
-                Simpan
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        <DropdownMenuItem onClick={() => navigate('/hrd/settings')}>
-          <Settings className="mr-2 h-4 w-4" />
-          <span>Pengaturan</span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout}>
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Keluar</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button onClick={handleUpdateProfile}>
+              Simpan
+            </Button>
+          </div>
+        </div>
+        </div>
+      )}
+    </>
   );
 }

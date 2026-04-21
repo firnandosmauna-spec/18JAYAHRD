@@ -1,111 +1,168 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
 import {
+    AlertCircle,
     Bell,
     CheckCircle,
+    X,
     XCircle,
-    AlertCircle,
-    X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useNotificationsContext } from '@/contexts/NotificationContext';
 
 export function NotificationBell() {
-    const { notifications, unreadCount, markAsRead, markAllAsRead, clearNotification } = useNotificationsContext();
+    const {
+        notifications,
+        unreadCount,
+        markAsRead,
+        markAllAsRead,
+        clearNotification,
+    } = useNotificationsContext();
     const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (!containerRef.current?.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleEscape);
+
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleEscape);
+        };
+    }, [isOpen]);
 
     const getNotificationIcon = (type: string) => {
         switch (type) {
-            case 'success': return <CheckCircle className="w-4 h-4 text-green-500" />;
-            case 'warning': return <AlertCircle className="w-4 h-4 text-orange-500" />;
-            case 'error': return <XCircle className="w-4 h-4 text-red-500" />;
-            default: return <Bell className="w-4 h-4 text-blue-500" />;
+            case 'success':
+                return <CheckCircle className="h-4 w-4 text-green-500" />;
+            case 'warning':
+                return <AlertCircle className="h-4 w-4 text-orange-500" />;
+            case 'error':
+                return <XCircle className="h-4 w-4 text-red-500" />;
+            default:
+                return <Bell className="h-4 w-4 text-blue-500" />;
         }
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="w-5 h-5 text-muted-foreground" />
-                    {unreadCount > 0 && (
-                        <motion.span
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-mono"
-                        >
-                            {unreadCount}
-                        </motion.span>
-                    )}
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <div className="flex items-center justify-between">
-                        <DialogTitle className="font-display">Notifikasi</DialogTitle>
-                        {unreadCount > 0 && (
-                            <Button variant="ghost" size="sm" onClick={markAllAsRead} className="text-hrd font-body text-xs">
-                                Tandai semua dibaca
-                            </Button>
-                        )}
-                    </div>
-                    <DialogDescription className="font-body">
-                        {unreadCount > 0 ? `${unreadCount} notifikasi belum dibaca` : 'Semua notifikasi telah dibaca'}
-                    </DialogDescription>
-                </DialogHeader>
-                <ScrollArea className="h-[400px] pr-4">
-                    <div className="space-y-2">
-                        <AnimatePresence>
-                            {notifications.map((notification) => (
-                                <motion.div
-                                    key={notification.id}
-                                    initial={{ opacity: 0, x: -20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: 20 }}
-                                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${notification.read ? 'bg-gray-50 border-gray-200' : 'bg-hrd/5 border-hrd/20'
-                                        }`}
-                                    onClick={() => markAsRead(notification.id)}
+        <div ref={containerRef} className="relative">
+            <Button
+                variant="ghost"
+                size="icon"
+                className="relative"
+                onClick={() => setIsOpen((prev) => !prev)}
+            >
+                <Bell className="h-5 w-5 text-muted-foreground" />
+                {unreadCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 font-mono text-xs text-white">
+                        {unreadCount}
+                    </span>
+                )}
+            </Button>
+
+            {isOpen && (
+                <div className="absolute right-0 top-12 z-50 w-[360px] rounded-lg border bg-background p-4 shadow-lg">
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                        <div>
+                            <h3 className="font-display text-base font-semibold">Notifikasi</h3>
+                            <p className="font-body text-sm text-muted-foreground">
+                                {unreadCount > 0
+                                    ? `${unreadCount} notifikasi belum dibaca`
+                                    : 'Semua notifikasi telah dibaca'}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            {unreadCount > 0 && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={markAllAsRead}
+                                    className="font-body text-xs text-hrd"
                                 >
-                                    <div className="flex items-start gap-3">
-                                        <div className="mt-0.5">{getNotificationIcon(notification.type)}</div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between">
-                                                <p className={`text-sm font-body ${notification.read ? 'text-gray-600' : 'text-[#1C1C1E] font-medium'}`}>
-                                                    {notification.title}
-                                                </p>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-6 w-6"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        clearNotification(notification.id);
-                                                    }}
-                                                >
-                                                    <X className="w-3 h-3" />
-                                                </Button>
-                                            </div>
-                                            <p className="text-xs text-muted-foreground font-body mt-0.5">{notification.message}</p>
-                                            <p className="text-xs text-muted-foreground font-mono mt-1">
-                                                {new Date(notification.created_at).toLocaleString('id-ID')}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            ))}
-                        </AnimatePresence>
+                                    Tandai semua dibaca
+                                </Button>
+                            )}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setIsOpen(false)}
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
-                </ScrollArea>
-            </DialogContent>
-        </Dialog>
+
+                    <div className="max-h-[400px] space-y-2 overflow-y-auto pr-1">
+                        {notifications.length === 0 && (
+                            <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                                Tidak ada notifikasi saat ini.
+                            </div>
+                        )}
+
+                        {notifications.map((notification) => (
+                            <div
+                                key={notification.id}
+                                className={`cursor-pointer rounded-lg border p-3 transition-colors ${
+                                    notification.read
+                                        ? 'border-gray-200 bg-gray-50'
+                                        : 'border-hrd/20 bg-hrd/5'
+                                }`}
+                                onClick={() => markAsRead(notification.id)}
+                            >
+                                <div className="flex items-start gap-3">
+                                    <div className="mt-0.5">{getNotificationIcon(notification.type)}</div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p
+                                                className={`text-sm font-body ${
+                                                    notification.read
+                                                        ? 'text-gray-600'
+                                                        : 'font-medium text-[#1C1C1E]'
+                                                }`}
+                                            >
+                                                {notification.title}
+                                            </p>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6 shrink-0"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    clearNotification(notification.id);
+                                                }}
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                        <p className="mt-0.5 font-body text-xs text-muted-foreground">
+                                            {notification.message}
+                                        </p>
+                                        <p className="mt-1 font-mono text-xs text-muted-foreground">
+                                            {new Date(notification.created_at).toLocaleString('id-ID')}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

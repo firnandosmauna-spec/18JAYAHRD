@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/lib/supabase';
 import { PurchaseService } from '@/services/purchaseService';
 import type { 
   Supplier, 
@@ -12,7 +13,7 @@ export function useSuppliers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -23,11 +24,38 @@ export function useSuppliers() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchSuppliers();
-  }, []);
+
+    // Auto-refresh when supplier data or deposits change
+    const channel = supabase
+      .channel('supplier_balance_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'supplier_deposits' },
+        () => {
+          PurchaseService.getSuppliers()
+            .then(data => setSuppliers(data))
+            .catch(err => console.warn('Failed to auto-refresh suppliers:', err));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'suppliers' },
+        () => {
+          PurchaseService.getSuppliers()
+            .then(data => setSuppliers(data))
+            .catch(err => console.warn('Failed to auto-refresh suppliers:', err));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchSuppliers]);
 
   const createSupplier = async (supplier: Omit<Supplier, 'id' | 'created_at' | 'updated_at'>) => {
     try {

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Clock,
   Calendar,
@@ -8,8 +7,6 @@ import {
   AlertCircle,
   Plus,
   Search,
-  Filter,
-  MoreVertical,
   User,
   MapPin,
   Timer,
@@ -32,7 +29,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -41,21 +37,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -138,6 +119,60 @@ function calculateWorkHours(checkIn?: string, checkOut?: string): string {
   const minutes = diffMinutes % 60;
 
   return `${hours}j ${minutes}m`;
+}
+
+function NativeSelect({
+  value,
+  onChange,
+  className = '',
+  children,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+    >
+      {children}
+    </select>
+  );
+}
+
+function InlineModal({
+  title,
+  description,
+  onClose,
+  maxWidth = 'max-w-md',
+  children,
+}: {
+  title: string;
+  description: string;
+  onClose: () => void;
+  maxWidth?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className={`w-full ${maxWidth} max-h-[90vh] overflow-y-auto rounded-lg border bg-background p-6 shadow-lg`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 space-y-1">
+          <h3 className="font-display text-lg font-semibold">{title}</h3>
+          <p className="font-body text-sm text-muted-foreground">{description}</p>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 // Konstanta ini sekarang akan didapat dari database settings
@@ -532,13 +567,11 @@ export function AttendanceManagement() {
   const calculatePenalty = (record: AttendanceRecord): number => {
     const status = (record.status || '').toLowerCase().trim();
 
-    // --- Absence Deduction Formula (P+M+G)/26 ---
+    // --- Absence Deduction Formula based on active payroll allowance settings ---
     if (['absent', 'tidak hadir', 'alpha', 'alpa'].includes(status)) {
       if (!payrollSettings) return 0;
       const workingDays = 26;
-      const totalAllowances = (payrollSettings.payroll_allowance_position || 0) +
-        (payrollSettings.payroll_allowance_meal || 0) +
-        (payrollSettings.payroll_allowance_gasoline || 0);
+      const totalAllowances = payrollSettings.payroll_allowance_position || 0;
       return Math.round(totalAllowances / workingDays);
     }
 
@@ -842,19 +875,14 @@ export function AttendanceManagement() {
             />
           </div>
           <div>
-            <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-              <SelectTrigger className="font-body">
-                <SelectValue placeholder="Semua Karyawan" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all"><span>Semua Karyawan</span></SelectItem>
+            <NativeSelect value={selectedEmployeeFilter} onChange={setSelectedEmployeeFilter} className="font-body">
+                <option value="all">Semua Karyawan</option>
                 {employees.map(emp => (
-                  <SelectItem key={emp.id} value={emp.id} className="font-body">
+                  <option key={emp.id} value={emp.id}>
                     {emp.name}
-                  </SelectItem>
+                  </option>
                 ))}
-              </SelectContent>
-            </Select>
+            </NativeSelect>
           </div>
           <div className="flex gap-2 col-span-1 md:col-span-2 justify-end">
             <Button variant="outline" className="font-body" onClick={handleExportExcel}>
@@ -868,7 +896,7 @@ export function AttendanceManagement() {
       {/* Statistics Cards */}
       {user?.role !== 'staff' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
+          <div>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -883,9 +911,9 @@ export function AttendanceManagement() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <div>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -900,9 +928,9 @@ export function AttendanceManagement() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <div>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -917,9 +945,9 @@ export function AttendanceManagement() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <div>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -934,9 +962,9 @@ export function AttendanceManagement() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+          <div>
             <Card className="border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -952,7 +980,7 @@ export function AttendanceManagement() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         </div>
       )}
 
@@ -1492,29 +1520,28 @@ export function AttendanceManagement() {
       </Tabs>
 
       {/* Add Attendance Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-display">Catat Absensi</DialogTitle>
-            <DialogDescription className="font-body">
-              Tambah data kehadiran karyawan
-            </DialogDescription>
-          </DialogHeader>
+      {showAddDialog && (
+        <InlineModal
+          title="Catat Absensi"
+          description="Tambah data kehadiran karyawan"
+          onClose={() => setShowAddDialog(false)}
+          maxWidth="max-w-md"
+        >
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="font-body">Karyawan <span className="text-red-500">*</span></Label>
-              <Select value={formData.employee_id} onValueChange={(value) => setFormData({ ...formData, employee_id: value })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih karyawan" />
-                </SelectTrigger>
-                <SelectContent>
+              <NativeSelect
+                value={formData.employee_id}
+                onChange={(value) => setFormData({ ...formData, employee_id: value })}
+                className="font-body"
+              >
+                <option value="">Pilih karyawan</option>
                   {employees.map(emp => (
-                    <SelectItem key={emp.id} value={emp.id} className="font-body">
+                    <option key={emp.id} value={emp.id}>
                       {emp.name} - {emp.position}
-                    </SelectItem>
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
+              </NativeSelect>
             </div>
 
             <div className="space-y-2">
@@ -1529,18 +1556,17 @@ export function AttendanceManagement() {
 
             <div className="space-y-2">
               <Label className="font-body">Status <span className="text-red-500">*</span></Label>
-              <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value as AttendanceStatus })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih status" />
-                </SelectTrigger>
-                <SelectContent>
+              <NativeSelect
+                value={formData.status}
+                onChange={(value) => setFormData({ ...formData, status: value as AttendanceStatus })}
+                className="font-body"
+              >
                   {Object.entries(statusLabels).map(([key, label]) => (
-                    <SelectItem key={key} value={key} className="font-body">
+                    <option key={key} value={key}>
                       {label}
-                    </SelectItem>
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
+              </NativeSelect>
             </div>
 
             {(formData.status === 'present' || formData.status === 'late') && (
@@ -1609,7 +1635,7 @@ export function AttendanceManagement() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); }} className="font-body">
               Batal
             </Button>
@@ -1617,19 +1643,18 @@ export function AttendanceManagement() {
               <Clock className="w-4 h-4 mr-2" />
               Simpan
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
 
       {/* View Attendance Details Dialog */}
-      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display">Detail Absensi</DialogTitle>
-            <DialogDescription className="font-body">
-              Informasi lengkap kehadiran karyawan
-            </DialogDescription>
-          </DialogHeader>
+      {showViewDialog && (
+        <InlineModal
+          title="Detail Absensi"
+          description="Informasi lengkap kehadiran karyawan"
+          onClose={() => setShowViewDialog(false)}
+          maxWidth="max-w-lg"
+        >
           {selectedAttendance && (
             <div className="space-y-4">
               {/* Employee Info */}
@@ -1664,18 +1689,17 @@ export function AttendanceManagement() {
                     </div>
                     <div className="space-y-2">
                       <Label className="font-body">Status</Label>
-                      <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value as AttendanceStatus })}>
-                        <SelectTrigger className="font-body">
-                          <SelectValue placeholder="Pilih status" />
-                        </SelectTrigger>
-                        <SelectContent>
+                      <NativeSelect
+                        value={formData.status}
+                        onChange={(value) => setFormData({ ...formData, status: value as AttendanceStatus })}
+                        className="font-body"
+                      >
                           {Object.entries(statusLabels).map(([key, label]) => (
-                            <SelectItem key={key} value={key} className="font-body">
+                            <option key={key} value={key}>
                               {label}
-                            </SelectItem>
+                            </option>
                           ))}
-                        </SelectContent>
-                      </Select>
+                      </NativeSelect>
                     </div>
                     <div className="space-y-2">
                       <Label className="font-body">Check In</Label>
@@ -1768,7 +1792,7 @@ export function AttendanceManagement() {
               </div>
             </div>
           )}
-          <DialogFooter className="gap-2 sm:gap-0">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             {selectedAttendance && (
               <div className="flex-1 flex gap-2">
                 {user?.role === 'Administrator' && selectedAttendance.status === 'late' && (
@@ -1815,19 +1839,18 @@ export function AttendanceManagement() {
                 )
               )}
             </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
 
       {/* Holiday Management Dialog */}
-      <Dialog open={showHolidayDialog} onOpenChange={setShowHolidayDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-display">Pengaturan Hari Libur</DialogTitle>
-            <DialogDescription className="font-body">
-              Pilih tanggal libur agar tidak terdeteksi sebagai mangkir
-            </DialogDescription>
-          </DialogHeader>
+      {showHolidayDialog && (
+        <InlineModal
+          title="Pengaturan Hari Libur"
+          description="Pilih tanggal libur agar tidak terdeteksi sebagai mangkir"
+          onClose={() => setShowHolidayDialog(false)}
+          maxWidth="max-w-md"
+        >
           <div className="space-y-4">
             <div className="flex gap-2">
               <Input
@@ -1898,13 +1921,13 @@ export function AttendanceManagement() {
               </AlertDescription>
             </Alert>
           </div>
-          <DialogFooter>
+          <div className="flex justify-end">
             <Button variant="outline" onClick={() => setShowHolidayDialog(false)} className="font-body">
               Tutup
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
     </div>
   );
 }

@@ -30,7 +30,6 @@ export class PurchaseService {
     try {
       if (invoicesError) {
         console.warn('Error fetching supplier debts:', invoicesError);
-        return suppliers || [];
       }
 
       // Aggregate debt per supplier
@@ -42,9 +41,10 @@ export class PurchaseService {
 
       const result = (suppliers || []).map(s => {
         const debtFromInvoices = debtMap[s.id] || 0;
-        
+
         return {
           ...s,
+          // deposit_balance comes directly from the stored column (maintained by DB trigger)
           total_debt: debtFromInvoices > 0 ? debtFromInvoices : 0
         };
       });

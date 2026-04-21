@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { 
   Users, 
   Hammer, 
@@ -25,25 +24,67 @@ import {
   TableHeader, 
   TableRow 
 } from '@/components/ui/table';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogFooter,
-  DialogDescription,
-} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
 import { useEmployees } from '@/hooks/useSupabase';
 import { useProjectLaborRates, useWorkerTypes } from '@/hooks/useProject';
+
+function NativeSelect({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      {children}
+    </select>
+  );
+}
+
+function InlineModal({
+  title,
+  description,
+  onClose,
+  children,
+}: {
+  title: string;
+  description: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[425px] rounded-lg border bg-background p-6 shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 space-y-1">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold leading-none tracking-tight">{title}</h3>
+              <p className="text-sm text-muted-foreground">{description}</p>
+            </div>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export function WorkerManagement() {
   const { 
@@ -634,14 +675,12 @@ export function WorkerManagement() {
       </Tabs>
 
       {/* Worker Dialog */}
-      <Dialog open={showWorkerDialog} onOpenChange={setShowWorkerDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>{workerForm.id ? 'Edit Data Tukang' : 'Tambah Tukang Baru'}</DialogTitle>
-            <DialogDescription>
-              Lengkapi informasi tenaga kerja lapangan di bawah ini.
-            </DialogDescription>
-          </DialogHeader>
+      {showWorkerDialog && (
+        <InlineModal
+          title={workerForm.id ? 'Edit Data Tukang' : 'Tambah Tukang Baru'}
+          description="Lengkapi informasi tenaga kerja lapangan di bawah ini."
+          onClose={() => setShowWorkerDialog(false)}
+        >
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Nama Lengkap</Label>
@@ -684,37 +723,27 @@ export function WorkerManagement() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="status">Status</Label>
-                <Select 
+                <NativeSelect 
                   value={workerForm.status} 
-                  onValueChange={(val: any) => setWorkerForm({ ...workerForm, status: val })}
+                  onChange={(val) => setWorkerForm({ ...workerForm, status: val as 'active' | 'inactive' })}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Aktif</SelectItem>
-                    <SelectItem value="inactive">Nonaktif</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <option value="active">Aktif</option>
+                  <option value="inactive">Nonaktif</option>
+                </NativeSelect>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="worker_type">Tipe Pekerjaan</Label>
-                <Select 
+                <NativeSelect 
                   value={workerForm.worker_type_id} 
-                  onValueChange={(val: any) => setWorkerForm({ ...workerForm, worker_type_id: val })}
+                  onChange={(val) => setWorkerForm({ ...workerForm, worker_type_id: val })}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih Tipe" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Tanpa Tipe</SelectItem>
+                  <option value="none">Tanpa Tipe</option>
                     {workerTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>
+                      <option key={type.id} value={type.id}>{type.name}</option>
                     ))}
-                  </SelectContent>
-                </Select>
+                </NativeSelect>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="email">Email (Opsional)</Label>
@@ -728,7 +757,7 @@ export function WorkerManagement() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowWorkerDialog(false)}>
               Batal
             </Button>
@@ -740,19 +769,17 @@ export function WorkerManagement() {
               {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
               {workerForm.id ? 'Simpan Perubahan' : 'Tambah Tukang'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
 
       {/* Rate Dialog */}
-      <Dialog open={showRateDialog} onOpenChange={setShowRateDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>{rateForm.id ? 'Edit Master Upah' : 'Tambah Master Upah'}</DialogTitle>
-            <DialogDescription>
-              Tentukan harga standar untuk satuan pekerjaan tertentu.
-            </DialogDescription>
-          </DialogHeader>
+      {showRateDialog && (
+        <InlineModal
+          title={rateForm.id ? 'Edit Master Upah' : 'Tambah Master Upah'}
+          description="Tentukan harga standar untuk satuan pekerjaan tertentu."
+          onClose={() => setShowRateDialog(false)}
+        >
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="name">Nama Pekerjaan</Label>
@@ -794,7 +821,7 @@ export function WorkerManagement() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowRateDialog(false)}>
               Batal
             </Button>
@@ -806,19 +833,17 @@ export function WorkerManagement() {
               {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
               {rateForm.id ? 'Simpan Perubahan' : 'Tambah Master'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
 
       {/* Worker Type Dialog */}
-      <Dialog open={showWorkerTypeDialog} onOpenChange={setShowWorkerTypeDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>{workerTypeForm.id ? 'Edit Tipe Pekerjaan' : 'Tambah Tipe Baru'}</DialogTitle>
-            <DialogDescription>
-              Misal: Harian, Borongan, Kontrak, dll.
-            </DialogDescription>
-          </DialogHeader>
+      {showWorkerTypeDialog && (
+        <InlineModal
+          title={workerTypeForm.id ? 'Edit Tipe Pekerjaan' : 'Tambah Tipe Baru'}
+          description="Misal: Harian, Borongan, Kontrak, dll."
+          onClose={() => setShowWorkerTypeDialog(false)}
+        >
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="type_name">Nama Tipe</Label>
@@ -839,7 +864,7 @@ export function WorkerManagement() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowWorkerTypeDialog(false)}>
               Batal
             </Button>
@@ -851,9 +876,9 @@ export function WorkerManagement() {
               {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
               {workerTypeForm.id ? 'Simpan' : 'Tambah'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
     </div>
   );
 }

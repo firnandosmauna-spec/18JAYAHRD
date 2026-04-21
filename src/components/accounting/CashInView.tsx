@@ -7,9 +7,9 @@ import { Label } from '../../components/ui/label';
 import { Plus, Save, Loader2, ArrowLeft, ArrowUpRight } from 'lucide-react';
 import { toast } from '../../components/ui/use-toast';
 import { accountingService } from '../../services/accountingService';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { formatCurrency } from '../../lib/utils';
 import { Account } from '../../types/accounting';
+import { AccountingNativeSelect } from './AccountingNativeSelect';
 
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -159,21 +159,17 @@ export function CashInView() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Akun Penerima (Kas/Bank)</Label>
-                                <Select
+                                <AccountingNativeSelect
                                     value={formData.destination_account_id}
-                                    onValueChange={(val) => setFormData(p => ({ ...p, destination_account_id: val }))}
+                                    onChange={(e) => setFormData(p => ({ ...p, destination_account_id: e.target.value }))}
                                 >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Pilih akun kas..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {assetAccounts.map(acc => (
-                                            <SelectItem key={acc.id} value={acc.id}>
-                                                {acc.code} - {acc.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                    <option value="">Pilih akun kas...</option>
+                                    {assetAccounts.map(acc => (
+                                        <option key={acc.id} value={acc.id}>
+                                            {acc.code} - {acc.name}
+                                        </option>
+                                    ))}
+                                </AccountingNativeSelect>
                                 {formData.destination_account_id && (
                                     <div className="flex items-center gap-2 mt-1">
                                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Saldo Sekarang:</span>
@@ -185,21 +181,17 @@ export function CashInView() {
                             </div>
                             <div className="space-y-2">
                                 <Label>Sumber Dana (Akun Kredit)</Label>
-                                <Select
+                                <AccountingNativeSelect
                                     value={formData.source_account_id}
-                                    onValueChange={(val) => setFormData(p => ({ ...p, source_account_id: val }))}
+                                    onChange={(e) => setFormData(p => ({ ...p, source_account_id: e.target.value }))}
                                 >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Pilih sumber dana..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {sourceAccounts.map(acc => (
-                                            <SelectItem key={acc.id} value={acc.id}>
-                                                {acc.code} - {acc.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                    <option value="">Pilih sumber dana...</option>
+                                    {sourceAccounts.map(acc => (
+                                        <option key={acc.id} value={acc.id}>
+                                            {acc.code} - {acc.name}
+                                        </option>
+                                    ))}
+                                </AccountingNativeSelect>
                                 {formData.source_account_id && (
                                     <div className="flex items-center gap-2 mt-1">
                                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Saldo Sekarang:</span>

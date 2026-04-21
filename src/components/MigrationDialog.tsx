@@ -1,11 +1,4 @@
 import { useState, useEffect } from 'react';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogHeader, 
-  DialogTitle 
-} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -127,23 +120,27 @@ export function MigrationDialog({ open, onOpenChange }: MigrationDialogProps) {
     }
   };
 
+  if (!open) {
+    return null;
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4">
+      <div className="sm:max-w-md w-full rounded-lg border bg-background p-6 shadow-lg">
+        <div className="mb-4">
           <div className="flex items-center gap-3">
             {getIcon()}
-            <DialogTitle className="font-display">{getTitle()}</DialogTitle>
+            <h2 className="font-display text-lg font-semibold">{getTitle()}</h2>
           </div>
-          <DialogDescription className="font-body">
+          <p className="mt-2 font-body text-sm text-muted-foreground">
             {migrationState === 'checking' && 'Memeriksa apakah migrasi data diperlukan...'}
             {migrationState === 'idle' && migrationNeeded && 'Aplikasi akan memigrasikan data dari localStorage ke Supabase untuk performa yang lebih baik.'}
             {migrationState === 'idle' && !migrationNeeded && 'Database Supabase sudah siap digunakan.'}
             {migrationState === 'migrating' && 'Sedang memigrasikan data ke Supabase. Mohon tunggu...'}
             {migrationState === 'success' && 'Data berhasil dimigrasikan ke Supabase. Aplikasi akan dimuat ulang.'}
             {migrationState === 'error' && 'Terjadi kesalahan saat migrasi data.'}
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </div>
 
         <div className="space-y-4">
           {/* Progress Bar */}
@@ -255,7 +252,7 @@ export function MigrationDialog({ open, onOpenChange }: MigrationDialogProps) {
             )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }

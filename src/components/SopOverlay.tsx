@@ -3,7 +3,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { sopService } from '@/services/sopService';
 import type { CompanySOP } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
@@ -104,22 +103,17 @@ export function SopOverlay() {
     if (!isOpen) return null;
 
     return (
-        <Dialog open={isOpen} onOpenChange={() => { }}>
-            <DialogContent
-                className="sm:max-w-5xl w-[95vw] h-[85vh] max-h-[95vh] flex flex-col p-0 gap-0 overflow-hidden bg-white z-[9999] pointer-events-auto"
-                onPointerDownOutside={(e) => {
-                    e.preventDefault();
-                }}
-            >
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+            <div className="sm:max-w-5xl w-[95vw] h-[85vh] max-h-[95vh] flex flex-col gap-0 overflow-hidden rounded-lg bg-white shadow-2xl">
                 <div className="bg-gradient-to-r from-[#0D7377] to-[#14A098] p-4 text-white text-center flex-shrink-0">
                     <div className="mx-auto bg-white/20 w-12 h-12 rounded-full flex items-center justify-center mb-2">
                         <FileText className="w-6 h-6 text-white" />
                     </div>
-                    <DialogHeader>
-                        <DialogTitle className="text-2xl font-bold font-display text-white text-center">
+                    <div>
+                        <h2 className="text-2xl font-bold font-display text-white text-center">
                             {isEditing ? 'Edit SOP Perusahaan' : (sop?.title || 'SOP Perusahaan')}
-                        </DialogTitle>
-                    </DialogHeader>
+                        </h2>
+                    </div>
                 </div>
 
                 <div className="p-4 sm:p-10 overflow-y-auto flex-grow flex flex-col">
@@ -155,7 +149,7 @@ export function SopOverlay() {
                     )}
                 </div>
 
-                <DialogFooter className="p-4 bg-gray-50 border-t flex sm:flex-row flex-col gap-2 justify-end items-center flex-shrink-0 sm:justify-between">
+                <div className="p-4 bg-gray-50 border-t flex sm:flex-row flex-col gap-2 justify-end items-center flex-shrink-0 sm:justify-between">
                     {isAdminOrManager && !isEditing && (
                         <Button
                             variant="outline"
@@ -205,8 +199,8 @@ export function SopOverlay() {
                             </Button>
                         </div>
                     )}
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+                </div>
+            </div>
+        </div>
     );
 }

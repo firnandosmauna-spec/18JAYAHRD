@@ -7,10 +7,10 @@ import { Label } from '../../components/ui/label';
 import { Plus, Trash2, Save, Loader2, ArrowLeft, History, Edit } from 'lucide-react';
 import { toast } from '../../components/ui/use-toast';
 import { accountingService } from '../../services/accountingService';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { formatCurrency, cn } from '../../lib/utils';
 import { JournalItem } from '../../types/accounting';
 import { Badge } from '../../components/ui/badge';
+import { AccountingNativeSelect } from './AccountingNativeSelect';
 
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -259,21 +259,18 @@ export function JournalEntryView() {
                                     {formData.items.map((item, index) => (
                                         <tr key={index} className="hover:bg-gray-50/50">
                                             <td className="px-6 py-4 min-w-[200px]">
-                                                <Select
+                                                <AccountingNativeSelect
                                                     value={item.account_id}
-                                                    onValueChange={(val) => updateItem(index, 'account_id', val)}
+                                                    onChange={(e) => updateItem(index, 'account_id', e.target.value)}
+                                                    className="border-none bg-transparent shadow-none hover:bg-gray-100"
                                                 >
-                                                    <SelectTrigger className="border-none shadow-none bg-transparent hover:bg-gray-100 text-left">
-                                                        <SelectValue placeholder="Pilih akun..." />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {accounts.map(acc => (
-                                                            <SelectItem key={acc.id} value={acc.id}>
-                                                                {acc.code} - {acc.name}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                    <option value="">Pilih akun...</option>
+                                                    {accounts.map(acc => (
+                                                        <option key={acc.id} value={acc.id}>
+                                                            {acc.code} - {acc.name}
+                                                        </option>
+                                                    ))}
+                                                </AccountingNativeSelect>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <Input

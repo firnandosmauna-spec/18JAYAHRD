@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   DollarSign,
   Calendar,
@@ -9,7 +8,6 @@ import {
   Plus,
   Search,
   Filter,
-  MoreVertical,
   User,
   CreditCard,
   Download,
@@ -33,7 +31,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import {
   Table,
@@ -43,22 +40,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -132,6 +113,60 @@ const months = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
+function NativeSelect({
+  value,
+  onChange,
+  children,
+  className = '',
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${className}`}
+    >
+      {children}
+    </select>
+  );
+}
+
+function InlineModal({
+  title,
+  description,
+  onClose,
+  maxWidth = 'max-w-2xl',
+  children,
+}: {
+  title: string;
+  description: string;
+  onClose: () => void;
+  maxWidth?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className={`w-full ${maxWidth} max-h-[90vh] overflow-y-auto rounded-lg border bg-background p-6 shadow-lg`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 space-y-1">
+          <h3 className="font-display text-lg font-semibold">{title}</h3>
+          <p className="font-body text-sm text-muted-foreground">{description}</p>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -148,6 +183,21 @@ function formatDate(dateString?: string) {
     month: 'long',
     year: 'numeric'
   });
+}
+
+function isWorkerEmployee(employee: any) {
+  if (!employee) return false;
+
+  const position = (employee.position || "").toLowerCase();
+  const department = (employee.department || "").toLowerCase();
+  const departmentName = (employee.departments?.name || "").toLowerCase();
+  const workerKeywords = ["tukang", "pekerja", "lapangan"];
+
+  return workerKeywords.some((keyword) =>
+    position.includes(keyword) ||
+    department.includes(keyword) ||
+    departmentName.includes(keyword)
+  );
 }
 
 export function PayrollManagement() {
@@ -215,6 +265,8 @@ export function PayrollManagement() {
   const { loans } = useLoans();
   const { user } = useAuth();
   const { toast } = useToast();
+  const selectedEmployee = employees.find((employee) => employee.id === formData.employee_id);
+  const isSelectedEmployeeWorker = isWorkerEmployee(selectedEmployee);
 
   // Load initial settings
   useEffect(() => {
@@ -307,6 +359,7 @@ export function PayrollManagement() {
 
   // Unified calculation logic for preview
   const calculateDraftValues = (employee: any) => {
+    const isWorker = isWorkerEmployee(employee);
     const empAttendance = allAttendance.filter(a => a.employee_id === employee.id);
     const empLeaves = allLeaves.filter(l => l.employee_id === employee.id && l.status === 'approved');
 
@@ -348,17 +401,15 @@ export function PayrollManagement() {
 
     const workingDays = 26;
     const dailyAbsentPenalty = Math.round((
-      (payrollSettings?.payroll_allowance_position || 0) +
-      (payrollSettings?.payroll_allowance_meal || 0) +
-      (payrollSettings?.payroll_allowance_gasoline || 0)
+      isWorker ? 0 : (payrollSettings?.payroll_allowance_position || 0)
     ) / workingDays);
 
     // Fixed Base Salary as per revision (not prorated by attendance)
     const proratedBase = baseSalary;
-    const mealAllowance = payrollSettings?.payroll_allowance_meal || 0;
-    const gasolineAllowance = payrollSettings?.payroll_allowance_gasoline || 0;
-    const positionAllowance = payrollSettings?.payroll_allowance_position || 0;
-    const thrAllowance = payrollSettings?.payroll_allowance_thr || 0;
+    const mealAllowance = 0;
+    const gasolineAllowance = 0;
+    const positionAllowance = isWorker ? 0 : (payrollSettings?.payroll_allowance_position || 0);
+    const thrAllowance = isWorker ? 0 : (payrollSettings?.payroll_allowance_thr || 0);
     const bpjsDeduction = payrollSettings?.payroll_bpjs_rate || 0;
 
     // Perfect Attendance Reward
@@ -373,7 +424,7 @@ export function PayrollManagement() {
 
     const lateDeduction = totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
 
-    const manualAllowancesTotal = employee.allowances?.reduce((sum: number, i: any) => sum + (i.amount || 0), 0) || 0;
+    const manualAllowancesTotal = isWorker ? 0 : (employee.allowances?.reduce((sum: number, i: any) => sum + (i.amount || 0), 0) || 0);
     const manualDeductionsTotal = employee.deductions?.reduce((sum: number, i: any) => sum + (i.amount || 0), 0) || 0;
 
     // Loan Deductions
@@ -429,6 +480,7 @@ export function PayrollManagement() {
       const fetchData = async () => {
         const employee = employees.find(e => e.id === formData.employee_id);
         if (!employee) return;
+        const isWorker = isWorkerEmployee(employee);
 
         let newDeductionDetails: string[] = [];
         let newAllowanceDetails: string[] = [];
@@ -536,9 +588,7 @@ export function PayrollManagement() {
           if (payrollSettings) {
             const workingDays = 26; // Fixed 26 days divisor as per user request
             const dailyAbsentPenalty = Math.round((
-              (payrollSettings.payroll_allowance_position || 0) +
-              (payrollSettings.payroll_allowance_meal || 0) +
-              (payrollSettings.payroll_allowance_gasoline || 0)
+              isWorker ? 0 : (payrollSettings.payroll_allowance_position || 0)
             ) / workingDays);
 
             // Base salary fixed as per revision (not prorated by attendance)
@@ -546,9 +596,9 @@ export function PayrollManagement() {
 
             // Allowances are now recorded at full monthly value (no more proration here)
             // Deduction will be handled separately in absentDeductionAmount
-            mealAllowance = payrollSettings.payroll_allowance_meal || 0;
-            gasolineAllowance = payrollSettings.payroll_allowance_gasoline || 0;
-            positionAllowance = payrollSettings.payroll_allowance_position || 0;
+            mealAllowance = 0;
+            gasolineAllowance = 0;
+            positionAllowance = isWorker ? 0 : (payrollSettings.payroll_allowance_position || 0);
 
             // Explicit absence deduction based on (P+M+G)/26
             if (absentCount > 0) {
@@ -568,7 +618,7 @@ export function PayrollManagement() {
               bpjsDeduction = payrollSettings.payroll_bpjs_rate || 0;
             }
 
-            thrAllowance = payrollSettings.payroll_allowance_thr || 0;
+            thrAllowance = isWorker ? 0 : (payrollSettings.payroll_allowance_thr || 0);
 
             if (mealAllowance > 0) {
               newAllowanceDetails.push(`Uang Makan: ${formatCurrency(mealAllowance)} (Utuh)`);
@@ -579,7 +629,7 @@ export function PayrollManagement() {
           }
 
           // --- Manual Items from Employee Profile ---
-          manualAllowanceItems = employee.allowances || [];
+          manualAllowanceItems = isWorker ? [] : (employee.allowances || []);
           manualDeductionItems = employee.deductions || [];
 
           if (manualAllowanceItems.length > 0) {
@@ -729,7 +779,15 @@ export function PayrollManagement() {
     const manualAllowancesTotal = formData.manual_allowance_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
     const manualDeductionsTotal = formData.manual_deduction_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
 
-    const totalAllowances = allowances + gasoline + meal + position + discretionary + thr + manualAllowancesTotal + Number(formData.reward_allowance || 0);
+    const effectiveAllowances = isSelectedEmployeeWorker ? 0 : allowances;
+    const effectiveGasoline = isSelectedEmployeeWorker ? 0 : gasoline;
+    const effectiveMeal = isSelectedEmployeeWorker ? 0 : meal;
+    const effectivePosition = isSelectedEmployeeWorker ? 0 : position;
+    const effectiveDiscretionary = isSelectedEmployeeWorker ? 0 : discretionary;
+    const effectiveThr = isSelectedEmployeeWorker ? 0 : thr;
+    const effectiveManualAllowances = isSelectedEmployeeWorker ? 0 : manualAllowancesTotal;
+
+    const totalAllowances = effectiveAllowances + effectiveGasoline + effectiveMeal + effectivePosition + effectiveDiscretionary + effectiveThr + effectiveManualAllowances + Number(formData.reward_allowance || 0);
     const totalDeductions = deductions + bpjs + absent + late + manualDeductionsTotal;
     const overtimePay = overtimeHours * overtimeRate;
 
@@ -738,6 +796,8 @@ export function PayrollManagement() {
 
   // Handle edit payroll
   const handleEditPayroll = (p: PayrollRecord) => {
+    const employee = employees.find((item) => item.id === p.employee_id);
+    const isWorker = isWorkerEmployee(employee);
     setIsEditing(true);
     setEditId(p.id);
     setFormData({
@@ -745,20 +805,20 @@ export function PayrollManagement() {
       period_month: p.period_month,
       period_year: p.period_year,
       base_salary: p.base_salary.toString(),
-      allowances: (p.allowances - (p.gasoline_allowance || 0) - (p.meal_allowance || 0) - (p.position_allowance || 0) - (p.discretionary_allowance || 0) - (p.thr_allowance || 0)).toString(),
+      allowances: isWorker ? '0' : (p.allowances - (p.gasoline_allowance || 0) - (p.meal_allowance || 0) - (p.position_allowance || 0) - (p.discretionary_allowance || 0) - (p.thr_allowance || 0)).toString(),
       deductions: (p.deductions - (p.bpjs_deduction || 0) - (p.absent_deduction || 0) - (p.late_deduction || 0)).toString(),
       overtime_hours: '0',
       overtime_rate: '0',
-      gasoline_allowance: (p.gasoline_allowance || 0).toString(),
-      meal_allowance: (p.meal_allowance || 0).toString(),
-      position_allowance: (p.position_allowance || 0).toString(),
-      discretionary_allowance: (p.discretionary_allowance || 0).toString(),
-      thr_allowance: (p.thr_allowance || 0).toString(),
+      gasoline_allowance: isWorker ? '0' : (p.gasoline_allowance || 0).toString(),
+      meal_allowance: isWorker ? '0' : (p.meal_allowance || 0).toString(),
+      position_allowance: isWorker ? '0' : (p.position_allowance || 0).toString(),
+      discretionary_allowance: isWorker ? '0' : (p.discretionary_allowance || 0).toString(),
+      thr_allowance: isWorker ? '0' : (p.thr_allowance || 0).toString(),
       bpjs_deduction: (p.bpjs_deduction || 0).toString(),
       absent_deduction: (p.absent_deduction || 0).toString(),
       late_deduction: (p.late_deduction || 0).toString(),
       reward_allowance: (p.reward_allowance || 0).toString(),
-      manual_allowance_details: p.manual_allowance_details || [],
+      manual_allowance_details: isWorker ? [] : (p.manual_allowance_details || []),
       manual_deduction_details: p.manual_deduction_details || [],
       bank_account_details: p.bank_account_details || '',
       is_perfect_attendance: p.is_perfect_attendance || false,
@@ -798,9 +858,16 @@ export function PayrollManagement() {
       const bpjs = parseFloat(formData.bpjs_deduction) || 0;
       const absent = parseFloat(formData.absent_deduction) || 0;
       const late = parseFloat(formData.late_deduction) || 0;
-      const manualAllowancesTotal = formData.manual_allowance_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+      const manualAllowanceDetails = isSelectedEmployeeWorker ? [] : formData.manual_allowance_details;
+      const manualAllowancesTotal = manualAllowanceDetails?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+      const effectiveAllowances = isSelectedEmployeeWorker ? 0 : allowances;
+      const effectiveGasoline = isSelectedEmployeeWorker ? 0 : gasoline;
+      const effectiveMeal = isSelectedEmployeeWorker ? 0 : meal;
+      const effectivePosition = isSelectedEmployeeWorker ? 0 : position;
+      const effectiveDiscretionary = isSelectedEmployeeWorker ? 0 : discretionary;
+      const effectiveThr = isSelectedEmployeeWorker ? 0 : thr;
 
-      const totalAllowances = allowances + gasoline + meal + position + discretionary + thr + manualAllowancesTotal;
+      const totalAllowances = effectiveAllowances + effectiveGasoline + effectiveMeal + effectivePosition + effectiveDiscretionary + effectiveThr + manualAllowancesTotal;
       const totalDeductions = deductions + bpjs + absent + late;
       const netSalary = calculateNetSalary();
 
@@ -812,17 +879,18 @@ export function PayrollManagement() {
         allowances: totalAllowances,
         deductions: totalDeductions,
         net_salary: netSalary,
-        gasoline_allowance: gasoline,
-        meal_allowance: meal,
-        position_allowance: position,
-        discretionary_allowance: discretionary,
-        thr_allowance: thr,
+        gasoline_allowance: effectiveGasoline,
+        meal_allowance: effectiveMeal,
+        position_allowance: effectivePosition,
+        discretionary_allowance: effectiveDiscretionary,
+        thr_allowance: effectiveThr,
         bpjs_deduction: bpjs,
         absent_deduction: absent,
         late_deduction: late,
         reward_allowance: parseFloat(formData.reward_allowance) || 0,
         reward_details: formData.is_perfect_attendance ? [{ title: 'Kehadiran Sempurna', amount: parseFloat(formData.reward_allowance) || 0 }] : [],
         bank_account_details: formData.bank_account_details,
+        manual_allowance_details: manualAllowanceDetails,
       };
 
       // --- DUPLICATE CHECK ---
@@ -887,6 +955,7 @@ export function PayrollManagement() {
 
       let count = 0;
       for (const employee of eligibleEmployees) {
+        const isWorker = isWorkerEmployee(employee);
         // Basic calculations
         let baseSalary = employee.salary;
         let totalDeductions = 0;
@@ -931,7 +1000,7 @@ export function PayrollManagement() {
         }
 
         let totalLateMinutes = 0;
-        const manualAllowanceItems = employee.allowances || [];
+        const manualAllowanceItems = isWorker ? [] : (employee.allowances || []);
         const manualDeductionItems = employee.deductions || [];
         const totalManualAllowances = manualAllowanceItems.reduce((sum, i) => sum + (i.amount || 0), 0);
         const totalManualDeductions = manualDeductionItems.reduce((sum, i) => sum + (i.amount || 0), 0);
@@ -963,18 +1032,16 @@ export function PayrollManagement() {
         }).length || 0;
         const workingDays = 26; // Fixed 26 days divisor
         const dailyAbsentPenalty = Math.round((
-          (payrollSettings?.payroll_allowance_position || 0) +
-          (payrollSettings?.payroll_allowance_meal || 0) +
-          (payrollSettings?.payroll_allowance_gasoline || 0)
+          isWorker ? 0 : (payrollSettings?.payroll_allowance_position || 0)
         ) / workingDays);
 
         // Fixed Base Salary as per revision (no proration)
         // baseSalary = Math.round((baseSalary / workingDays) * presentCount);
 
         // Allowances at full value
-        mealAllowance = payrollSettings?.payroll_allowance_meal || 0;
-        gasolineAllowance = payrollSettings?.payroll_allowance_gasoline || 0;
-        const position = payrollSettings?.payroll_allowance_position || 0;
+        mealAllowance = 0;
+        gasolineAllowance = 0;
+        const position = isWorker ? 0 : (payrollSettings?.payroll_allowance_position || 0);
 
         // Absence deduction based on (P+M+G)/26
         if (absentCount > 0) {
@@ -994,7 +1061,7 @@ export function PayrollManagement() {
 
         const bpjs = payrollSettings?.payroll_bpjs_rate || 0;
         const discretionary = 0;
-        const thr = payrollSettings?.payroll_allowance_thr || 0;
+        const thr = isWorker ? 0 : (payrollSettings?.payroll_allowance_thr || 0);
 
         const totalOtherAllowances = mealAllowance + gasolineAllowance + position + discretionary + thr + totalManualAllowances;
         const combinedDeductions = totalDeductions + bpjs + absentDeductionAmount + lateDeductionAmount + totalManualDeductions;
@@ -1183,26 +1250,28 @@ export function PayrollManagement() {
         <CardHeader className="pb-3">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <Select value={selectedMonth.toString()} onValueChange={(v) => setSelectedMonth(parseInt(v))}>
-                <SelectTrigger className="w-[150px] font-body">
-                  <SelectValue placeholder="Pilih Bulan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((m, i) => (
-                    <SelectItem key={i + 1} value={(i + 1).toString()}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-                <SelectTrigger className="w-[120px] font-mono">
-                  <SelectValue placeholder="Tahun" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 5 }, (_, i) => currentYear - 2 + i).map(y => (
-                    <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <NativeSelect
+                value={selectedMonth.toString()}
+                onChange={(value) => setSelectedMonth(parseInt(value))}
+                className="w-[150px] font-body"
+              >
+                {months.map((month, index) => (
+                  <option key={index + 1} value={(index + 1).toString()}>
+                    {month}
+                  </option>
+                ))}
+              </NativeSelect>
+              <NativeSelect
+                value={selectedYear.toString()}
+                onChange={(value) => setSelectedYear(parseInt(value))}
+                className="w-[120px] font-mono"
+              >
+                {Array.from({ length: 5 }, (_, i) => currentYear - 2 + i).map((year) => (
+                  <option key={year} value={year.toString()}>
+                    {year}
+                  </option>
+                ))}
+              </NativeSelect>
             </div>
             <div className="relative w-full md:w-64">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
@@ -1291,36 +1360,44 @@ export function PayrollManagement() {
                                   <Eye className="w-4 h-4 text-gray-500" />
                                 </Button>
                                 {user?.role !== 'staff' && (
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="icon">
-                                        <MoreVertical className="w-4 h-4 text-gray-500" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      {item.status === 'pending' && (
-                                        <>
-                                          <DropdownMenuItem onClick={() => handleMarkAsPaid(item.id)} className="text-green-600 font-body">
-                                            <CheckCircle className="w-4 h-4 mr-2" />
-                                            Tandai Dibayar
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => handleEditPayroll(item.raw_pay)} className="font-body">
-                                            <Edit className="w-4 h-4 mr-2" />
-                                            Edit
-                                          </DropdownMenuItem>
-                                        </>
-                                      )}
-                                      <DropdownMenuItem onClick={() => handlePrintSlip(item.raw_pay)} className="font-body">
-                                        <Printer className="w-4 h-4 mr-2" />
-                                        Cetak Slip
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem onClick={() => handleDeletePayroll(item.id)} className="text-red-600 font-body">
-                                        <Trash2 className="w-4 h-4 mr-2" />
-                                        Hapus
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                                  <>
+                                    {item.status === 'pending' && (
+                                      <>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          title="Tandai Dibayar"
+                                          onClick={() => handleMarkAsPaid(item.id)}
+                                        >
+                                          <CheckCircle className="w-4 h-4 text-green-600" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          title="Edit Payroll"
+                                          onClick={() => handleEditPayroll(item.raw_pay)}
+                                        >
+                                          <Edit className="w-4 h-4 text-blue-600" />
+                                        </Button>
+                                      </>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      title="Cetak Slip"
+                                      onClick={() => handlePrintSlip(item.raw_pay)}
+                                    >
+                                      <Printer className="w-4 h-4 text-gray-600" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      title="Hapus Payroll"
+                                      onClick={() => handleDeletePayroll(item.id)}
+                                    >
+                                      <Trash2 className="w-4 h-4 text-red-600" />
+                                    </Button>
+                                  </>
                                 )}
                               </>
                             ) : (
@@ -1354,63 +1431,58 @@ export function PayrollManagement() {
       </Card>
 
       {/* Add/Edit Payroll Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-display">
-              {isEditing ? 'Edit Data Payroll' : 'Buat Payroll Baru'}
-            </DialogTitle>
-            <DialogDescription className="font-body">
-              {isEditing ? 'Perbarui data penggajian karyawan.' : 'Tambah data penggajian karyawan'}
-            </DialogDescription>
-          </DialogHeader>
+      {showAddDialog && (
+        <InlineModal
+          title={isEditing ? 'Edit Data Payroll' : 'Buat Payroll Baru'}
+          description={isEditing ? 'Perbarui data penggajian karyawan.' : 'Tambah data penggajian karyawan'}
+          onClose={() => setShowAddDialog(false)}
+          maxWidth="max-w-2xl"
+        >
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="font-body">Karyawan <span className="text-red-500">*</span></Label>
-              <Select value={formData.employee_id} onValueChange={(value) => setFormData({ ...formData, employee_id: value })}>
-                <SelectTrigger className="font-body">
-                  <SelectValue placeholder="Pilih karyawan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {employees.map(emp => (
-                    <SelectItem key={emp.id} value={emp.id} className="font-body">
-                      {emp.name} - {emp.position}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <NativeSelect
+                value={formData.employee_id}
+                onChange={(value) => setFormData({ ...formData, employee_id: value })}
+                className="font-body"
+              >
+                <option value="">Pilih karyawan</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.name} - {emp.position}
+                  </option>
+                ))}
+              </NativeSelect>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="font-body">Bulan</Label>
-                <Select value={formData.period_month.toString()} onValueChange={(value) => setFormData({ ...formData, period_month: parseInt(value) })}>
-                  <SelectTrigger className="font-body">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {months.map((month, index) => (
-                      <SelectItem key={index + 1} value={(index + 1).toString()} className="font-body">
-                        {month}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <NativeSelect
+                  value={formData.period_month.toString()}
+                  onChange={(value) => setFormData({ ...formData, period_month: parseInt(value) })}
+                  className="font-body"
+                >
+                  {months.map((month, index) => (
+                    <option key={index + 1} value={(index + 1).toString()}>
+                      {month}
+                    </option>
+                  ))}
+                </NativeSelect>
               </div>
               <div className="space-y-2">
                 <Label className="font-body">Tahun</Label>
-                <Select value={formData.period_year.toString()} onValueChange={(value) => setFormData({ ...formData, period_year: parseInt(value) })}>
-                  <SelectTrigger className="font-mono">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 3 }, (_, i) => currentYear - 1 + i).map(year => (
-                      <SelectItem key={year} value={year.toString()} className="font-mono">
-                        {year}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <NativeSelect
+                  value={formData.period_year.toString()}
+                  onChange={(value) => setFormData({ ...formData, period_year: parseInt(value) })}
+                  className="font-mono"
+                >
+                  {Array.from({ length: 3 }, (_, i) => currentYear - 1 + i).map((year) => (
+                    <option key={year} value={year.toString()}>
+                      {year}
+                    </option>
+                  ))}
+                </NativeSelect>
               </div>
             </div>
 
@@ -1448,6 +1520,15 @@ export function PayrollManagement() {
               </div>
             )}
 
+            {isSelectedEmployeeWorker && (
+              <Alert className="bg-amber-50 border-amber-200">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="font-body text-amber-800">
+                  Karyawan tukang tidak mendapatkan tunjangan payroll. Semua komponen tunjangan otomatis dikunci ke `0`.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="grid grid-cols-2 gap-4 border p-3 rounded-lg bg-green-50/30">
               <div className="space-y-2">
                 <Label className="font-body text-xs text-green-700">Uang Makan (Pro-rata)</Label>
@@ -1457,6 +1538,7 @@ export function PayrollManagement() {
                     placeholder="0"
                     className="font-mono text-sm border-green-200"
                     value={formData.meal_allowance}
+                    disabled={isSelectedEmployeeWorker}
                     onChange={(e) => setFormData({ ...formData, meal_allowance: e.target.value })}
                   />
                   {allowanceDetails.find(d => d.includes('Uang Makan')) && (
@@ -1474,6 +1556,7 @@ export function PayrollManagement() {
                     placeholder="0"
                     className="font-mono text-sm border-green-200"
                     value={formData.gasoline_allowance}
+                    disabled={isSelectedEmployeeWorker}
                     onChange={(e) => setFormData({ ...formData, gasoline_allowance: e.target.value })}
                   />
                   {allowanceDetails.find(d => d.includes('Uang Bensin')) && (
@@ -1583,7 +1666,7 @@ export function PayrollManagement() {
               </div>
             )}
           </div>
-          <DialogFooter className="sticky bottom-0 bg-white pt-4 border-t">
+          <div className="sticky bottom-0 bg-white pt-4 border-t flex justify-end gap-2">
             <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); }} className="font-body">
               Batal
             </Button>
@@ -1595,19 +1678,18 @@ export function PayrollManagement() {
                 </>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
 
       {/* View Payroll Details Dialog */}
-      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display">Detail Penggajian</DialogTitle>
-            <DialogDescription className="font-body">
-              Informasi lengkap penggajian karyawan
-            </DialogDescription>
-          </DialogHeader>
+      {showViewDialog && (
+        <InlineModal
+          title="Detail Penggajian"
+          description="Informasi lengkap penggajian karyawan"
+          onClose={() => setShowViewDialog(false)}
+          maxWidth="max-w-lg"
+        >
           <div className="space-y-4">
             {selectedPayroll && (
               <div className="space-y-4">
@@ -1709,11 +1791,11 @@ export function PayrollManagement() {
               </div>
             )}
           </div>
-          <DialogFooter>
+          <div className="flex justify-end">
             <Button variant="outline" onClick={() => setShowViewDialog(false)}>Tutup</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </InlineModal>
+      )}
     </div>
   );
 }
