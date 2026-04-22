@@ -62,6 +62,7 @@ interface LeaveFormData {
   reason: string;
   emergency_contact?: string;
   handover_to?: string;
+  is_late_submission?: boolean;
 }
 
 const leaveTypeLabels: Record<LeaveType, string> = {
@@ -244,7 +245,8 @@ export function LeaveManagement() {
     end_date: '',
     reason: '',
     emergency_contact: '',
-    handover_to: ''
+    handover_to: '',
+    is_late_submission: false
   });
 
   const [showPayoutDialog, setShowPayoutDialog] = useState(false);
@@ -295,7 +297,8 @@ export function LeaveManagement() {
       end_date: '',
       reason: '',
       emergency_contact: '',
-      handover_to: ''
+      handover_to: '',
+      is_late_submission: false
     });
   };
 
@@ -309,14 +312,17 @@ export function LeaveManagement() {
 
       // Validasi Lead Time 14 Hari Kerja (Kecuali cuti sakit/duka/situasional yang mendadak)
       const nonLeadTimeTypes = ['sick', 'bereavement', 'situational'];
+      let isLateSubmission = false;
+
       if (!nonLeadTimeTypes.includes(formData.leave_type)) {
         const today = new Date();
         const start = new Date(formData.start_date);
         const workingDaysLead = calculateWorkingDaysBetween(today, start, holidays);
 
         if (workingDaysLead < 14) {
-          alert(`Peringatan: Pengajuan cuti ${leaveTypeLabels[formData.leave_type]} minimal dilakukan 14 hari kerja sebelum tanggal mulai. Saat ini hanya tersisa ${workingDaysLead} hari kerja.`);
-          return;
+          const proceed = window.confirm(`Peringatan: Pengajuan cuti ${leaveTypeLabels[formData.leave_type]} minimal dilakukan 14 hari kerja sebelum tanggal mulai. Saat ini hanya tersisa ${workingDaysLead} hari kerja.\n\nApakah Anda ingin melanjutkan pengajuan ini melalui proses persetujuan khusus karena di luar waktu pengajuan standar?`);
+          if (!proceed) return;
+          isLateSubmission = true;
         }
       }
 
@@ -331,6 +337,7 @@ export function LeaveManagement() {
           reason: formData.reason,
           emergency_contact: formData.emergency_contact || null,
           handover_to: formData.handover_to || null,
+          is_late_submission: isLateSubmission
         };
 
         await updateLeaveRequest(selectedLeave.id, updates);
@@ -362,6 +369,7 @@ export function LeaveManagement() {
           status: 'pending' as const,
           emergency_contact: formData.emergency_contact || null,
           handover_to: formData.handover_to || null,
+          is_late_submission: isLateSubmission,
           approved_by: null,
           approved_at: null
         };
@@ -388,7 +396,8 @@ export function LeaveManagement() {
       end_date: leave.end_date,
       reason: leave.reason,
       emergency_contact: leave.emergency_contact || '',
-      handover_to: leave.handover_to || ''
+      handover_to: leave.handover_to || '',
+      is_late_submission: leave.is_late_submission || false
     });
     setIsEditing(true);
     setShowAddDialog(true);
@@ -693,6 +702,12 @@ export function LeaveManagement() {
                                 <Badge className="bg-red-100 text-red-800 border-red-200 font-body w-fit text-xs">
                                   <AlertCircle className="w-3 h-3 mr-1" />
                                   Terlambat Kembali
+                                </Badge>
+                              )}
+                              {leave.is_late_submission && (
+                                <Badge className="bg-orange-100 text-orange-800 border-orange-200 font-body w-fit text-xs">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  Diluar Waktu
                                 </Badge>
                               )}
                             </div>

@@ -16,6 +16,24 @@ const LEAVE_TYPES = [
     { label: 'Lainnya', value: 'unpaid' },
 ];
 
+const calculateWorkingDays = (startDateStr: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(startDateStr);
+    start.setHours(0, 0, 0, 0);
+
+    let count = 0;
+    const current = new Date(today);
+    while (current < start) {
+        const day = current.getDay();
+        if (day !== 0) { // Exclude Sunday (0)
+            count++;
+        }
+        current.setDate(current.getDate() + 1);
+    }
+    return count;
+};
+
 export default function Leave() {
     const [loading, setLoading] = useState(true);
     const [requests, setRequests] = useState<any[]>([]);
@@ -84,6 +102,27 @@ export default function Leave() {
             return;
         }
 
+        const nonLeadTimeTypes = ['sick', 'bereavement', 'situational'];
+        let isLate = false;
+
+        if (!nonLeadTimeTypes.includes(formData.type)) {
+            const workingDaysLead = calculateWorkingDays(formData.startDate);
+            if (workingDaysLead < 14) {
+                const proceed = await new Promise((resolve) => {
+                    Alert.alert(
+                        'Peringatan Lead Time',
+                        `Pengajuan cuti minimal dilakukan 14 hari kerja sebelum tanggal mulai. Saat ini hanya tersisa ${workingDaysLead} hari kerja.\n\nLanjutkan dengan persetujuan khusus?`,
+                        [
+                            { text: 'Batal', onPress: () => resolve(false), style: 'cancel' },
+                            { text: 'Lanjutkan', onPress: () => resolve(true) }
+                        ]
+                    );
+                });
+                if (!proceed) return;
+                isLate = true;
+            }
+        }
+
         setSubmitting(true);
         try {
             const { error } = await supabase
@@ -95,7 +134,8 @@ export default function Leave() {
                     end_date: formData.endDate,
                     days: parseInt(formData.days) || 1,
                     reason: formData.reason,
-                    status: 'pending'
+                    status: 'pending',
+                    is_late_submission: isLate
                 });
 
             if (error) throw error;
@@ -245,6 +285,11 @@ export default function Leave() {
                                         </Text>
                                     </Badge>
                                 </View>
+                                {req.is_late_submission && (
+                                    <View className="flex-row items-center mb-2 bg-orange-50 p-1 rounded border border-orange-100 self-start">
+                                        <Text className="text-[10px] text-orange-700 font-bold">⚠️ DILUAR WAKTU PENGANJUAN</Text>
+                                    </View>
+                                )}
                                 <P className="text-gray-600 text-sm mt-2 bg-gray-50 p-2 rounded">
                                     "{req.reason}"
                                 </P>

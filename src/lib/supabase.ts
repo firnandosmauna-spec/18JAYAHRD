@@ -302,6 +302,7 @@ export interface LeaveRequest {
   approved_at?: string
   emergency_contact?: string
   handover_to?: string
+  is_late_submission?: boolean
   created_at: string
   updated_at: string
 }
