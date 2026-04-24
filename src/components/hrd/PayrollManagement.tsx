@@ -388,11 +388,48 @@ export function PayrollManagement() {
     let totalAllowances = 0;
     let totalDeductions = 0;
 
-    // Attendance count
-    const absentCount = empAttendance.filter((a: any) => {
-      const status = (a.status || '').toLowerCase().trim();
-      return status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa';
-    }).length || 0;
+    const startDateStr = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
+    const endDateStr = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${new Date(selectedYear, selectedMonth, 0).getDate().toString().padStart(2, '0')}`;
+
+    // Revised Absent Detection: Count missing days as Alpha
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+    const hDates = attendanceSettings?.attendance_holidays || [];
+    let calculatedAbsentCount = 0;
+
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dStr = d.toISOString().split('T')[0];
+      const isSunday = d.getDay() === 0;
+      const isHoliday = hDates.some(h => h.split('T')[0] === dStr);
+      
+      if (isSunday || isHoliday) continue;
+
+      // Only count absence for days up to today
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (dStr > todayStr) continue;
+
+      // Check if employee is on approved leave
+      const isOnLeave = empLeaves.some(l => {
+        const start = new Date(l.start_date);
+        const end = new Date(l.end_date);
+        const current = new Date(dStr);
+        return current >= start && current <= end;
+      });
+
+      if (isOnLeave) continue;
+
+      const record = empAttendance.find(a => a.date === dStr);
+      if (!record) {
+        calculatedAbsentCount++;
+      } else {
+        const status = (record.status || '').toLowerCase().trim();
+        if (status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa') {
+          calculatedAbsentCount++;
+        }
+      }
+    }
+
+    const absentCount = calculatedAbsentCount;
 
     const presentCount = empAttendance.filter((a: any) => {
       const status = (a.status || '').toLowerCase().trim();
@@ -420,21 +457,15 @@ export function PayrollManagement() {
 
     const workingDays = 26; // Pembagi tetap 26 hari sesuai permintaan user
     
-    // Formula Potongan Absen: (Tunjangan Jabatan) / 26
-    const employeeAllowancesForPenalty = isWorker ? [] : (employee.allowances || []);
-    const empPosForPenalty = employeeAllowancesForPenalty.find((a: any) => 
-      a.title?.toLowerCase().includes('jabatan') || 
-      a.title?.toLowerCase().includes('position')
-    );
-    const positionForPenalty = empPosForPenalty ? empPosForPenalty.amount : 0;
-    
-    const dailyAbsentPenalty = Math.round((positionForPenalty) / workingDays);
+    const dailyAbsentPenalty = Math.round((employee.salary || 0) / workingDays);
 
     // Fixed Base Salary as per revision (not prorated by attendance)
     const proratedBase = baseSalary;
-    const employeeAllowances = isWorker ? [] : (employee.allowances || []);
+    const employeeAllowances = employee.allowances || [];
     
-    // Sinkronisasi Otomatis: Ambil tunjangan dari profil karyawan
+    // Separate specific allowances to avoid double counting, matching individual payroll logic
+    const specificAllowanceTitles = ['makan', 'meal', 'bensin', 'gasoline', 'transport', 'jabatan', 'position', 'thr', 'bijak', 'discretionary'];
+    
     const empMeal = employeeAllowances.find((a: any) => 
       a.title?.toLowerCase().includes('makan') || 
       a.title?.toLowerCase().includes('meal')
@@ -458,6 +489,13 @@ export function PayrollManagement() {
     const positionAllowance = empPos ? empPos.amount : 0;
     const thrAllowance = empThr ? empThr.amount : 0;
 
+    // Calculate manual allowances total (excluding the specific ones above)
+    const manualAllowancesTotal = employeeAllowances
+      .filter((a: any) => !specificAllowanceTitles.some(title => a.title?.toLowerCase().includes(title)))
+      .reduce((sum: number, a: any) => sum + (a.amount || 0), 0);
+
+    const draftAllowances = mealAllowance + gasolineAllowance + positionAllowance + thrAllowance + manualAllowancesTotal;
+
     const bpjsDeduction = payrollSettings?.payroll_bpjs_rate || 0;
 
     // Perfect Attendance Reward
@@ -466,13 +504,11 @@ export function PayrollManagement() {
 
     let absentDeduction = 0;
     if (absentCount > 0) {
-      // Formula Potongan Absen: (Tunjangan Jabatan) / 26 + Potongan Standar
-      absentDeduction = absentCount * (payrollSettings?.payroll_deduction_absent || 0);
-      absentDeduction += absentCount * dailyAbsentPenalty;
+      // Formula Potongan Absen: Murni (Gaji Pokok) / 26 sesuai permintaan user
+      absentDeduction = absentCount * dailyAbsentPenalty;
     }
     const late_deduction = totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
 
-    const manualAllowancesTotal = isWorker ? 0 : (employee.allowances?.reduce((sum: number, i: any) => sum + (i.amount || 0), 0) || 0);
     const manualDeductionsTotal = employee.deductions?.reduce((sum: number, i: any) => sum + (i.amount || 0), 0) || 0;
 
     // Loan Deductions
@@ -484,7 +520,7 @@ export function PayrollManagement() {
     );
     const totalLoanDeduction = activeLoans.reduce((sum, loan) => sum + loan.installment_amount, 0);
 
-    const draftAllowances = mealAllowance + gasolineAllowance + positionAllowance + thrAllowance + manualAllowancesTotal;
+
     const draftDeductions = absentDeduction + late_deduction + totalLoanDeduction;
     const draftNet = proratedBase + draftAllowances + rewardAllowance - draftDeductions;
 
@@ -500,7 +536,8 @@ export function PayrollManagement() {
       position_allowance: positionAllowance,
       bpjs_deduction: 0,
       reward_allowance: rewardAllowance,
-      loan_amount: totalLoanDeduction
+      loan_amount: totalLoanDeduction,
+      thr_allowance: thrAllowance
     };
   };
 
@@ -572,18 +609,56 @@ export function PayrollManagement() {
         try {
           attendance = await attendanceService.getByEmployeeDateRange(formData.employee_id, formData.start_date, formData.end_date);
 
-          // Absensi (Alpha) - status 'absent'
-          absentCount = attendance?.filter((a: any) => {
-            const status = (a.status || '').toLowerCase().trim();
-            return status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa';
-          }).length || 0;
+          // Revised Absent Detection: Count missing days as Alpha
+          const startDate = new Date(formData.start_date);
+          const endDate = new Date(formData.end_date);
+          const hDates = attendanceSettings?.attendance_holidays || [];
+          let calculatedAbsentCount = 0;
+
+          for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            const dStr = d.toISOString().split('T')[0];
+            const isSunday = d.getDay() === 0;
+            const isHoliday = hDates.some(h => h.split('T')[0] === dStr);
+            
+            if (isSunday || isHoliday) continue;
+
+            // Only count absence for days up to today
+            const todayStr = new Date().toISOString().split('T')[0];
+            if (dStr > todayStr) continue;
+
+            // Check if employee is on approved leave using allLeaves state
+            const isOnLeave = allLeaves.some(l => {
+              if (l.employee_id !== formData.employee_id || l.status !== 'approved') return false;
+              const start = new Date(l.start_date);
+              const end = new Date(l.end_date);
+              const current = new Date(dStr);
+              return current >= start && current <= end;
+            });
+
+            if (isOnLeave) continue;
+
+            const record = attendance?.find((a: any) => a.date === dStr);
+            if (!record) {
+              calculatedAbsentCount++;
+            } else {
+              const status = (record.status || '').toLowerCase().trim();
+              if (status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa') {
+                calculatedAbsentCount++;
+              }
+            }
+          }
+
+          absentCount = calculatedAbsentCount;
 
           if (absentCount > 0) {
-            if (payrollSettings && payrollSettings.payroll_deduction_absent > 0) {
-              absentDeductionAmount = absentCount * payrollSettings.payroll_deduction_absent;
-              totalDeductions += absentDeductionAmount;
-              newDeductionDetails.push(`Absensi: ${absentCount} hari tidak hadir (Rp ${absentDeductionAmount.toLocaleString('id-ID')})`);
-            }
+            const workingDays = 26;
+            const dailyAbsentPenalty = Math.round((employee.salary || 0) / workingDays);
+            // Formula Potongan Absen: Murni (Gaji Pokok) / 26
+            const formulaAbsenceDeduction = absentCount * dailyAbsentPenalty;
+            
+            absentDeductionAmount = formulaAbsenceDeduction;
+            totalDeductions += formulaAbsenceDeduction;
+            newDeductionDetails.push(`Absensi: ${absentCount} hari Alpha (@Rp ${dailyAbsentPenalty.toLocaleString('id-ID')}, Total Rp ${formulaAbsenceDeduction.toLocaleString('id-ID')})`);
           }
 
           // Keterlambatan (Late)
@@ -639,7 +714,7 @@ export function PayrollManagement() {
           }
 
           // --- Manual Items from Employee Profile ---
-          const employeeAllowances = isWorker ? [] : (employee.allowances || []);
+          const employeeAllowances = employee.allowances || [];
           
           // Sinkronisasi Otomatis: Ambil tunjangan spesifik dari profil karyawan
           const empMeal = employeeAllowances.find(a => 
@@ -670,20 +745,7 @@ export function PayrollManagement() {
           );
           manualDeductionItems = employee.deductions || [];
 
-          // Attendance-based calculations (Only if settings exist)
-          if (payrollSettings) {
-            const workingDays = 26; // Pembagi tetap 26 hari sesuai permintaan user
-            // Formula Potongan Absen: (Tunjangan Jabatan) / 26
-            const dailyAbsentPenalty = Math.round((positionAllowance) / workingDays);
-
-            if (absentCount > 0) {
-              // Basic penalty + allowance-based penalty
-              const formulaAbsenceDeduction = (absentCount * (payrollSettings.payroll_deduction_absent || 0)) + (absentCount * dailyAbsentPenalty);
-              absentDeductionAmount = formulaAbsenceDeduction;
-              totalDeductions += formulaAbsenceDeduction;
-              newDeductionDetails.push(`Absensi: ${absentCount} hari (Potongan Rp ${formulaAbsenceDeduction.toLocaleString('id-ID')})`);
-            }
-          }
+          // Manuel allowance items handled from profile above
 
           if (mealAllowance > 0) {
             newAllowanceDetails.push(`Uang Makan: ${formatCurrency(mealAllowance)}`);
@@ -825,8 +887,6 @@ export function PayrollManagement() {
   // Calculate net salary
   const calculateNetSalary = () => {
     const baseSalary = parseFloat(formData.base_salary) || 0;
-    const allowances = parseFloat(formData.allowances) || 0;
-    const deductions = parseFloat(formData.deductions) || 0;
     const overtimeHours = parseFloat(formData.overtime_hours) || 0;
     const overtimeRate = parseFloat(formData.overtime_rate) || 0;
 
@@ -835,25 +895,27 @@ export function PayrollManagement() {
     const position = parseFloat(formData.position_allowance) || 0;
     const discretionary = parseFloat(formData.discretionary_allowance) || 0;
     const thr = parseFloat(formData.thr_allowance) || 0;
+    const reward = parseFloat(formData.reward_allowance) || 0;
+
     const bpjs = parseFloat(formData.bpjs_deduction) || 0;
     const absent = parseFloat(formData.absent_deduction) || 0;
     const late = parseFloat(formData.late_deduction) || 0;
+    const loan = parseFloat(formData.loan_amount) || 0;
 
     const manualAllowancesTotal = formData.manual_allowance_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
     const manualDeductionsTotal = formData.manual_deduction_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
 
-    const effectiveAllowances = isSelectedEmployeeWorker ? 0 : allowances;
+    // Worker role restrictions
     const effectiveGasoline = isSelectedEmployeeWorker ? 0 : gasoline;
     const effectiveMeal = isSelectedEmployeeWorker ? 0 : meal;
-    const effectivePosition = isSelectedEmployeeWorker ? 0 : position;
-    const effectiveDiscretionary = isSelectedEmployeeWorker ? 0 : discretionary;
-    const effectiveThr = isSelectedEmployeeWorker ? 0 : thr;
-    const effectiveManualAllowances = isSelectedEmployeeWorker ? 0 : manualAllowancesTotal;
+    const effectivePosition = position;
+    const effectiveDiscretionary = discretionary;
+    const effectiveThr = thr;
+    const effectiveReward = reward;
+    const effectiveManualAllowances = manualAllowancesTotal;
 
-    const loan = parseFloat(formData.loan_amount) || 0;
-
-    const totalAllowances = effectiveAllowances + effectiveGasoline + effectiveMeal + effectivePosition + effectiveDiscretionary + effectiveThr + effectiveManualAllowances + Number(formData.reward_allowance || 0);
-    const totalDeductions = deductions + bpjs + absent + late + manualDeductionsTotal + loan;
+    const totalAllowances = effectiveGasoline + effectiveMeal + effectivePosition + effectiveDiscretionary + effectiveThr + effectiveReward + effectiveManualAllowances;
+    const totalDeductions = bpjs + absent + late + loan + manualDeductionsTotal;
     const overtimePay = overtimeHours * overtimeRate;
 
     return baseSalary + totalAllowances + overtimePay - totalDeductions;
@@ -861,30 +923,38 @@ export function PayrollManagement() {
 
   // Handle edit payroll
   const handleEditPayroll = (p: PayrollRecord) => {
-    const employee = employees.find((item) => item.id === p.employee_id);
-    const isWorker = isWorkerEmployee(employee);
     setIsEditing(true);
     setEditId(p.id);
+    
+    // Extract manual allowances: Total Allowances - (Specific Allowances)
+    // Note: Subtracting reward_allowance as well just in case it was bundled in old records
+    const manualAllowancesBase = p.allowances - 
+      (p.gasoline_allowance || 0) - 
+      (p.meal_allowance || 0) - 
+      (p.position_allowance || 0) - 
+      (p.discretionary_allowance || 0) - 
+      (p.thr_allowance || 0);
+
     setFormData({
       employee_id: p.employee_id,
       period_month: p.period_month,
       period_year: p.period_year,
       base_salary: p.base_salary.toString(),
-      allowances: isWorker ? '0' : (p.allowances - (p.gasoline_allowance || 0) - (p.meal_allowance || 0) - (p.position_allowance || 0) - (p.discretionary_allowance || 0) - (p.thr_allowance || 0)).toString(),
+      allowances: manualAllowancesBase.toString(),
       deductions: (p.deductions - (p.bpjs_deduction || 0) - (p.absent_deduction || 0) - (p.late_deduction || 0) - (p.loan_amount || 0)).toString(),
-      overtime_hours: '0',
-      overtime_rate: '0',
-      gasoline_allowance: isWorker ? '0' : (p.gasoline_allowance || 0).toString(),
-      meal_allowance: isWorker ? '0' : (p.meal_allowance || 0).toString(),
-      position_allowance: isWorker ? '0' : (p.position_allowance || 0).toString(),
-      discretionary_allowance: isWorker ? '0' : (p.discretionary_allowance || 0).toString(),
-      thr_allowance: isWorker ? '0' : (p.thr_allowance || 0).toString(),
+      overtime_hours: (p.overtime_hours || 0).toString(),
+      overtime_rate: (p.overtime_rate || 0).toString(),
+      gasoline_allowance: (p.gasoline_allowance || 0).toString(),
+      meal_allowance: (p.meal_allowance || 0).toString(),
+      position_allowance: (p.position_allowance || 0).toString(),
+      discretionary_allowance: (p.discretionary_allowance || 0).toString(),
+      thr_allowance: (p.thr_allowance || 0).toString(),
       bpjs_deduction: (p.bpjs_deduction || 0).toString(),
       absent_deduction: (p.absent_deduction || 0).toString(),
       late_deduction: (p.late_deduction || 0).toString(),
       reward_allowance: (p.reward_allowance || 0).toString(),
       loan_amount: (p.loan_amount || 0).toString(),
-      manual_allowance_details: isWorker ? [] : (p.manual_allowance_details || []),
+      manual_allowance_details: p.manual_allowance_details || [],
       manual_deduction_details: p.manual_deduction_details || [],
       bank_account_details: p.bank_account_details || '',
       is_perfect_attendance: p.is_perfect_attendance || false,
@@ -922,21 +992,24 @@ export function PayrollManagement() {
       const overtimeRate = parseFloat(formData.overtime_rate) || 0;
       const overtimePay = overtimeHours * overtimeRate;
 
-      const manualAllowanceDetails = isSelectedEmployeeWorker ? [] : formData.manual_allowance_details;
-      const manualAllowancesTotal = manualAllowanceDetails?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+      const reward = parseFloat(formData.reward_allowance) || 0;
+      const manualAllowanceDetails = formData.manual_allowance_details || [];
+      const manualAllowancesTotal = manualAllowanceDetails.reduce((sum, item) => sum + (item.amount || 0), 0);
       const manualDeductionDetails = formData.manual_deduction_details || [];
-      const manualDeductionsTotal = manualDeductionDetails.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+      const manualDeductionsTotal = manualDeductionDetails.reduce((sum, item) => sum + (item.amount || 0), 0);
 
-      const effectiveAllowances = isSelectedEmployeeWorker ? 0 : allowances;
+      // Worker role restrictions
       const effectiveGasoline = isSelectedEmployeeWorker ? 0 : gasoline;
       const effectiveMeal = isSelectedEmployeeWorker ? 0 : meal;
-      const effectivePosition = isSelectedEmployeeWorker ? 0 : position;
-      const effectiveDiscretionary = isSelectedEmployeeWorker ? 0 : discretionary;
-      const effectiveThr = isSelectedEmployeeWorker ? 0 : thr;
+      const effectivePosition = position;
+      const effectiveDiscretionary = discretionary;
+      const effectiveThr = thr;
+      const effectiveManualAllowances = manualAllowancesTotal;
 
-      const totalAllowances = effectiveAllowances + effectiveGasoline + effectiveMeal + effectivePosition + effectiveDiscretionary + effectiveThr + manualAllowancesTotal + (parseFloat(formData.reward_allowance) || 0);
-      const totalDeductions = deductions + bpjs + absent + late + manualDeductionsTotal + loan;
-      const netSalary = baseSalary + totalAllowances + overtimePay - totalDeductions;
+      // totalAllowances should EXCLUDE reward_allowance because it's a separate field in DB
+      const totalAllowances = effectiveGasoline + effectiveMeal + effectivePosition + effectiveDiscretionary + effectiveThr + effectiveManualAllowances;
+      const totalDeductions = bpjs + absent + late + loan + manualDeductionsTotal;
+      const netSalary = baseSalary + totalAllowances + reward + overtimePay - totalDeductions;
 
       const payrollPayload: any = {
         employee_id: formData.employee_id,
@@ -957,8 +1030,8 @@ export function PayrollManagement() {
         late_deduction: late,
         overtime_hours: overtimeHours,
         overtime_rate: overtimeRate,
-        reward_allowance: parseFloat(formData.reward_allowance) || 0,
-        reward_details: formData.is_perfect_attendance ? [{ title: 'Kehadiran Sempurna', amount: parseFloat(formData.reward_allowance) || 0 }] : [],
+        reward_allowance: reward,
+        reward_details: formData.is_perfect_attendance ? [{ title: 'Kehadiran Sempurna', amount: reward }] : [],
         bank_account_details: formData.bank_account_details,
         manual_allowance_details: manualAllowanceDetails,
         manual_deduction_details: manualDeductionDetails,
@@ -986,10 +1059,12 @@ export function PayrollManagement() {
       }
 
       if (isEditing && editId) {
+        console.log('🔄 Updating payroll record:', editId, payrollPayload);
         await updatePayroll(editId, payrollPayload);
         toast({ title: 'Sukses', description: 'Berhasil memperbarui data payroll!' });
       } else {
         payrollPayload.status = 'pending';
+        console.log('➕ Adding new payroll record:', payrollPayload);
         await addPayroll(payrollPayload);
         toast({ title: 'Sukses', description: 'Berhasil membuat data payroll!' });
       }
@@ -998,7 +1073,7 @@ export function PayrollManagement() {
       resetForm();
       refetch();
     } catch (error: any) {
-      console.error('Failed to save payroll:', error);
+      console.error('❌ Failed to save payroll:', error);
       toast({
         title: 'Error',
         description: `Gagal menyimpan data penggajian: ${error.message}`,
@@ -1100,7 +1175,7 @@ export function PayrollManagement() {
           absentDeductionAmount = absentCount * payrollSettings.payroll_deduction_absent;
         }
 
-        const employeeAllowances = isWorker ? [] : (employee.allowances || []);
+        const employeeAllowances = employee.allowances || [];
         
         // Sinkronisasi Otomatis: Ambil tunjangan dari profil karyawan
         const empMeal = employeeAllowances.find(a => 
@@ -1127,8 +1202,8 @@ export function PayrollManagement() {
         const thrAmount = empThr ? empThr.amount : 0;
 
         const workingDays = 26; // Pembagi tetap 26 hari sesuai permintaan user
-        // Formula Potongan Absen: (Tunjangan Jabatan) / 26
-        const dailyAbsentPenalty = Math.round((position) / workingDays);
+        // Formula Potongan Absen: Menggunakan Gaji Pokok sesuai permintaan sebelumnya
+        const dailyAbsentPenalty = Math.round((baseSalary) / workingDays);
 
         // Manual Items (excluding the ones already picked above)
         const manualAllowanceItems = employeeAllowances.filter(a => 
@@ -1138,9 +1213,9 @@ export function PayrollManagement() {
         const totalManualAllowances = manualAllowanceItems.reduce((sum, i) => sum + (i.amount || 0), 0);
         const totalManualDeductions = manualDeductionItems.reduce((sum, i) => sum + (i.amount || 0), 0);
 
-        // Absence deduction based on (P+M+G)/26
+        // Absence deduction
         if (absentCount > 0) {
-          absentDeductionAmount += absentCount * dailyAbsentPenalty;
+          absentDeductionAmount = absentCount * dailyAbsentPenalty;
         }
 
         // --- Perfect Attendance Reward (Automatic) ---
@@ -1763,6 +1838,40 @@ export function PayrollManagement() {
               </Alert>
             )}
 
+            {/* Simulation Summary for Transparency */}
+            {formData.employee_id && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md mb-4">
+                <p className="text-[10px] font-bold text-blue-800 uppercase mb-2">Pengecekan Perhitungan (Otomatis)</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[11px] font-body">
+                  <div>
+                    <span className="text-gray-500 block">Gaji Pokok:</span>
+                    <span className="font-bold">{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(formData.base_salary || 0))}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Tarif / Hari:</span>
+                    <span className="font-bold text-red-600">{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Math.round(Number(formData.base_salary || 0) / 26))}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Total Hari Alpha:</span>
+                    <span className="font-bold text-red-600">
+                      {(() => {
+                        const daily = Math.round(Number(formData.base_salary || 0) / 26);
+                        if (daily <= 0) return 0;
+                        return (Number(formData.absent_deduction || 0) / daily).toFixed(1);
+                      })()} Hari
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Total Potongan:</span>
+                    <span className="font-bold text-red-800">
+                      {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(formData.absent_deduction || 0))}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[9px] text-blue-600 mt-2 font-body italic">* Rumus: (Gaji Pokok / 26) x Jumlah Hari Alpha</p>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4 border p-3 rounded-lg bg-green-50/30">
               <div className="space-y-2">
                 <Label className="font-body text-xs text-green-700">Uang Makan (Pro-rata)</Label>
@@ -1793,11 +1902,30 @@ export function PayrollManagement() {
                     disabled={isSelectedEmployeeWorker}
                     onChange={(e) => setFormData({ ...formData, gasoline_allowance: e.target.value })}
                   />
-                  {allowanceDetails.find(d => d.includes('Uang Bensin')) && (
-                    <p className="text-[10px] text-green-600 italic">
-                      {allowanceDetails.find(d => d.includes('Uang Bensin'))?.split('=')[0]?.trim()}
-                    </p>
-                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="font-body text-xs text-green-700">Tunjangan Jabatan</Label>
+                <div className="space-y-1">
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    className="font-mono text-sm border-green-200"
+                    value={formData.position_allowance}
+                    onChange={(e) => setFormData({ ...formData, position_allowance: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 col-span-2">
+                <Label className="font-body text-xs text-green-700">THR</Label>
+                <div className="space-y-1">
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    className="font-mono text-sm border-green-200"
+                    value={formData.thr_allowance}
+                    onChange={(e) => setFormData({ ...formData, thr_allowance: e.target.value })}
+                  />
                 </div>
               </div>
               <div className="col-span-2 mt-1 space-y-4">
@@ -1879,7 +2007,8 @@ export function PayrollManagement() {
                     Number(formData.position_allowance || 0) +
                     Number(formData.discretionary_allowance || 0) +
                     Number(formData.thr_allowance || 0) +
-                    Number(formData.allowances || 0)
+                    Number(formData.reward_allowance || 0) +
+                    (formData.manual_allowance_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0)
                   )}
                 </p>
               </div>
@@ -1887,11 +2016,11 @@ export function PayrollManagement() {
                 <span className="text-[10px] text-red-600 font-bold uppercase block mb-1">Total Potongan</span>
                 <p className="font-mono font-bold text-red-800">
                   {formatCurrency(
-                    Number(formData.bpjs_deduction || 0) +
                     Number(formData.absent_deduction || 0) +
                     Number(formData.late_deduction || 0) +
                     Number(formData.loan_amount || 0) +
-                    Number(formData.deductions || 0)
+                    Number(formData.bpjs_deduction || 0) +
+                    (formData.manual_deduction_details?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0)
                   )}
                 </p>
               </div>

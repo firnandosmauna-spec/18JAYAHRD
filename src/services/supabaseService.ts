@@ -35,7 +35,9 @@ export const employeeService = {
         worker_types (
           id,
           name
-        )
+        ),
+        allowances,
+        deductions
       `)
       .order('created_at', { ascending: false })
 
@@ -66,7 +68,9 @@ export const employeeService = {
         worker_types (
           id,
           name
-        )
+        ),
+        allowances,
+        deductions
       `)
       .eq('id', id)
       .single()

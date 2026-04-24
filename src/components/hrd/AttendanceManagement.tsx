@@ -707,17 +707,9 @@ export function AttendanceManagement() {
     if (['absent', 'tidak hadir', 'alpha', 'alpa'].includes(status)) {
       const workingDays = 26;
       const employee = employees.find(e => e.id === record.employee_id);
-      const isWorker = (employee?.position || '').toLowerCase().includes('tukang') || 
-                      (employee?.position || '').toLowerCase().includes('pekerja');
       
-      const allowances = isWorker ? [] : (employee?.allowances || []);
-      const empPos = allowances.find((a: any) => 
-        a.title?.toLowerCase().includes('jabatan') || 
-        a.title?.toLowerCase().includes('position')
-      );
-      
-      const positionAllowance = empPos ? empPos.amount : 0;
-      return Math.round(positionAllowance / workingDays);
+      const salary = employee?.salary || 0;
+      return Math.round(salary / workingDays);
     }
 
     // --- Late Penalty ---

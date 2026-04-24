@@ -318,7 +318,8 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
 
     // --- SUMMARY ---
     // Recalculate Total Earnings for display consistency
-    const totalEarnings = payroll.base_salary + payroll.allowances + derivedOvertime;
+    // Total Earnings is Gross (Base + Allowances + Reward + Overtime)
+    const totalEarnings = payroll.base_salary + payroll.allowances + (payroll.reward_allowance || 0) + derivedOvertime;
 
     autoTable(doc, {
         startY: finalY,
