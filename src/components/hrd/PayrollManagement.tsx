@@ -44,12 +44,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { generateSalarySlip } from '@/utils/pdfGenerator';
+import { generateSalarySlip, generatePayrollReport } from '@/utils/pdfGenerator';
 import { exportPayrollToExcel } from '@/utils/excelGenerator';
 import { PayrollPrintSettingsDialog } from './PayrollPrintSettingsDialog';
-
-
-// Hooks
 import { usePayroll, useEmployees, useLoans } from '@/hooks/useSupabase';
 import { attendanceService, rewardService, leaveService } from '@/services/supabaseService';
 import { userService } from '@/services/userService';
@@ -62,6 +59,9 @@ import type { PayrollRecord } from '@/lib/supabase';
 type PayrollStatus = 'pending' | 'paid' | 'cancelled';
 
 interface PayrollFormData {
+  start_date: string;
+  end_date: string;
+
   employee_id: string;
   period_month: number;
   period_year: number;
@@ -81,6 +81,7 @@ interface PayrollFormData {
   absent_deduction: string;
   late_deduction: string;
   reward_allowance: string;
+  loan_amount: string;
   manual_allowance_details: { title: string, amount: number }[];
   manual_deduction_details: { title: string, amount: number }[];
   bank_account_details: string;
@@ -235,7 +236,10 @@ export function PayrollManagement() {
   }>({ attendanceCount: 0, absentCount: 0, presentCount: 0, lateMinutes: 0, deductionRate: 1000, foundSettings: false });
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
-  const [formData, setFormData] = useState<PayrollFormData>({
+    const [formData, setFormData] = useState<PayrollFormData>({
+    start_date: new Date(currentYear, currentMonth - 1, 1).toLocaleDateString('en-CA'),
+    end_date: new Date(currentYear, currentMonth, 0).toLocaleDateString('en-CA'),
+
     employee_id: '',
     period_month: currentMonth,
     period_year: currentYear,
@@ -253,6 +257,7 @@ export function PayrollManagement() {
     absent_deduction: '0',
     late_deduction: '0',
     reward_allowance: '0',
+    loan_amount: '0',
     manual_allowance_details: [],
     manual_deduction_details: [],
     bank_account_details: '',
@@ -260,7 +265,7 @@ export function PayrollManagement() {
   });
 
   // Custom Hooks
-  const { payroll, loading, error, addPayroll, markAsPaid, updatePayroll, deletePayroll } = usePayroll(selectedMonth, selectedYear);
+  const { payroll, loading, error, refetch, addPayroll, markAsPaid, updatePayroll, deletePayroll } = usePayroll(selectedMonth, selectedYear);
   const { employees } = useEmployees();
   const { loans } = useLoans();
   const { user } = useAuth();
@@ -341,18 +346,31 @@ export function PayrollManagement() {
   }, [selectedMonth, selectedYear]);
 
   // Helper to get work schedule (mirrors AttendanceManagement)
-  const getWorkSchedule = (dateString: string) => {
+  const getWorkSchedule = (dateString: string) => { // Updated logic below
     const date = new Date(dateString);
     const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    const dateFormatted = dateString.split('T')[0];
+    const holidays = attendanceSettings?.attendance_holidays || [];
+    const isHoliday = day === 0 || holidays.includes(dateFormatted);
+
+    if (isHoliday) {
+      return {
+        start: attendanceSettings?.work_start_time_weekday || '07:30',
+        end: attendanceSettings?.work_end_time_weekday || '17:00',
+        isHoliday: true
+      };
+    }
 
     if (day === 6) { // Saturday
       return {
-        start: attendanceSettings?.work_start_time_saturday || '08:00',
+        start: attendanceSettings?.work_start_time_saturday || '07:30',
+        isHoliday: false,
         end: attendanceSettings?.work_end_time_saturday || '13:00'
       };
     }
     return {
-      start: attendanceSettings?.work_start_time_weekday || '08:00',
+      start: attendanceSettings?.work_start_time_weekday || '07:30',
+      isHoliday: false,
       end: attendanceSettings?.work_end_time_weekday || '17:00'
     };
   };
@@ -386,12 +404,13 @@ export function PayrollManagement() {
       const status = (record.status || '').toLowerCase().trim();
       if (status === 'late' && record.check_in) {
         const schedule = getWorkSchedule(record.date);
+        if (schedule.isHoliday) return;
         const [h, m] = record.check_in.split(':').map(Number);
         const [sh, sm] = schedule.start.split(':').map(Number);
 
         const checkInMinutes = h * 60 + m;
         const workStartMinutes = sh * 60 + sm;
-        const lateThreshold = workStartMinutes + (attendanceSettings?.attendance_late_tolerance || 0);
+        const lateThreshold = workStartMinutes + (attendanceSettings?.attendance_late_tolerance || 5);
 
         if (checkInMinutes > lateThreshold) {
           totalLateMinutes += (checkInMinutes - lateThreshold);
@@ -399,17 +418,46 @@ export function PayrollManagement() {
       }
     });
 
-    const workingDays = 26;
-    const dailyAbsentPenalty = Math.round((
-      isWorker ? 0 : (payrollSettings?.payroll_allowance_position || 0)
-    ) / workingDays);
+    const workingDays = 26; // Pembagi tetap 26 hari sesuai permintaan user
+    
+    // Formula Potongan Absen: (Tunjangan Jabatan) / 26
+    const employeeAllowancesForPenalty = isWorker ? [] : (employee.allowances || []);
+    const empPosForPenalty = employeeAllowancesForPenalty.find((a: any) => 
+      a.title?.toLowerCase().includes('jabatan') || 
+      a.title?.toLowerCase().includes('position')
+    );
+    const positionForPenalty = empPosForPenalty ? empPosForPenalty.amount : 0;
+    
+    const dailyAbsentPenalty = Math.round((positionForPenalty) / workingDays);
 
     // Fixed Base Salary as per revision (not prorated by attendance)
     const proratedBase = baseSalary;
-    const mealAllowance = 0;
-    const gasolineAllowance = 0;
-    const positionAllowance = isWorker ? 0 : (payrollSettings?.payroll_allowance_position || 0);
-    const thrAllowance = isWorker ? 0 : (payrollSettings?.payroll_allowance_thr || 0);
+    const employeeAllowances = isWorker ? [] : (employee.allowances || []);
+    
+    // Sinkronisasi Otomatis: Ambil tunjangan dari profil karyawan
+    const empMeal = employeeAllowances.find((a: any) => 
+      a.title?.toLowerCase().includes('makan') || 
+      a.title?.toLowerCase().includes('meal')
+    );
+    const empGas = employeeAllowances.find((a: any) => 
+      a.title?.toLowerCase().includes('bensin') || 
+      a.title?.toLowerCase().includes('gasoline') ||
+      a.title?.toLowerCase().includes('transport')
+    );
+    const empPos = employeeAllowances.find((a: any) => 
+      a.title?.toLowerCase().includes('jabatan') || 
+      a.title?.toLowerCase().includes('position')
+    );
+    const empThr = employeeAllowances.find((a: any) => 
+      a.title?.toLowerCase().includes('thr')
+    );
+
+    // Allowances - ONLY from Employee Profile (No global fallbacks per user request)
+    const mealAllowance = empMeal ? empMeal.amount : 0;
+    const gasolineAllowance = empGas ? empGas.amount : 0;
+    const positionAllowance = empPos ? empPos.amount : 0;
+    const thrAllowance = empThr ? empThr.amount : 0;
+
     const bpjsDeduction = payrollSettings?.payroll_bpjs_rate || 0;
 
     // Perfect Attendance Reward
@@ -418,11 +466,11 @@ export function PayrollManagement() {
 
     let absentDeduction = 0;
     if (absentCount > 0) {
+      // Formula Potongan Absen: (Tunjangan Jabatan) / 26 + Potongan Standar
       absentDeduction = absentCount * (payrollSettings?.payroll_deduction_absent || 0);
       absentDeduction += absentCount * dailyAbsentPenalty;
     }
-
-    const lateDeduction = totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
+    const late_deduction = totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
 
     const manualAllowancesTotal = isWorker ? 0 : (employee.allowances?.reduce((sum: number, i: any) => sum + (i.amount || 0), 0) || 0);
     const manualDeductionsTotal = employee.deductions?.reduce((sum: number, i: any) => sum + (i.amount || 0), 0) || 0;
@@ -437,7 +485,7 @@ export function PayrollManagement() {
     const totalLoanDeduction = activeLoans.reduce((sum, loan) => sum + loan.installment_amount, 0);
 
     const draftAllowances = mealAllowance + gasolineAllowance + positionAllowance + thrAllowance + manualAllowancesTotal;
-    const draftDeductions = bpjsDeduction + absentDeduction + lateDeduction + manualDeductionsTotal + totalLoanDeduction;
+    const draftDeductions = absentDeduction + late_deduction + totalLoanDeduction;
     const draftNet = proratedBase + draftAllowances + rewardAllowance - draftDeductions;
 
     return {
@@ -446,12 +494,13 @@ export function PayrollManagement() {
       deductions: draftDeductions,
       net_salary: draftNet,
       absent_deduction: absentDeduction,
-      late_deduction: lateDeduction,
+      late_deduction: late_deduction,
       meal_allowance: mealAllowance,
       gasoline_allowance: gasolineAllowance,
       position_allowance: positionAllowance,
-      bpjs_deduction: bpjsDeduction,
-      reward_allowance: rewardAllowance
+      bpjs_deduction: 0,
+      reward_allowance: rewardAllowance,
+      loan_amount: totalLoanDeduction
     };
   };
 
@@ -488,11 +537,6 @@ export function PayrollManagement() {
 
         // 1. Base Salary
         let baseSalaryValue = employee.salary;
-        let maternityInfo = '';
-        let latePenalty = 0;
-
-        // Base Salary remains fixed as per revision (No maternity adjustments)
-        const salary = baseSalaryValue.toString();
 
         // 2. Loan Deductions
         const activeLoans = loans.filter(l =>
@@ -513,8 +557,6 @@ export function PayrollManagement() {
         let mealAllowance = 0;
         let gasolineAllowance = 0;
         let absentDeductionAmount = 0;
-        let totalRewardAllowance = 0;
-        let rewardDetailsItems: { title: string, amount: number }[] = [];
         let bpjsDeduction = 0;
         let positionAllowance = 0;
         let thrAllowance = 0;
@@ -525,9 +567,10 @@ export function PayrollManagement() {
         let manualDeductionItems: { title: string, amount: number }[] = [];
         let totalManualAllowances = 0;
         let totalManualDeductions = 0;
+        let latePenalty = 0;
 
         try {
-          attendance = await attendanceService.getByEmployee(formData.employee_id, formData.period_month, formData.period_year);
+          attendance = await attendanceService.getByEmployeeDateRange(formData.employee_id, formData.start_date, formData.end_date);
 
           // Absensi (Alpha) - status 'absent'
           absentCount = attendance?.filter((a: any) => {
@@ -538,23 +581,25 @@ export function PayrollManagement() {
           if (absentCount > 0) {
             if (payrollSettings && payrollSettings.payroll_deduction_absent > 0) {
               absentDeductionAmount = absentCount * payrollSettings.payroll_deduction_absent;
+              totalDeductions += absentDeductionAmount;
               newDeductionDetails.push(`Absensi: ${absentCount} hari tidak hadir (Rp ${absentDeductionAmount.toLocaleString('id-ID')})`);
             }
           }
 
           // Keterlambatan (Late)
           totalLateMinutes = 0;
-          latePenalty = 0;
           attendance?.forEach((record: any) => {
             const status = (record.status || '').toLowerCase().trim();
             if (status === 'late' && record.check_in) {
               const schedule = getWorkSchedule(record.date);
+              if (schedule.isHoliday) return;
+
               const [h, m] = record.check_in.split(':').map(Number);
-              const [sh, sm] = schedule.start.split(':').map(Number);
+              const [sh, sm] = (schedule.start || '07:30').split(':').map(Number);
 
               const checkInMinutes = h * 60 + m;
               const workStartMinutes = sh * 60 + sm;
-              const lateThreshold = workStartMinutes + (attendanceSettings?.attendance_late_tolerance || 0);
+              const lateThreshold = workStartMinutes + (attendanceSettings?.attendance_late_tolerance || 5);
 
               if (checkInMinutes > lateThreshold) {
                 totalLateMinutes += (checkInMinutes - lateThreshold);
@@ -565,21 +610,16 @@ export function PayrollManagement() {
           if (totalLateMinutes > 0) {
             const multiplier = payrollSettings?.attendance_late_penalty || 1000;
             latePenalty = totalLateMinutes * multiplier;
-            // Removed adding to absentDeductionAmount - keeping them separate now
+            totalDeductions += latePenalty;
             newDeductionDetails.push(`Keterlambatan: ${totalLateMinutes} menit (Rp ${latePenalty.toLocaleString('id-ID')})`);
           }
-
-          const presentCount = attendance?.filter((a: any) => {
-            const status = (a.status || '').toLowerCase().trim();
-            return ['present', 'late', 'business_trip', 'wfh'].includes(status);
-          }).length || 0;
 
           setDebugInfo({
             attendanceCount: attendance?.length || 0,
             absentCount: absentCount,
-            presentCount: presentCount,
+            presentCount: 0,
             lateMinutes: totalLateMinutes,
-            deductionRate: payrollSettings?.attendance_late_penalty || 1000,
+            deductionRate: 0,
             foundSettings: !!payrollSettings,
             rawStatuses: attendance?.slice(0, 5).map((a: any) => a.status || 'null')
           });
@@ -587,57 +627,76 @@ export function PayrollManagement() {
           // --- Auto-Calculate Allowances & Deductions based on Settings ---
           if (payrollSettings) {
             const workingDays = 26; // Fixed 26 days divisor as per user request
-            const dailyAbsentPenalty = Math.round((
-              isWorker ? 0 : (payrollSettings.payroll_allowance_position || 0)
-            ) / workingDays);
-
-            // Base salary fixed as per revision (not prorated by attendance)
-            // baseSalaryValue = Math.round((baseSalaryValue / workingDays) * presentCount);
-
-            // Allowances are now recorded at full monthly value (no more proration here)
-            // Deduction will be handled separately in absentDeductionAmount
+            
+            // Allowances - Default to 0, strictly based on employee data per user request
             mealAllowance = 0;
             gasolineAllowance = 0;
-            positionAllowance = isWorker ? 0 : (payrollSettings.payroll_allowance_position || 0);
-
-            // Explicit absence deduction based on (P+M+G)/26
-            if (absentCount > 0) {
-              const formulaAbsenceDeduction = absentCount * dailyAbsentPenalty;
-              absentDeductionAmount += formulaAbsenceDeduction;
-              newDeductionDetails.push(`Absensi: ${absentCount} hari x Rp ${dailyAbsentPenalty.toLocaleString('id-ID')} = Rp ${formulaAbsenceDeduction.toLocaleString('id-ID')}`);
-            }
+            positionAllowance = 0;
+            thrAllowance = 0;
 
             // bpjs
-            const employeeBpjs = employee.deductions?.find((d: any) =>
-              d.title.toUpperCase().includes('BPJS')
-            );
-
-            if (employeeBpjs) {
-              bpjsDeduction = employeeBpjs.amount;
-            } else {
-              bpjsDeduction = payrollSettings.payroll_bpjs_rate || 0;
-            }
-
-            thrAllowance = isWorker ? 0 : (payrollSettings.payroll_allowance_thr || 0);
-
-            if (mealAllowance > 0) {
-              newAllowanceDetails.push(`Uang Makan: ${formatCurrency(mealAllowance)} (Utuh)`);
-            }
-            if (gasolineAllowance > 0) {
-              newAllowanceDetails.push(`Uang Bensin: ${formatCurrency(gasolineAllowance)} (Utuh)`);
-            }
+            bpjsDeduction = 0; // BPJS auto-deduction removed
           }
 
           // --- Manual Items from Employee Profile ---
-          manualAllowanceItems = isWorker ? [] : (employee.allowances || []);
+          const employeeAllowances = isWorker ? [] : (employee.allowances || []);
+          
+          // Sinkronisasi Otomatis: Ambil tunjangan spesifik dari profil karyawan
+          const empMeal = employeeAllowances.find(a => 
+            a.title?.toLowerCase().includes('makan') || 
+            a.title?.toLowerCase().includes('meal')
+          );
+          const empGas = employeeAllowances.find(a => 
+            a.title?.toLowerCase().includes('bensin') || 
+            a.title?.toLowerCase().includes('gasoline') ||
+            a.title?.toLowerCase().includes('transport')
+          );
+          const empPos = employeeAllowances.find(a => 
+            a.title?.toLowerCase().includes('jabatan') || 
+            a.title?.toLowerCase().includes('position')
+          );
+          const empThr = employeeAllowances.find(a => 
+            a.title?.toLowerCase().includes('thr')
+          );
+
+          if (empMeal) mealAllowance = empMeal.amount;
+          if (empGas) gasolineAllowance = empGas.amount;
+          if (empPos) positionAllowance = empPos.amount;
+          if (empThr) thrAllowance = empThr.amount;
+
+          // Filter out specific allowances to avoid double counting in "Manual Items"
+          manualAllowanceItems = employeeAllowances.filter(a => 
+            a !== empMeal && a !== empGas && a !== empPos && a !== empThr
+          );
           manualDeductionItems = employee.deductions || [];
+
+          // Attendance-based calculations (Only if settings exist)
+          if (payrollSettings) {
+            const workingDays = 26; // Pembagi tetap 26 hari sesuai permintaan user
+            // Formula Potongan Absen: (Tunjangan Jabatan) / 26
+            const dailyAbsentPenalty = Math.round((positionAllowance) / workingDays);
+
+            if (absentCount > 0) {
+              // Basic penalty + allowance-based penalty
+              const formulaAbsenceDeduction = (absentCount * (payrollSettings.payroll_deduction_absent || 0)) + (absentCount * dailyAbsentPenalty);
+              absentDeductionAmount = formulaAbsenceDeduction;
+              totalDeductions += formulaAbsenceDeduction;
+              newDeductionDetails.push(`Absensi: ${absentCount} hari (Potongan Rp ${formulaAbsenceDeduction.toLocaleString('id-ID')})`);
+            }
+          }
+
+          if (mealAllowance > 0) {
+            newAllowanceDetails.push(`Uang Makan: ${formatCurrency(mealAllowance)}`);
+          }
+          if (gasolineAllowance > 0) {
+            newAllowanceDetails.push(`Uang Bensin: ${formatCurrency(gasolineAllowance)}`);
+          }
+          if (positionAllowance > 0) {
+            newAllowanceDetails.push(`Tunjangan Jabatan: ${formatCurrency(positionAllowance)}`);
+          }
 
           if (manualAllowanceItems.length > 0) {
             totalManualAllowances = manualAllowanceItems.reduce((sum, item) => sum + (item.amount || 0), 0);
-          }
-
-          if (manualDeductionItems.length > 0) {
-            totalManualDeductions = manualDeductionItems.reduce((sum, item) => sum + (item.amount || 0), 0);
           }
 
         } catch (error: any) {
@@ -654,7 +713,7 @@ export function PayrollManagement() {
         setFormData(prev => ({
           ...prev,
           base_salary: baseSalaryValue.toString(),
-          deductions: (totalDeductions + totalManualDeductions).toString(),
+          deductions: (totalDeductions).toString(), // Removed totalManualDeductions to avoid double counting
           bank_account_details: employee.bank_account || '',
           meal_allowance: mealAllowance.toString(),
           gasoline_allowance: gasolineAllowance.toString(),
@@ -702,6 +761,7 @@ export function PayrollManagement() {
         late_deduction: existingPay?.late_deduction || draft?.late_deduction || 0,
         absent_deduction: existingPay?.absent_deduction || draft?.absent_deduction || 0,
         reward_allowance: existingPay?.reward_allowance || 0,
+        loan_amount: existingPay?.loan_amount || draft?.loan_amount || 0,
         is_payroll_exists: !!existingPay,
         raw_pay: existingPay // Keep reference for details
       };
@@ -731,9 +791,11 @@ export function PayrollManagement() {
   // Reset form
   const resetForm = () => {
     setFormData({
+      start_date: new Date(selectedYear, selectedMonth - 1, 1).toLocaleDateString('en-CA'),
+      end_date: new Date(selectedYear, selectedMonth, 0).toLocaleDateString('en-CA'),
       employee_id: '',
-      period_month: currentMonth,
-      period_year: currentYear,
+      period_month: selectedMonth,
+      period_year: selectedYear,
       base_salary: '',
       allowances: '0',
       deductions: '0',
@@ -749,6 +811,7 @@ export function PayrollManagement() {
       late_deduction: '0',
       manual_allowance_details: [],
       reward_allowance: '0',
+      loan_amount: '0',
       manual_deduction_details: [],
       bank_account_details: '',
       is_perfect_attendance: false,
@@ -787,8 +850,10 @@ export function PayrollManagement() {
     const effectiveThr = isSelectedEmployeeWorker ? 0 : thr;
     const effectiveManualAllowances = isSelectedEmployeeWorker ? 0 : manualAllowancesTotal;
 
+    const loan = parseFloat(formData.loan_amount) || 0;
+
     const totalAllowances = effectiveAllowances + effectiveGasoline + effectiveMeal + effectivePosition + effectiveDiscretionary + effectiveThr + effectiveManualAllowances + Number(formData.reward_allowance || 0);
-    const totalDeductions = deductions + bpjs + absent + late + manualDeductionsTotal;
+    const totalDeductions = deductions + bpjs + absent + late + manualDeductionsTotal + loan;
     const overtimePay = overtimeHours * overtimeRate;
 
     return baseSalary + totalAllowances + overtimePay - totalDeductions;
@@ -806,7 +871,7 @@ export function PayrollManagement() {
       period_year: p.period_year,
       base_salary: p.base_salary.toString(),
       allowances: isWorker ? '0' : (p.allowances - (p.gasoline_allowance || 0) - (p.meal_allowance || 0) - (p.position_allowance || 0) - (p.discretionary_allowance || 0) - (p.thr_allowance || 0)).toString(),
-      deductions: (p.deductions - (p.bpjs_deduction || 0) - (p.absent_deduction || 0) - (p.late_deduction || 0)).toString(),
+      deductions: (p.deductions - (p.bpjs_deduction || 0) - (p.absent_deduction || 0) - (p.late_deduction || 0) - (p.loan_amount || 0)).toString(),
       overtime_hours: '0',
       overtime_rate: '0',
       gasoline_allowance: isWorker ? '0' : (p.gasoline_allowance || 0).toString(),
@@ -818,10 +883,13 @@ export function PayrollManagement() {
       absent_deduction: (p.absent_deduction || 0).toString(),
       late_deduction: (p.late_deduction || 0).toString(),
       reward_allowance: (p.reward_allowance || 0).toString(),
+      loan_amount: (p.loan_amount || 0).toString(),
       manual_allowance_details: isWorker ? [] : (p.manual_allowance_details || []),
       manual_deduction_details: p.manual_deduction_details || [],
       bank_account_details: p.bank_account_details || '',
       is_perfect_attendance: p.is_perfect_attendance || false,
+      start_date: p.start_date || new Date(p.period_year, p.period_month - 1, 1).toLocaleDateString('en-CA'),
+      end_date: p.end_date || new Date(p.period_year, p.period_month, 0).toLocaleDateString('en-CA'),
     });
     setShowAddDialog(true);
   };
@@ -838,15 +906,6 @@ export function PayrollManagement() {
         return;
       }
 
-      if (!linkedEmployeeIds.includes(formData.employee_id)) {
-        toast({
-          title: 'Karyawan Belum Registrasi',
-          description: 'Karyawan ini belum memiliki akun sistem (User Account).',
-          variant: 'destructive',
-        });
-        return;
-      }
-
       const baseSalary = parseFloat(formData.base_salary);
       const allowances = parseFloat(formData.allowances) || 0;
       const deductions = parseFloat(formData.deductions) || 0;
@@ -858,8 +917,16 @@ export function PayrollManagement() {
       const bpjs = parseFloat(formData.bpjs_deduction) || 0;
       const absent = parseFloat(formData.absent_deduction) || 0;
       const late = parseFloat(formData.late_deduction) || 0;
+      const loan = parseFloat(formData.loan_amount) || 0;
+      const overtimeHours = parseFloat(formData.overtime_hours) || 0;
+      const overtimeRate = parseFloat(formData.overtime_rate) || 0;
+      const overtimePay = overtimeHours * overtimeRate;
+
       const manualAllowanceDetails = isSelectedEmployeeWorker ? [] : formData.manual_allowance_details;
       const manualAllowancesTotal = manualAllowanceDetails?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+      const manualDeductionDetails = formData.manual_deduction_details || [];
+      const manualDeductionsTotal = manualDeductionDetails.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+
       const effectiveAllowances = isSelectedEmployeeWorker ? 0 : allowances;
       const effectiveGasoline = isSelectedEmployeeWorker ? 0 : gasoline;
       const effectiveMeal = isSelectedEmployeeWorker ? 0 : meal;
@@ -867,9 +934,9 @@ export function PayrollManagement() {
       const effectiveDiscretionary = isSelectedEmployeeWorker ? 0 : discretionary;
       const effectiveThr = isSelectedEmployeeWorker ? 0 : thr;
 
-      const totalAllowances = effectiveAllowances + effectiveGasoline + effectiveMeal + effectivePosition + effectiveDiscretionary + effectiveThr + manualAllowancesTotal;
-      const totalDeductions = deductions + bpjs + absent + late;
-      const netSalary = calculateNetSalary();
+      const totalAllowances = effectiveAllowances + effectiveGasoline + effectiveMeal + effectivePosition + effectiveDiscretionary + effectiveThr + manualAllowancesTotal + (parseFloat(formData.reward_allowance) || 0);
+      const totalDeductions = deductions + bpjs + absent + late + manualDeductionsTotal + loan;
+      const netSalary = baseSalary + totalAllowances + overtimePay - totalDeductions;
 
       const payrollPayload: any = {
         employee_id: formData.employee_id,
@@ -884,13 +951,20 @@ export function PayrollManagement() {
         position_allowance: effectivePosition,
         discretionary_allowance: effectiveDiscretionary,
         thr_allowance: effectiveThr,
+        loan_amount: loan,
         bpjs_deduction: bpjs,
         absent_deduction: absent,
         late_deduction: late,
+        overtime_hours: overtimeHours,
+        overtime_rate: overtimeRate,
         reward_allowance: parseFloat(formData.reward_allowance) || 0,
         reward_details: formData.is_perfect_attendance ? [{ title: 'Kehadiran Sempurna', amount: parseFloat(formData.reward_allowance) || 0 }] : [],
         bank_account_details: formData.bank_account_details,
         manual_allowance_details: manualAllowanceDetails,
+        manual_deduction_details: manualDeductionDetails,
+        is_perfect_attendance: formData.is_perfect_attendance,
+        start_date: formData.start_date,
+        end_date: formData.end_date
       };
 
       // --- DUPLICATE CHECK ---
@@ -922,6 +996,7 @@ export function PayrollManagement() {
 
       setShowAddDialog(false);
       resetForm();
+      refetch();
     } catch (error: any) {
       console.error('Failed to save payroll:', error);
       toast({
@@ -954,6 +1029,9 @@ export function PayrollManagement() {
       });
 
       let count = 0;
+      const startDate = formData.start_date;
+      const endDate = formData.end_date;
+
       for (const employee of eligibleEmployees) {
         const isWorker = isWorkerEmployee(employee);
         // Basic calculations
@@ -964,18 +1042,17 @@ export function PayrollManagement() {
         let totalRewardAllowance = 0;
         let absentDeductionAmount = 0;
         let lateDeductionAmount = 0;
-        let newAllowanceDetails: string[] = [];
 
         const activeLoans = loans.filter(l =>
           l.employee_id === employee.id &&
           l.status === 'approved' &&
           l.remaining_amount > 0 &&
-          new Date(l.start_date) <= new Date(selectedYear, selectedMonth - 1, 1)
+          new Date(l.start_date) <= new Date(endDate)
         );
-        totalDeductions += activeLoans.reduce((sum, loan) => sum + loan.installment_amount, 0);
+        const current_loan_amount = activeLoans.reduce((sum, loan) => sum + loan.installment_amount, 0);
 
         // Attendance & Rewards
-        const attendance = await attendanceService.getByEmployee(employee.id, selectedMonth, selectedYear);
+        const attendance = await attendanceService.getByEmployeeDateRange(employee.id, startDate, endDate);
         const rewards = await rewardService.getByEmployee(employee.id);
 
         const periodRewards = rewards?.filter((r: any) => {
@@ -995,26 +1072,19 @@ export function PayrollManagement() {
           return status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa';
         }).length || 0;
 
-        if (absentCount > 0 && payrollSettings?.payroll_deduction_absent) {
-          absentDeductionAmount = absentCount * payrollSettings.payroll_deduction_absent;
-        }
-
         let totalLateMinutes = 0;
-        const manualAllowanceItems = isWorker ? [] : (employee.allowances || []);
-        const manualDeductionItems = employee.deductions || [];
-        const totalManualAllowances = manualAllowanceItems.reduce((sum, i) => sum + (i.amount || 0), 0);
-        const totalManualDeductions = manualDeductionItems.reduce((sum, i) => sum + (i.amount || 0), 0);
-
         attendance?.forEach((record: any) => {
           const status = (record.status || '').toLowerCase().trim();
           if (status === 'late' && record.check_in) {
             const schedule = getWorkSchedule(record.date);
+            if (schedule.isHoliday) return;
+
             const [h, m] = record.check_in.split(':').map(Number);
-            const [sh, sm] = schedule.start.split(':').map(Number);
+            const [sh, sm] = (schedule.start || '07:30').split(':').map(Number);
 
             const checkInMinutes = h * 60 + m;
             const workStartMinutes = sh * 60 + sm;
-            const lateThreshold = workStartMinutes + (attendanceSettings?.attendance_late_tolerance || 0);
+            const lateThreshold = workStartMinutes + (attendanceSettings?.attendance_late_tolerance || 5);
 
             if (checkInMinutes > lateThreshold) {
               totalLateMinutes += (checkInMinutes - lateThreshold);
@@ -1026,22 +1096,47 @@ export function PayrollManagement() {
           lateDeductionAmount = totalLateMinutes * (payrollSettings?.attendance_late_penalty || 1000);
         }
 
-        const presentCount = attendance?.filter((a: any) => {
-          const status = (a.status || '').toLowerCase().trim();
-          return ['present', 'late', 'business_trip', 'wfh'].includes(status);
-        }).length || 0;
-        const workingDays = 26; // Fixed 26 days divisor
-        const dailyAbsentPenalty = Math.round((
-          isWorker ? 0 : (payrollSettings?.payroll_allowance_position || 0)
-        ) / workingDays);
+        if (absentCount > 0 && payrollSettings?.payroll_deduction_absent) {
+          absentDeductionAmount = absentCount * payrollSettings.payroll_deduction_absent;
+        }
 
-        // Fixed Base Salary as per revision (no proration)
-        // baseSalary = Math.round((baseSalary / workingDays) * presentCount);
+        const employeeAllowances = isWorker ? [] : (employee.allowances || []);
+        
+        // Sinkronisasi Otomatis: Ambil tunjangan dari profil karyawan
+        const empMeal = employeeAllowances.find(a => 
+          a.title?.toLowerCase().includes('makan') || 
+          a.title?.toLowerCase().includes('meal')
+        );
+        const empGas = employeeAllowances.find(a => 
+          a.title?.toLowerCase().includes('bensin') || 
+          a.title?.toLowerCase().includes('gasoline') ||
+          a.title?.toLowerCase().includes('transport')
+        );
+        const empPos = employeeAllowances.find(a => 
+          a.title?.toLowerCase().includes('jabatan') || 
+          a.title?.toLowerCase().includes('position')
+        );
+        const empThr = employeeAllowances.find(a => 
+          a.title?.toLowerCase().includes('thr')
+        );
 
-        // Allowances at full value
-        mealAllowance = 0;
-        gasolineAllowance = 0;
-        const position = isWorker ? 0 : (payrollSettings?.payroll_allowance_position || 0);
+        // Allowances - ONLY from Employee Profile (No global fallbacks per user request)
+        mealAllowance = empMeal ? empMeal.amount : 0;
+        gasolineAllowance = empGas ? empGas.amount : 0;
+        const position = empPos ? empPos.amount : 0;
+        const thrAmount = empThr ? empThr.amount : 0;
+
+        const workingDays = 26; // Pembagi tetap 26 hari sesuai permintaan user
+        // Formula Potongan Absen: (Tunjangan Jabatan) / 26
+        const dailyAbsentPenalty = Math.round((position) / workingDays);
+
+        // Manual Items (excluding the ones already picked above)
+        const manualAllowanceItems = employeeAllowances.filter(a => 
+          a !== empMeal && a !== empGas && a !== empPos && a !== empThr
+        );
+        const manualDeductionItems = employee.deductions || [];
+        const totalManualAllowances = manualAllowanceItems.reduce((sum, i) => sum + (i.amount || 0), 0);
+        const totalManualDeductions = manualDeductionItems.reduce((sum, i) => sum + (i.amount || 0), 0);
 
         // Absence deduction based on (P+M+G)/26
         if (absentCount > 0) {
@@ -1059,12 +1154,12 @@ export function PayrollManagement() {
           });
         }
 
-        const bpjs = payrollSettings?.payroll_bpjs_rate || 0;
+        const bpjs = 0;
         const discretionary = 0;
-        const thr = isWorker ? 0 : (payrollSettings?.payroll_allowance_thr || 0);
+        const thr = thrAmount;
 
         const totalOtherAllowances = mealAllowance + gasolineAllowance + position + discretionary + thr + totalManualAllowances;
-        const combinedDeductions = totalDeductions + bpjs + absentDeductionAmount + lateDeductionAmount + totalManualDeductions;
+        const combinedDeductions = totalDeductions + absentDeductionAmount + lateDeductionAmount + totalManualDeductions + current_loan_amount;
         const netSalary = baseSalary + totalOtherAllowances + totalRewardAllowance - combinedDeductions;
 
         await addPayroll({
@@ -1081,6 +1176,7 @@ export function PayrollManagement() {
           position_allowance: position,
           discretionary_allowance: discretionary,
           thr_allowance: thr,
+          loan_amount: current_loan_amount,
           bpjs_deduction: bpjs,
           absent_deduction: absentDeductionAmount,
           late_deduction: lateDeductionAmount,
@@ -1089,7 +1185,9 @@ export function PayrollManagement() {
           manual_allowance_details: manualAllowanceItems,
           manual_deduction_details: manualDeductionItems,
           bank_account_details: employee.bank_account || '',
-          is_perfect_attendance: isPerfect
+          is_perfect_attendance: absentCount === 0 && totalLateMinutes === 0 && (attendance?.length || 0) > 0,
+          start_date: startDate,
+          end_date: endDate
         });
 
         count++;
@@ -1142,6 +1240,16 @@ export function PayrollManagement() {
     exportPayrollToExcel(filteredPayroll as any, employees, { month: selectedMonth, year: selectedYear });
   };
 
+  const handleExportPDF = () => {
+    const payrollData = filteredPayroll.map(p => ({
+      payroll: p as PayrollRecord,
+      employee: employees.find(e => e.id === p.employee_id)!
+    })).filter(data => data.employee !== undefined);
+
+    const period = `${months[selectedMonth - 1]} ${selectedYear}`;
+    generatePayrollReport(payrollData, period, printSettings);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1183,7 +1291,11 @@ export function PayrollManagement() {
           )}
           <Button variant="outline" onClick={handleExportExcel} className="font-body">
             <Download className="w-4 h-4 mr-2" />
-            Ekspor
+            Excel
+          </Button>
+          <Button variant="outline" onClick={handleExportPDF} className="font-body text-red-600 border-red-200 hover:bg-red-50">
+            <FileText className="w-4 h-4 mr-2" />
+            PDF
           </Button>
         </div>
       </div>
@@ -1248,12 +1360,13 @@ export function PayrollManagement() {
 
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+
             <div className="flex items-center gap-2">
               <NativeSelect
                 value={selectedMonth.toString()}
                 onChange={(value) => setSelectedMonth(parseInt(value))}
-                className="w-[150px] font-body"
+                className="w-[140px] font-body"
               >
                 {months.map((month, index) => (
                   <option key={index + 1} value={(index + 1).toString()}>
@@ -1264,7 +1377,7 @@ export function PayrollManagement() {
               <NativeSelect
                 value={selectedYear.toString()}
                 onChange={(value) => setSelectedYear(parseInt(value))}
-                className="w-[120px] font-mono"
+                className="w-[100px] font-body"
               >
                 {Array.from({ length: 5 }, (_, i) => currentYear - 2 + i).map((year) => (
                   <option key={year} value={year.toString()}>
@@ -1272,7 +1385,65 @@ export function PayrollManagement() {
                   </option>
                 ))}
               </NativeSelect>
+                        </div>
+
+            {/* Rentang Tanggal Penggajian (Main Header) */}
+            <div className="flex items-center gap-2 p-1.5 bg-blue-50/50 rounded-lg border border-blue-100 animate-in fade-in zoom-in duration-300">
+              <div className="flex items-center gap-1 text-[10px] font-black text-blue-600 uppercase tracking-tighter mr-1 ml-1">
+                <Calendar className="w-3 h-3" />
+                Rentang:
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="date"
+                  value={formData.start_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
+                  className="h-7 w-[130px] text-[10px] font-mono border-blue-200 bg-white"
+                />
+                <span className="text-blue-400 text-xs">-</span>
+                <Input
+                  type="date"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
+                  className="h-7 w-[130px] text-[10px] font-mono border-blue-200 bg-white"
+                />
+              </div>
+
+                            {(() => {
+                const hDates = attendanceSettings?.attendance_holidays || [];
+                const start = new Date(formData.start_date);
+                const end = new Date(formData.end_date);
+                const hList = [];
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                  const dStr = d.toISOString().split('T')[0];
+                  if (d.getDay() === 0) hList.push({ date: dStr, name: 'Hari Minggu' });
+                  else if (hDates.some(h => h.split('T')[0] === dStr)) hList.push({ date: dStr, name: 'Libur Perusahaan' });
+                }
+                if (hList.length === 0) return null;
+                return (
+                  <div className="relative group ml-2">
+                    <div className="p-1 bg-orange-100 text-orange-700 rounded-full border border-orange-200 animate-pulse cursor-help">
+                      <Calendar className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 bg-white border border-orange-100 rounded-lg shadow-xl p-2 hidden group-hover:block z-50 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                      <div className="text-[10px] font-bold text-orange-800 uppercase tracking-wider mb-1.5 border-b border-orange-50 pb-1 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        Daftar Hari Libur:
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                        {hList.map((h, idx) => (
+                          <div key={idx} className="flex flex-col border-l-2 border-orange-200 pl-1.5 py-0.5">
+                            <span className="text-[9px] font-mono text-gray-500">{new Date(h.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                            <span className="text-[10px] font-medium text-gray-800 leading-tight">{h.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
+
             <div className="relative w-full md:w-64">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
               <Input
@@ -1308,6 +1479,7 @@ export function PayrollManagement() {
                     <TableHead className="font-body text-right">Tunjangan</TableHead>
                     <TableHead className="font-body text-right">Pot. Absen</TableHead>
                     <TableHead className="font-body text-right">Pot. Telat</TableHead>
+                    <TableHead className="font-body text-right text-red-600">Pinjaman</TableHead>
                     <TableHead className="font-body text-right">Total Gaji</TableHead>
                     <TableHead className="font-body text-right">Aksi</TableHead>
                   </TableRow>
@@ -1348,6 +1520,9 @@ export function PayrollManagement() {
                         </TableCell>
                         <TableCell className={`font-mono text-right ${item.is_payroll_exists ? 'text-red-500' : 'text-red-300 italic'}`}>
                           {formatCurrency(item.late_deduction || 0)}
+                        </TableCell>
+                        <TableCell className={`font-mono text-right ${item.is_payroll_exists ? 'text-red-600' : 'text-red-400 italic'}`}>
+                          {formatCurrency(item.loan_amount || 0)}
                         </TableCell>
                         <TableCell className={`font-mono font-bold text-right ${item.is_payroll_exists ? 'text-gray-900' : 'text-gray-400 italic'}`}>
                           {formatCurrency(item.net_salary)}
@@ -1453,6 +1628,63 @@ export function PayrollManagement() {
                   </option>
                 ))}
               </NativeSelect>
+            </div>
+
+            {/* Rentang Tanggal Penggajian */}
+            <div className="flex items-center gap-2 p-1.5 bg-blue-50/50 rounded-lg border border-blue-100 animate-in fade-in zoom-in duration-300">
+              <div className="flex items-center gap-1 text-[10px] font-black text-blue-600 uppercase tracking-tighter mr-1 ml-1">
+                <Calendar className="w-3 h-3" />
+                Rentang:
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="date"
+                  value={formData.start_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
+                  className="h-7 w-[130px] text-[10px] font-mono border-blue-200 bg-white"
+                />
+                <span className="text-blue-400 text-xs">-</span>
+                <Input
+                  type="date"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
+                  className="h-7 w-[130px] text-[10px] font-mono border-blue-200 bg-white"
+                />
+              </div>
+
+                            {(() => {
+                const hDates = attendanceSettings?.attendance_holidays || [];
+                const start = new Date(formData.start_date);
+                const end = new Date(formData.end_date);
+                const hList = [];
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                  const dStr = d.toISOString().split('T')[0];
+                  if (d.getDay() === 0) hList.push({ date: dStr, name: 'Hari Minggu' });
+                  else if (hDates.some(h => h.split('T')[0] === dStr)) hList.push({ date: dStr, name: 'Libur Perusahaan' });
+                }
+                if (hList.length === 0) return null;
+                return (
+                  <div className="relative group ml-2">
+                    <div className="p-1 bg-orange-100 text-orange-700 rounded-full border border-orange-200 animate-pulse cursor-help">
+                      <Calendar className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 bg-white border border-orange-100 rounded-lg shadow-xl p-2 hidden group-hover:block z-50 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                      <div className="text-[10px] font-bold text-orange-800 uppercase tracking-wider mb-1.5 border-b border-orange-50 pb-1 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        Daftar Hari Libur:
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                        {hList.map((h, idx) => (
+                          <div key={idx} className="flex flex-col border-l-2 border-orange-200 pl-1.5 py-0.5">
+                            <span className="text-[9px] font-mono text-gray-500">{new Date(h.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
+                            <span className="text-[10px] font-medium text-gray-800 leading-tight">{h.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1610,7 +1842,7 @@ export function PayrollManagement() {
                   />
                 </div>
                 {formData.manual_deduction_details?.length > 0 && (
-                  <div className="mt-1 space-y-0.5">
+                  <div className="mt-1 col-span-2 space-y-0.5">
                     <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Potongan Manual:</p>
                     {formData.manual_deduction_details?.map((md, i) => (
                       <div key={i} className="flex justify-between text-[10px] text-red-800/80 italic pl-1">
@@ -1620,6 +1852,16 @@ export function PayrollManagement() {
                     ))}
                   </div>
                 )}
+                <div className="space-y-2 col-span-2">
+                  <Label className="font-body text-xs text-red-700">Pinjaman (Mengurangi Penerimaan)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    className="font-mono text-sm border-red-200"
+                    value={formData.loan_amount}
+                    onChange={(e) => setFormData({ ...formData, loan_amount: e.target.value })}
+                  />
+                </div>
               </div>
             </div>
 
@@ -1646,13 +1888,12 @@ export function PayrollManagement() {
                     Number(formData.bpjs_deduction || 0) +
                     Number(formData.absent_deduction || 0) +
                     Number(formData.late_deduction || 0) +
+                    Number(formData.loan_amount || 0) +
                     Number(formData.deductions || 0)
                   )}
                 </p>
               </div>
             </div>
-
-            {/* Removed the redundant Rincian boxes as they are now inline or in summary */}
 
             {/* Net Salary Preview */}
             {formData.base_salary && (
@@ -1765,6 +2006,12 @@ export function PayrollManagement() {
                       <span className="font-body">Potongan Telat</span>
                       <span className="font-mono">({formatCurrency(selectedPayroll.late_deduction || 0)})</span>
                     </div>
+                    {selectedPayroll.loan_amount ? (
+                      <div className="flex justify-between text-sm text-red-600">
+                        <span className="font-body">Pinjaman</span>
+                        <span className="font-mono">({formatCurrency(selectedPayroll.loan_amount)})</span>
+                      </div>
+                    ) : null}
                     {selectedPayroll.bpjs_deduction ? (
                       <div className="flex justify-between text-sm text-red-600">
                         <span className="font-body">BPJS</span>

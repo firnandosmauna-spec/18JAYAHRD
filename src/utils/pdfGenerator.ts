@@ -226,11 +226,18 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
         detailedDeductions.push(['Potongan Absen', formatCurrency(payroll.absent_deduction)]);
     }
 
+    // Pinjaman
+    if (payroll.loan_amount && payroll.loan_amount > 0) {
+        detailedDeductions.push(['Pinjaman', formatCurrency(payroll.loan_amount)]);
+    }
+
     // Manual Deductions - REMOVED because fields don't exist in DB schema yet
 
     // Calculate "Lain-lain" for deductions
     const documentedDeductions = (payroll.bpjs_deduction || 0) +
-        (payroll.absent_deduction || 0);
+        (payroll.absent_deduction || 0) +
+        (payroll.late_deduction || 0) +
+        (payroll.loan_amount || 0);
     const otherDeductionsValue = (payroll.deductions || 0) - documentedDeductions;
 
     if (otherDeductionsValue > 0) {
@@ -397,6 +404,121 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
 
     // Save the PDF
     doc.save(`Slip_Gaji_${employee.name}_${periodString}.pdf`);
+};
+
+export const generatePayrollReport = (
+    payrollData: { payroll: PayrollRecord; employee: Employee }[],
+    period: string,
+    customSettings?: Partial<PrintSettings>
+) => {
+    const settings = { ...defaultSettings, ...customSettings };
+    const doc = new jsPDF({
+        orientation: 'l', // Landscape for better table width
+        format: 'a4',
+        unit: 'mm'
+    });
+    
+    const pageWidth = doc.internal.pageSize.width;
+
+    // --- HEADER ---
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(settings.companyName, pageWidth / 2, 15, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('LAPORAN PENGGAJIAN KARYAWAN', pageWidth / 2, 22, { align: 'center' });
+    doc.text(`Periode: ${period}`, pageWidth / 2, 27, { align: 'center' });
+
+    doc.setLineWidth(0.5);
+    doc.line(15, 32, pageWidth - 15, 32);
+
+    // --- TABLE DATA ---
+    const tableHeaders = [
+        ['No', 'Nama Karyawan', 'Jabatan', 'Gaji Pokok', 'Total Tunjangan', 'Total Potongan', 'Gaji Bersih']
+    ];
+
+    const tableData = payrollData.map((data, index) => {
+        const p = data.payroll;
+        const e = data.employee;
+        
+        // Use consolidated fields from PayrollRecord
+        const totalAllowances = p.allowances + (p.reward_allowance || 0);
+        
+        return [
+            index + 1,
+            e.name,
+            e.position,
+            formatCurrency(p.base_salary),
+            formatCurrency(totalAllowances),
+            formatCurrency(p.deductions),
+            formatCurrency(p.net_salary)
+        ];
+    });
+
+    // Add Totals row
+    const totals = payrollData.reduce((acc, curr) => {
+        const p = curr.payroll;
+        const totalAllowances = p.allowances + (p.reward_allowance || 0);
+        
+        acc.base += p.base_salary;
+        acc.allowances += totalAllowances;
+        acc.deductions += p.deductions;
+        acc.net += p.net_salary;
+        return acc;
+    }, { base: 0, allowances: 0, deductions: 0, net: 0 });
+
+    tableData.push([
+        '',
+        'TOTAL SELURUH',
+        '',
+        formatCurrency(totals.base),
+        formatCurrency(totals.allowances),
+        formatCurrency(totals.deductions),
+        formatCurrency(totals.net)
+    ]);
+
+    autoTable(doc, {
+        head: tableHeaders,
+        body: tableData,
+        startY: 40,
+        theme: 'grid',
+        headStyles: { 
+            fillColor: settings.headerColor || '#16a34a',
+            textColor: 255,
+            fontSize: 9,
+            halign: 'center'
+        },
+        bodyStyles: { fontSize: 8 },
+        columnStyles: {
+            0: { halign: 'center', cellWidth: 10 },
+            3: { halign: 'right' },
+            4: { halign: 'right' },
+            5: { halign: 'right' },
+            6: { halign: 'right', fontStyle: 'bold' }
+        },
+        didParseCell: (data) => {
+            if (data.row.index === tableData.length - 1) {
+                data.cell.styles.fontStyle = 'bold';
+                data.cell.styles.fillColor = '#f0fdf4'; // Light green background for totals
+            }
+        }
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY || 150;
+
+    // --- SIGNATURES ---
+    if (settings.showSignature) {
+        const sigY = finalY + 20;
+        doc.setFontSize(10);
+        doc.text('Dicetak pada: ' + new Date().toLocaleString('id-ID'), 15, sigY - 10);
+        
+        doc.text('Disetujui oleh,', pageWidth - 60, sigY);
+        doc.text('( ____________________ )', pageWidth - 60, sigY + 25);
+        doc.text('Manager HRD', pageWidth - 60, sigY + 30);
+    }
+
+    doc.save(`Laporan_Payroll_${period.replace(/\s/g, '_')}.pdf`);
 };
 
 export const generateSampleSalarySlip = (customSettings: PrintSettings) => {

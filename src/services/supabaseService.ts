@@ -346,6 +346,19 @@ export const attendanceService = {
     return data
   },
 
+  async getByEmployeeDateRange(employeeId: string, startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
   async create(attendance: Omit<AttendanceRecord, 'id' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase
       .from('attendance')

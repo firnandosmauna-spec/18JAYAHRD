@@ -348,10 +348,15 @@ export interface PayrollRecord {
   bpjs_deduction?: number
   absent_deduction?: number
   late_deduction?: number
+  overtime_hours?: number
+  overtime_rate?: number
   manual_allowance_details?: { title: string, amount: number }[]
   manual_deduction_details?: { title: string, amount: number }[]
   bank_account_details?: string
   is_perfect_attendance?: boolean
+  loan_amount?: number
+  start_date?: string
+  end_date?: string
   updated_at: string
 }
 

@@ -22,6 +22,7 @@ import {
     Ban,
     ChevronDown,
     ChevronUp,
+    Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -164,7 +165,7 @@ export function LoanManagement() {
         const matchesSearch = (employee?.name || '').toLowerCase().includes(searchLower) ||
             (loan.reason || '').toLowerCase().includes(searchLower);
         const matchesStatus = statusFilter === 'all' || loan.status === statusFilter;
-        const matchesRole = isOnlyAdmin ? true : loan.employee_id === user?.employee_id;
+        const matchesRole = isAdminOrHR ? true : loan.employee_id === user?.employee_id;
         return matchesSearch && matchesStatus && matchesRole;
     });
 
@@ -222,26 +223,51 @@ export function LoanManagement() {
     };
 
     // ===== APPROVE KASBON =====
-    const [approvalFormData, setApprovalFormData] = useState({ approved_amount: '', installment_amount: '', admin_notes: '' });
+    const [approvalFormData, setApprovalFormData] = useState({ 
+        approved_amount: '', 
+        installment_amount: '', 
+        admin_notes: '',
+        start_date: new Date().toLocaleDateString('en-CA')
+    });
 
     const handleApproveClick = (loan: EmployeeLoan) => {
         setSelectedLoan(loan);
-        setApprovalFormData({ approved_amount: loan.amount.toString(), installment_amount: loan.installment_amount.toString(), admin_notes: '' });
+        setApprovalFormData({ 
+            approved_amount: loan.amount.toString(), 
+            installment_amount: loan.installment_amount.toString(), 
+            admin_notes: '',
+            start_date: loan.start_date || new Date().toLocaleDateString('en-CA')
+        });
         setShowApproveDialog(true);
     };
 
     const handleApproveConfirm = async () => {
         if (!selectedLoan) return;
         try {
+            const approvedAmount = parseFloat(approvalFormData.approved_amount);
+            const installmentAmount = parseFloat(approvalFormData.installment_amount);
+
+            if (isNaN(approvedAmount) || approvedAmount <= 0) {
+                toast({ title: 'Error', description: 'Nominal disetujui tidak valid', variant: 'destructive' });
+                return;
+            }
+
+            if (isNaN(installmentAmount) || installmentAmount <= 0) {
+                toast({ title: 'Error', description: 'Nominal cicilan tidak valid', variant: 'destructive' });
+                return;
+            }
+
             setIsSubmitting(true);
             await updateLoan(selectedLoan.id, {
                 status: 'approved',
-                amount: parseFloat(approvalFormData.approved_amount),
-                remaining_amount: parseFloat(approvalFormData.approved_amount),
-                installment_amount: parseFloat(approvalFormData.installment_amount),
+                amount: approvedAmount,
+                remaining_amount: approvedAmount,
+                installment_amount: installmentAmount,
                 admin_notes: approvalFormData.admin_notes,
                 approved_by: user?.id,
-                approved_at: new Date().toISOString()
+                approved_at: new Date().toISOString(),
+                start_date: approvalFormData.start_date,
+                updated_at: new Date().toISOString()
             });
             try {
                 await notificationService.create({
@@ -403,13 +429,45 @@ export function LoanManagement() {
     const handleEditConfirm = async () => {
         if (!selectedLoan) return;
         try {
-            setIsSubmitting(true);
             const newAmount = parseFloat(editFormData.amount);
             const newInstallment = parseFloat(editFormData.installment_amount);
+
+            if (isNaN(newAmount) || newAmount <= 0) {
+                toast({ title: 'Error', description: 'Total pinjaman tidak valid', variant: 'destructive' });
+                return;
+            }
+
+            if (isNaN(newInstallment) || newInstallment <= 0) {
+                toast({ title: 'Error', description: 'Nominal cicilan tidak valid', variant: 'destructive' });
+                return;
+            }
+            
+            setIsSubmitting(true);
+            
+            // Only count approved payments
             const payments = await fetchPayments(selectedLoan.id);
-            const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+            const totalPaid = payments
+                .filter((p: any) => p.payment_status !== 'pending_approval' && p.payment_status !== 'rejected')
+                .reduce((sum, p) => sum + p.amount, 0);
+                
             const newRemaining = Math.max(0, newAmount - totalPaid);
-            await updateLoan(selectedLoan.id, { amount: newAmount, remaining_amount: newRemaining, installment_amount: newInstallment, reason: editFormData.reason });
+            
+            // Determine new status if necessary
+            let newStatus = selectedLoan.status;
+            if (newRemaining <= 0) {
+                newStatus = 'paid_off';
+            } else if (selectedLoan.status === 'paid_off' && newRemaining > 0) {
+                newStatus = 'approved';
+            }
+
+            await updateLoan(selectedLoan.id, { 
+                amount: newAmount, 
+                remaining_amount: newRemaining, 
+                installment_amount: newInstallment, 
+                reason: editFormData.reason,
+                status: newStatus,
+                updated_at: new Date().toISOString()
+            });
             toast({ title: 'Sukses', description: 'Data kasbon berhasil diperbarui' });
             setShowEditDialog(false);
         } catch (error) {
@@ -470,8 +528,8 @@ export function LoanManagement() {
                 </Button>
             </div>
 
-            {/* ===== PENDING PAYMENT REQUESTS PANEL (Admin only) ===== */}
-            {isOnlyAdmin && (
+            {/* ===== PENDING PAYMENT REQUESTS PANEL (Admin/HR only) ===== */}
+            {isAdminOrHR && (
                 <Card className={`border-2 ${pendingPayments.length > 0 ? 'border-orange-300 bg-orange-50/50' : 'border-gray-200'}`}>
                     <CardHeader className="pb-2 pt-4 px-4">
                         <button
@@ -679,8 +737,8 @@ export function LoanManagement() {
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-1">
-                                                    {/* Admin: approve pending kasbon */}
-                                                    {loan.status === 'pending' && isOnlyAdmin && (
+                                                    {/* Admin/HR: approve pending kasbon */}
+                                                    {loan.status === 'pending' && isAdminOrHR && (
                                                         <>
                                                             <Button size="icon" variant="ghost" title="Setujui Kasbon" className="text-green-600 hover:bg-green-50" onClick={() => handleApproveClick(loan)}>
                                                                 <CheckCircle className="w-4 h-4" />
@@ -693,7 +751,7 @@ export function LoanManagement() {
                                                     {loan.status === 'approved' && (
                                                         <>
                                                             {/* Staff/non-admin: submit payment request */}
-                                                            {!isOnlyAdmin && isMyLoan && (
+                                                            {!isAdminOrHR && isMyLoan && (
                                                                 <Button size="icon" variant="ghost" title="Ajukan Pembayaran Cicilan" className="text-blue-600 hover:bg-blue-50" onClick={() => handlePaymentRequestClick(loan)}>
                                                                     <SendHorizonal className="w-4 h-4" />
                                                                 </Button>
@@ -709,14 +767,14 @@ export function LoanManagement() {
                                                         <Printer className="w-4 h-4" />
                                                     </Button>
                                                     {/* Admin: edit & delete */}
-                                                    {isOnlyAdmin && (
+                                                    {isAdminOrHR && (
                                                         <Button size="icon" variant="ghost" title="Edit Nominal" className="text-amber-600 hover:bg-amber-50" onClick={() => handleEditClick(loan)}>
                                                             <Pencil className="w-4 h-4" />
                                                         </Button>
                                                     )}
                                                     {isAdminOrHR && (
                                                         <Button size="icon" variant="ghost" className="text-gray-400 hover:text-red-600" onClick={() => handleDelete(loan.id)}>
-                                                            <MoreVertical className="w-4 h-4" />
+                                                            <Trash2 className="w-4 h-4" />
                                                         </Button>
                                                     )}
                                                 </div>
@@ -798,6 +856,10 @@ export function LoanManagement() {
                         <div className="grid gap-2">
                             <Label>Cicilan per Bulan (Rp)</Label>
                             <Input type="number" value={approvalFormData.installment_amount} onChange={(e) => setApprovalFormData(p => ({ ...p, installment_amount: e.target.value }))} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Mulai Potong Gaji</Label>
+                            <Input type="date" value={approvalFormData.start_date} onChange={(e) => setApprovalFormData(p => ({ ...p, start_date: e.target.value }))} />
                         </div>
                         <div className="grid gap-2">
                             <Label>Catatan Admin (Opsional)</Label>
@@ -1001,7 +1063,7 @@ export function LoanManagement() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Edit Data Kasbon</DialogTitle>
-                        <DialogDescription>Ubah nominal kasbon untuk {employees.find(e => e.id === selectedLoan?.employee_id)?.name}.</DialogDescription>
+                        <DialogDescription>Ubah nominal kasbon untuk {employees.find(e => e.id === selectedLoan?.employee_id)?.name || 'Karyawan'}.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid gap-2">

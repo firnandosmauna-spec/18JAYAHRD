@@ -87,7 +87,6 @@ export function WorkerPayrollManagement() {
         employee_id: '',
         working_days: '1',
         daily_rate: '',
-        late_deduction: '0',
         activity_detail: '',
         progress_percentage: '0',
         worker_count: '1',
@@ -197,13 +196,12 @@ export function WorkerPayrollManagement() {
     // Derived Calculations
     const calculateTotal = () => {
         const rate = parseFloat(formData.daily_rate) || 0;
-        const lateDeduction = parseFloat(formData.late_deduction) || 0;
         const loanDeduction = parseFloat(formData.loan_deduction) || 0;
         const baseTotal = formData.payment_type === 'Borongan'
             ? (parseFloat(formData.quantity) || 0) * rate
             : (parseFloat(formData.working_days) || 0) * rate;
 
-        return Math.max(0, baseTotal - lateDeduction - loanDeduction);
+        return Math.max(0, baseTotal - loanDeduction);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -284,7 +282,6 @@ export function WorkerPayrollManagement() {
                 payment_date: formData.payment_date,
                 working_days: isBorongan ? parseFloat(formData.quantity) : parseFloat(formData.working_days),
                 daily_rate: parseFloat(formData.daily_rate),
-                late_deduction: parseFloat(formData.late_deduction),
                 loan_deduction: parseFloat(formData.loan_deduction),
                 activity_detail: finalActivityDetail,
                 progress_percentage: parseFloat(formData.progress_percentage),
@@ -598,14 +595,7 @@ export function WorkerPayrollManagement() {
                                                 onChange={(e) => setFormData(prev => ({ ...prev, daily_rate: e.target.value }))}
                                             />
                                         </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs uppercase text-muted-foreground font-bold">Potongan Telat (Rp)</Label>
-                                            <Input 
-                                                type="number" 
-                                                value={formData.late_deduction}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, late_deduction: e.target.value }))}
-                                            />
-                                        </div>
+
                                         <div className="space-y-2">
                                             <Label className="text-xs uppercase text-muted-foreground font-bold">Potongan Pinjaman (Rp)</Label>
                                             <Input 
@@ -745,9 +735,8 @@ export function WorkerPayrollManagement() {
                                                         {formatCurrency(p.daily_rate || 0)}
                                                     </TableCell>
                                                     <TableCell className="text-right text-xs text-red-500">
-                                                        {p.late_deduction > 0 && <div>L: {formatCurrency(p.late_deduction)}</div>}
-                                                        {p.loan_deduction > 0 && <div>P: {formatCurrency(p.loan_deduction)}</div>}
-                                                        {!(p.late_deduction > 0 || p.loan_deduction > 0) && '-'}
+                                                        {p.loan_deduction > 0 && <div>L: {formatCurrency(p.loan_deduction)}</div>}
+                                                        {!(p.loan_deduction > 0) && '-'}
                                                     </TableCell>
                                                     <TableCell className="text-right font-bold text-hrd">
                                                         {formatCurrency(p.amount)}

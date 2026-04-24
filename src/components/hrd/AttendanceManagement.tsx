@@ -569,10 +569,19 @@ export function AttendanceManagement() {
 
     // --- Absence Deduction Formula based on active payroll allowance settings ---
     if (['absent', 'tidak hadir', 'alpha', 'alpa'].includes(status)) {
-      if (!payrollSettings) return 0;
       const workingDays = 26;
-      const totalAllowances = payrollSettings.payroll_allowance_position || 0;
-      return Math.round(totalAllowances / workingDays);
+      const employee = employees.find(e => e.id === record.employee_id);
+      const isWorker = (employee?.position || '').toLowerCase().includes('tukang') || 
+                      (employee?.position || '').toLowerCase().includes('pekerja');
+      
+      const allowances = isWorker ? [] : (employee?.allowances || []);
+      const empPos = allowances.find((a: any) => 
+        a.title?.toLowerCase().includes('jabatan') || 
+        a.title?.toLowerCase().includes('position')
+      );
+      
+      const positionAllowance = empPos ? empPos.amount : 0;
+      return Math.round(positionAllowance / workingDays);
     }
 
     // --- Late Penalty ---

@@ -87,8 +87,11 @@ export const exportPayrollToExcel = (
             'Nama Karyawan': employee?.name || 'Unknown',
             'Jabatan': employee?.position || '-',
             'Gaji Pokok': record.base_salary,
-            'Tunjangan': record.allowances,
-            'Potongan': record.deductions,
+            'Tunjangan': record.allowances + (record.reward_allowance || 0),
+            'Potongan Absen': record.absent_deduction || 0,
+            'Potongan Telat': record.late_deduction || 0,
+            'Pinjaman': record.loan_amount || 0,
+            'Potongan Lainnya': (record.deductions || 0) - (record.absent_deduction || 0) - (record.late_deduction || 0) - (record.loan_amount || 0),
             'Gaji Bersih': record.net_salary,
             'Status': record.status === 'paid' ? 'Dibayar' : 'Pending',
             'Tanggal Bayar': record.pay_date ? formatDate(record.pay_date) : '-'
@@ -105,7 +108,10 @@ export const exportPayrollToExcel = (
         { wch: 20 }, // Jabatan
         { wch: 15 }, // Gaji Pokok
         { wch: 15 }, // Tunjangan
-        { wch: 15 }, // Potongan
+        { wch: 15 }, // Pot. Absen
+        { wch: 15 }, // Pot. Telat
+        { wch: 15 }, // Pinjaman
+        { wch: 20 }, // Pot. Lainnya
         { wch: 15 }, // Gaji Bersih
         { wch: 10 }, // Status
         { wch: 20 }, // Tanggal Bayar
