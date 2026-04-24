@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ModuleLayout from '@/components/layout/ModuleLayout';
-import { Trello, Users, FileText, MessageSquare, CheckCircle2, Table as TableIcon } from 'lucide-react'; // Added MessageSquare
+import { Trello, Users, FileText, MessageSquare, CheckCircle2, Table as TableIcon, DollarSign } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Pipeline } from '@/components/marketing/MarketingTypes';
 
@@ -11,6 +11,7 @@ import FollowUpView from '@/components/marketing/FollowUpView'; // Added FollowU
 import PemberkasanView from '@/components/marketing/PemberkasanView';
 import ControlTableView from '@/components/marketing/ControlTableView';
 import AkadProcessView from '@/components/marketing/AkadProcessView';
+import RetentionFundView from '@/components/marketing/RetentionFundView';
 
 import { useModulePersistence } from '@/hooks/useModulePersistence';
 
@@ -58,8 +59,9 @@ export default function MarketingModule() {
             title="Marketing & Sales"
             navItems={[
                 { label: 'Master Konsumen', href: '/marketing/master', icon: Users },
-                { label: 'Follow Up', href: '/marketing/followup', icon: MessageSquare }, // Added
+                { label: 'Follow Up', href: '/marketing/followup', icon: MessageSquare },
                 { label: 'Pengerjaan Pemberkasan', href: '/marketing/pemberkasan', icon: CheckCircle2 },
+                { label: 'Dana Retensi', href: '/marketing/retensi', icon: DollarSign },
                 { label: 'Tabel Kontrol', href: '/marketing/kontrol', icon: TableIcon },
                 { label: 'Final Laporan Konsumen', href: '/marketing/final', icon: FileText },
             ]}
@@ -73,8 +75,9 @@ export default function MarketingModule() {
                     )
                 } />
                 <Route path="master" element={<ConsumerDatabaseView />} />
-                <Route path="followup" element={<FollowUpView />} /> {/* Added */}
+                <Route path="followup" element={<FollowUpView />} />
                 <Route path="pemberkasan" element={<PemberkasanView />} />
+                <Route path="retensi" element={<RetentionFundView />} />
                 <Route path="kontrol" element={<ControlTableView />} />
                 <Route path="final" element={<AkadProcessView pipelines={pipelines} onUpdate={fetchPipelines} />} />
             </Routes>

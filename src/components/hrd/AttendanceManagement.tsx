@@ -302,8 +302,13 @@ export function AttendanceManagement() {
   const { attendance, loading, error, addAttendance, refetch, deleteAttendance, approveManualAttendance, rejectManualAttendance } = useAttendance(startDate, endDate);
 
   const { employees } = useEmployees();
+  const { leaveRequests } = useLeaveRequests();
   const { user } = useAuth();
   const { toast } = useToast();
+  
+  useEffect(() => {
+    console.log('Attendance: Loaded leaveRequests count:', leaveRequests?.length);
+  }, [leaveRequests]);
 
   // Track online users
   // const { onlineUsers } = usePresence();
@@ -408,8 +413,91 @@ export function AttendanceManagement() {
       return false;
     }
 
+    // Check if employee is on approved leave for today
+    const isOnLeave = leaveRequests?.some(leave => {
+      if (!leave.start_date || !leave.end_date || leave.status !== 'approved') return false;
+      if (leave.employee_id !== emp.id) return false;
+      
+      const start = leave.start_date.split('T')[0];
+      const end = leave.end_date.split('T')[0];
+      
+      return today >= start && today <= end;
+    });
+
+    if (isOnLeave) return false;
+
     return !todayAttendance.some(att => att.employee_id === emp.id);
   });
+
+  // Optimized Presence Grid for History
+  const historyPresenceGrid = React.useMemo(() => {
+    if (!startDate || !endDate) return filteredAttendance;
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    // Safety limit: if range > 40 days, just show real records to avoid crash
+    if (diffDays > 40) return filteredAttendance;
+
+    const dates = [];
+    let curr = new Date(startDate);
+    const last = new Date(endDate);
+    while (curr <= last) {
+      dates.push(new Date(curr).toISOString().split('T')[0]);
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    // Index attendance for fast lookup: date_empId -> record
+    const attMap = new Map();
+    attendance.forEach(a => attMap.set(`${a.date}-${a.employee_id}`, a));
+
+    // Index leaves: empId_date -> leave
+    // (A bit simplified, but effective for this context)
+    
+    const grid: any[] = [];
+    const filteredEmployees = employees.filter(emp => {
+       const matchesSearch = emp.name.toLowerCase().includes(searchQuery.toLowerCase());
+       const matchesEmployee = selectedEmployeeFilter === 'all' || emp.id === selectedEmployeeFilter;
+       if (user?.role === 'staff') return emp.id === user.employee_id;
+       return matchesSearch && matchesEmployee;
+    });
+
+    dates.forEach(date => {
+      const schedule = getWorkSchedule(date, attendanceSettings?.attendance_holidays || []);
+      
+      filteredEmployees.forEach(emp => {
+        const key = `${date}-${emp.id}`;
+        const attRecord = attMap.get(key);
+        
+        if (attRecord) {
+          grid.push(attRecord);
+        } else {
+          // Check for approved leave
+          const leaveInfo = leaveRequests?.find(leave => 
+            leave.employee_id === emp.id && 
+            leave.status === 'approved' &&
+            date >= (leave.start_date?.split('T')[0] || '') &&
+            date <= (leave.end_date?.split('T')[0] || '')
+          );
+
+          grid.push({
+            id: `vhist-${emp.id}-${date}`,
+            employee_id: emp.id,
+            date: date,
+            check_in: null,
+            check_out: null,
+            status: leaveInfo ? 'leave' : (schedule.isHoliday ? 'holiday' : 'absent'),
+            notes: leaveInfo ? `Cuti: ${leaveInfo.reason}` : null,
+            is_virtual: true
+          });
+        }
+      });
+    });
+
+    return grid.sort((a, b) => b.date.localeCompare(a.date));
+  }, [attendance, employees, leaveRequests, startDate, endDate, searchQuery, selectedEmployeeFilter, user, attendanceSettings, filteredAttendance]);
 
   // Calculate statistics
   const requiredEmployeesCount = employees.filter(emp => {
@@ -429,6 +517,54 @@ export function AttendanceManagement() {
     attendanceRate: requiredEmployeesCount > 0 ?
       Math.min(100, Math.round((todayAttendance.filter(att => ['present', 'late'].includes(att.status)).length / requiredEmployeesCount) * 100)) : 0
   };
+
+  // Unified Presence Grid for Today
+  const todayPresenceGrid = React.useMemo(() => {
+    return employees.filter(emp => {
+      const isTukang = (emp.position || '').toLowerCase().includes('tukang') || 
+                      (emp.position || '').toLowerCase().includes('pekerja') ||
+                      (emp.departments?.name || '').toLowerCase().includes('lapangan');
+      
+      // Filter by search and selected employee
+      const matchesSearch = emp.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesEmployee = selectedEmployeeFilter === 'all' || emp.id === selectedEmployeeFilter;
+      
+      if (user?.role === 'staff') {
+        return matchesSearch && emp.id === user.employee_id;
+      }
+      
+      // Jika Tukang dan absensi online tidak wajib, jangan tampilkan jika belum absen
+      const attRecord = todayAttendance.find(att => att.employee_id === emp.id);
+      if (!attendanceSettings?.worker_attendance_required && isTukang && !attRecord) {
+        return false;
+      }
+
+      return matchesSearch && matchesEmployee;
+    }).map(emp => {
+      const attRecord = todayAttendance.find(att => att.employee_id === emp.id);
+      
+      if (attRecord) return attRecord;
+
+      // Check for approved leave
+      const leaveInfo = leaveRequests?.find(leave => 
+        leave.employee_id === emp.id && 
+        leave.status === 'approved' &&
+        today >= (leave.start_date?.split('T')[0] || '') &&
+        today <= (leave.end_date?.split('T')[0] || '')
+      );
+
+      return {
+        id: `virtual-${emp.id}`,
+        employee_id: emp.id,
+        date: today,
+        check_in: null,
+        check_out: null,
+        status: leaveInfo ? 'leave' : (isTodayHoliday ? 'holiday' : 'absent'),
+        notes: leaveInfo ? `Cuti: ${leaveInfo.reason}` : null,
+        is_virtual: true
+      } as any;
+    });
+  }, [employees, todayAttendance, leaveRequests, today, isTodayHoliday, searchQuery, selectedEmployeeFilter, user, attendanceSettings]);
 
   // Reset form
   const resetForm = () => {
@@ -1041,14 +1177,14 @@ export function AttendanceManagement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredTodayAttendance.length === 0 ? (
+                  {todayPresenceGrid.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                         <span>Belum ada data absensi hari ini.</span>
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredTodayAttendance.map((attendance) => {
+                    todayPresenceGrid.map((attendance) => {
                       const employee = employees.find(emp => emp.id === attendance.employee_id);
                       const StatusIcon = statusIcons[attendance.status as AttendanceStatus];
 
@@ -1089,7 +1225,7 @@ export function AttendanceManagement() {
                                   <RefreshCcw className="w-4 h-4" />
                                 </Button>
                               )}
-                              {user?.role !== 'staff' && (
+                              {user?.role !== 'staff' && !attendance.is_virtual && (
                                 <>
                                   <Button
                                     variant="ghost"
@@ -1125,14 +1261,16 @@ export function AttendanceManagement() {
                                   </Button>
                                 </>
                               )}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleViewAttendance(attendance)}
-                                title="Detail Data"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </Button>
+                              {!attendance.is_virtual && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleViewAttendance(attendance)}
+                                  title="Detail Data"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1143,29 +1281,6 @@ export function AttendanceManagement() {
               </Table>
             </CardContent>
           </Card>
-
-          {/* Section: Karyawan Belum Absen */}
-          {user?.role !== 'staff' && notPresentToday.length > 0 && (
-            <Card className="border-orange-200 bg-orange-50/30 mt-6">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <UserX className="w-5 h-5 text-orange-600" />
-                  <CardTitle className="text-lg font-display text-orange-900">Karyawan Belum Absen ({notPresentToday.length})</CardTitle>
-                </div>
-                <CardDescription className="text-orange-700">Daftar karyawan yang belum melakukan absensi hari ini</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {notPresentToday.map((emp) => (
-                    <Badge key={emp.id} variant="outline" className="bg-white border-orange-200 text-orange-800 font-body py-1.5 px-3">
-                      <User className="w-3 h-3 mr-1.5 opacity-50" />
-                      {emp.name}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
 
         {/* History Tab - Visible for everyone now */}
@@ -1211,14 +1326,14 @@ export function AttendanceManagement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAttendance.length === 0 ? (
+                  {historyPresenceGrid.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={user?.role === 'staff' ? 5 : 6} className="text-center py-8 text-muted-foreground">
                         <span>Tidak ada riwayat absensi untuk periode ini.</span>
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredAttendance.map((attendance) => {
+                    historyPresenceGrid.map((attendance) => {
                       const employee = employees.find(emp => emp.id === attendance.employee_id);
                       const StatusIcon = statusIcons[attendance.status as AttendanceStatus];
 
@@ -1275,36 +1390,41 @@ export function AttendanceManagement() {
                                     {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
                                   </Button>
                                 )}
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                  onClick={() => {
-                                    handleViewAttendance(attendance);
-                                    setIsEditing(true);
-                                    setFormData({
-                                      employee_id: attendance.employee_id,
-                                      date: attendance.date,
-                                      check_in: attendance.check_in || '',
-                                      check_out: attendance.check_out || '',
-                                      status: attendance.status as AttendanceStatus,
-                                      location: attendance.location || '',
-                                      notes: attendance.notes || ''
-                                    });
-                                  }}
-                                  title="Edit Data"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  onClick={() => handleDeleteAttendance(attendance.id)}
-                                  title="Hapus Data"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
+                              {!attendance.is_virtual ? (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={() => {
+                                      handleViewAttendance(attendance);
+                                      setIsEditing(true);
+                                      setFormData({
+                                        employee_id: attendance.employee_id,
+                                        date: attendance.date,
+                                        check_in: attendance.check_in || '',
+                                        check_out: attendance.check_out || '',
+                                        status: attendance.status as AttendanceStatus,
+                                        location: attendance.location || '',
+                                        notes: attendance.notes || ''
+                                      });
+                                    }}
+                                    title="Edit Data"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => handleDeleteAttendance(attendance.id)}
+                                    title="Hapus Data"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </>
+                              ) : null}
+                              {!attendance.is_virtual && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -1313,14 +1433,15 @@ export function AttendanceManagement() {
                                 >
                                   <Eye className="w-4 h-4" />
                                 </Button>
-                              </div>
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
               </Table>
             </CardContent>
           </Card>
