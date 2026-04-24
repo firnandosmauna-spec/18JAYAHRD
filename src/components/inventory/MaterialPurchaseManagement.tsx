@@ -57,6 +57,7 @@ import { paymentMethodService, PaymentMethod } from '../../services/paymentMetho
 import { PurchaseService } from '../../services/purchaseService';
 import { supplierDebtService } from '../../services/supplierDebtService';
 import { cn } from '../../lib/utils';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Product } from '../../lib/supabase';
 import type { PurchaseInvoice, Supplier } from '@/types/purchase';
@@ -100,14 +101,50 @@ export function MaterialPurchaseManagement() {
     const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
     const [supplierFilter, setSupplierFilter] = useState('all');
     const [sortSupplier, setSortSupplier] = useState<'none' | 'asc' | 'desc'>('none');
-    // Auto-refresh supplier data when page gets focus (e.g., user switches tabs/pages)
-    React.useEffect(() => {
-        const handleFocus = () => {
-            refetchSuppliers();
-        };
-        window.addEventListener('focus', handleFocus);
-        return () => window.removeEventListener('focus', handleFocus);
+
+    // Sinkronisasi kartu deposit dengan data master supplier:
+    // - Force refetch saat komponen mount
+    // - Polling otomatis tiap 10 detik  
+    // - Refresh saat window kembali fokus (pindah tab/halaman)
+    const [depositLastUpdated, setDepositLastUpdated] = React.useState<string>('');
+
+    const refreshDepositCard = React.useCallback(async () => {
+        await refetchSuppliers();
+        setDepositLastUpdated(new Date().toLocaleTimeString('id-ID'));
     }, [refetchSuppliers]);
+
+    React.useEffect(() => {
+        // Langsung ambil data terbaru saat pertama kali dimuat
+        refreshDepositCard();
+
+        // Subscribe realtime supplier_deposits → langsung refresh suppliers
+        const channel = supabase
+            .channel(`supplier_deposit_card_${Math.random().toString(36).slice(2)}`)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'supplier_deposits' },
+                () => refreshDepositCard()
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'suppliers' },
+                () => refreshDepositCard()
+            )
+            .subscribe();
+
+        // Polling 10 detik sebagai fallback (realtime mungkin belum diaktifkan)
+        const poll = setInterval(() => refreshDepositCard(), 10000);
+
+        // Refresh saat window kembali fokus
+        const handleFocus = () => refreshDepositCard();
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            supabase.removeChannel(channel);
+            clearInterval(poll);
+            window.removeEventListener('focus', handleFocus);
+        };
+    }, [refreshDepositCard]);
 
 
     React.useEffect(() => {
@@ -558,16 +595,36 @@ export function MaterialPurchaseManagement() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card className="bg-blue-50/50 border-blue-100">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-blue-600 flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4" />
-                            Total Deposit Tersedia
+                        <CardTitle className="text-sm font-medium text-blue-600 flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-2">
+                                <TrendingUp className="w-4 h-4" />
+                                Total Deposit Tersedia
+                            </span>
+                            <button
+                                onClick={refreshDepositCard}
+                                title="Refresh data deposit"
+                                className="text-blue-400 hover:text-blue-700 transition-colors rounded p-0.5 hover:bg-blue-100"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+                                </svg>
+                            </button>
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-blue-900">
-                            {formatCurrency(suppliers.reduce((acc, s) => acc + Number(s.deposit_balance || 0), 0))}
+                            {loadingSuppliers ? (
+                                <span className="text-base text-blue-400 animate-pulse">Memuat...</span>
+                            ) : (
+                                formatCurrency(suppliers.reduce((acc, s) => acc + Number(s.deposit_balance || 0), 0))
+                            )}
                         </div>
-                        <p className="text-xs text-blue-600 mt-1">Saldo di seluruh supplier</p>
+                        <p className="text-xs text-blue-600 mt-1">
+                            Saldo di seluruh supplier
+                            {depositLastUpdated && (
+                                <span className="ml-1 opacity-60">· {depositLastUpdated}</span>
+                            )}
+                        </p>
                     </CardContent>
                 </Card>
                 <Card className="bg-red-50/50 border-red-100">

@@ -20,6 +20,18 @@ export class PurchaseService {
 
     if (suppliersError) throw suppliersError;
 
+    // Fetch semua transaksi deposit untuk menghitung saldo terkini
+    const { data: deposits } = await supabase
+      .from('supplier_deposits')
+      .select('supplier_id, amount, type');
+
+    // Hitung deposit_balance dari riwayat transaksi (lebih akurat dari kolom cached)
+    const depositMap = (deposits || []).reduce((acc: Record<string, number>, d) => {
+      const delta = d.type === 'deposit' ? Number(d.amount) : -Number(d.amount);
+      acc[d.supplier_id] = (acc[d.supplier_id] || 0) + delta;
+      return acc;
+    }, {});
+
     // Fetch unpaid invoice totals per supplier
     const { data: invoices, error: invoicesError } = await supabase
       .from('purchase_invoices')
@@ -41,15 +53,19 @@ export class PurchaseService {
 
       const result = (suppliers || []).map(s => {
         const debtFromInvoices = debtMap[s.id] || 0;
+        // Gunakan kalkulasi dari supplier_deposits jika ada, fallback ke kolom DB
+        const computedDeposit = depositMap.hasOwnProperty(s.id)
+          ? Math.max(0, depositMap[s.id])
+          : Number(s.deposit_balance || 0);
 
         return {
           ...s,
-          // deposit_balance comes directly from the stored column (maintained by DB trigger)
+          deposit_balance: computedDeposit,
           total_debt: debtFromInvoices > 0 ? debtFromInvoices : 0
         };
       });
 
-      console.log(`Fetched ${result.length} suppliers with balances`);
+      console.log(`Fetched ${result.length} suppliers. Total deposit: ${result.reduce((a, s) => a + (s.deposit_balance || 0), 0)}`);
       return result;
     } catch (error) {
       console.error('Error in getSuppliers process:', error);

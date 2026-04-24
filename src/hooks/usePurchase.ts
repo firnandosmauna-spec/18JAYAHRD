@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { PurchaseService } from '@/services/purchaseService';
 import type { 
@@ -12,6 +12,8 @@ export function useSuppliers() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Unique channel ID per instance to avoid conflicts when multiple components use this hook
+  const channelId = useRef(`supplier_balance_sync_${Math.random().toString(36).slice(2)}`);
 
   const fetchSuppliers = useCallback(async () => {
     try {
@@ -29,26 +31,24 @@ export function useSuppliers() {
   useEffect(() => {
     fetchSuppliers();
 
-    // Auto-refresh when supplier data or deposits change
+    const refreshSuppliers = () => {
+      PurchaseService.getSuppliers()
+        .then(data => setSuppliers(data))
+        .catch(err => console.warn('Failed to auto-refresh suppliers:', err));
+    };
+
+    // Auto-refresh when supplier_deposits or suppliers table changes
     const channel = supabase
-      .channel('supplier_balance_sync')
+      .channel(channelId.current)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'supplier_deposits' },
-        () => {
-          PurchaseService.getSuppliers()
-            .then(data => setSuppliers(data))
-            .catch(err => console.warn('Failed to auto-refresh suppliers:', err));
-        }
+        refreshSuppliers
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'suppliers' },
-        () => {
-          PurchaseService.getSuppliers()
-            .then(data => setSuppliers(data))
-            .catch(err => console.warn('Failed to auto-refresh suppliers:', err));
-        }
+        { event: '*', schema: 'public', table: 'suppliers' },
+        refreshSuppliers
       )
       .subscribe();
 

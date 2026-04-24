@@ -1241,10 +1241,12 @@ export function PayrollManagement() {
   };
 
   const handleExportPDF = () => {
-    const payrollData = filteredPayroll.map(p => ({
-      payroll: p as PayrollRecord,
-      employee: employees.find(e => e.id === p.employee_id)!
-    })).filter(data => data.employee !== undefined);
+    const payrollData = filteredPayroll
+      .filter(p => p.is_payroll_exists && p.raw_pay)
+      .map(p => ({
+        payroll: p.raw_pay as PayrollRecord,
+        employee: employees.find(e => e.id === p.employee_id)!
+      })).filter(data => data.employee !== undefined);
 
     const period = `${months[selectedMonth - 1]} ${selectedYear}`;
     generatePayrollReport(payrollData, period, printSettings);
