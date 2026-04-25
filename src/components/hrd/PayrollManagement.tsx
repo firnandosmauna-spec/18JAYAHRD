@@ -44,7 +44,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { generateSalarySlip, generatePayrollReport } from '@/utils/pdfGenerator';
+import { generateSalarySlip, generatePayrollReport, generateEmployeeChecklist } from '@/utils/pdfGenerator';
 import { exportPayrollToExcel } from '@/utils/excelGenerator';
 import { PayrollPrintSettingsDialog } from './PayrollPrintSettingsDialog';
 import { usePayroll, useEmployees, useLoans } from '@/hooks/useSupabase';
@@ -52,6 +52,7 @@ import { attendanceService, rewardService, leaveService } from '@/services/supab
 import { userService } from '@/services/userService';
 import { settingsService } from '@/services/settingsService';
 import { DEFAULT_PAYROLL_SETTINGS, PayrollSettings, DEFAULT_ATTENDANCE_SETTINGS, AttendanceSettings } from '@/types/settings';
+import { ChecklistPreviewModal } from './ChecklistPreviewModal';
 import { useAuth } from '@/contexts/AuthContext';
 import type { PayrollRecord } from '@/lib/supabase';
 
@@ -236,6 +237,7 @@ export function PayrollManagement() {
   }>({ attendanceCount: 0, absentCount: 0, presentCount: 0, lateMinutes: 0, deductionRate: 1000, foundSettings: false });
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
+  const [showChecklistPreview, setShowChecklistPreview] = useState(false);
     const [formData, setFormData] = useState<PayrollFormData>({
     start_date: new Date(currentYear, currentMonth - 1, 1).toLocaleDateString('en-CA'),
     end_date: new Date(currentYear, currentMonth, 0).toLocaleDateString('en-CA'),
@@ -374,6 +376,42 @@ export function PayrollManagement() {
       end: attendanceSettings?.work_end_time_weekday || '17:00'
     };
   };
+  const calculateAbsenceCount = (employeeId: string, startDate: Date, endDate: Date, attendance: any[], leaves: any[], holidays: string[]) => {
+    let count = 0;
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dStr = d.toISOString().split('T')[0];
+      const isSunday = d.getDay() === 0;
+      const isHoliday = holidays.some(h => h.split('T')[0] === dStr);
+      
+      if (isSunday || isHoliday) continue;
+      if (dStr > todayStr) continue;
+
+      // Check if employee is on approved leave
+      const isOnLeave = leaves.some(l => {
+        if (l.employee_id !== employeeId || l.status !== 'approved') return false;
+        const start = new Date(l.start_date);
+        const end = new Date(l.end_date);
+        const current = new Date(dStr);
+        return current >= start && current <= end;
+      });
+
+      if (isOnLeave) continue;
+
+      const record = attendance.find(a => a.date === dStr);
+      if (!record) {
+        count++;
+      } else {
+        const status = (record.status || '').toLowerCase().trim();
+        if (status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa') {
+          count++;
+        }
+      }
+    }
+    return count;
+  };
 
   // Unified calculation logic for preview
   const calculateDraftValues = (employee: any) => {
@@ -391,53 +429,27 @@ export function PayrollManagement() {
     const startDateStr = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
     const endDateStr = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${new Date(selectedYear, selectedMonth, 0).getDate().toString().padStart(2, '0')}`;
 
-    // Revised Absent Detection: Count missing days as Alpha
     const startDate = new Date(startDateStr);
     const endDate = new Date(endDateStr);
     const hDates = attendanceSettings?.attendance_holidays || [];
-    let calculatedAbsentCount = 0;
-
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dStr = d.toISOString().split('T')[0];
-      const isSunday = d.getDay() === 0;
-      const isHoliday = hDates.some(h => h.split('T')[0] === dStr);
-      
-      if (isSunday || isHoliday) continue;
-
-      // Only count absence for days up to today
-      const todayStr = new Date().toISOString().split('T')[0];
-      if (dStr > todayStr) continue;
-
-      // Check if employee is on approved leave
-      const isOnLeave = empLeaves.some(l => {
-        const start = new Date(l.start_date);
-        const end = new Date(l.end_date);
-        const current = new Date(dStr);
-        return current >= start && current <= end;
-      });
-
-      if (isOnLeave) continue;
-
-      const record = empAttendance.find(a => a.date === dStr);
-      if (!record) {
-        calculatedAbsentCount++;
-      } else {
-        const status = (record.status || '').toLowerCase().trim();
-        if (status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa') {
-          calculatedAbsentCount++;
-        }
-      }
-    }
-
-    const absentCount = calculatedAbsentCount;
+    const absentCount = calculateAbsenceCount(employee.id, startDate, endDate, empAttendance, empLeaves, hDates);
 
     const presentCount = empAttendance.filter((a: any) => {
       const status = (a.status || '').toLowerCase().trim();
       return ['present', 'late', 'business_trip', 'wfh'].includes(status);
     }).length || 0;
 
+    // Use a Map to ensure only one attendance record per day is processed for late minutes
+    const attendanceByDate = new Map<string, any>();
+    empAttendance.forEach(record => {
+      if (!record.date) return;
+      if (!attendanceByDate.has(record.date) || (record.check_in && !attendanceByDate.get(record.date).check_in)) {
+        attendanceByDate.set(record.date, record);
+      }
+    });
+
     let totalLateMinutes = 0;
-    empAttendance.forEach((record: any) => {
+    attendanceByDate.forEach((record: any) => {
       const status = (record.status || '').toLowerCase().trim();
       if (status === 'late' && record.check_in) {
         const schedule = getWorkSchedule(record.date);
@@ -521,7 +533,7 @@ export function PayrollManagement() {
     const totalLoanDeduction = activeLoans.reduce((sum, loan) => sum + loan.installment_amount, 0);
 
 
-    const draftDeductions = absentDeduction + late_deduction + totalLoanDeduction;
+    const draftDeductions = absentDeduction + late_deduction + totalLoanDeduction + manualDeductionsTotal;
     const draftNet = proratedBase + draftAllowances + rewardAllowance - draftDeductions;
 
     return {
@@ -609,46 +621,8 @@ export function PayrollManagement() {
         try {
           attendance = await attendanceService.getByEmployeeDateRange(formData.employee_id, formData.start_date, formData.end_date);
 
-          // Revised Absent Detection: Count missing days as Alpha
-          const startDate = new Date(formData.start_date);
-          const endDate = new Date(formData.end_date);
           const hDates = attendanceSettings?.attendance_holidays || [];
-          let calculatedAbsentCount = 0;
-
-          for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-            const dStr = d.toISOString().split('T')[0];
-            const isSunday = d.getDay() === 0;
-            const isHoliday = hDates.some(h => h.split('T')[0] === dStr);
-            
-            if (isSunday || isHoliday) continue;
-
-            // Only count absence for days up to today
-            const todayStr = new Date().toISOString().split('T')[0];
-            if (dStr > todayStr) continue;
-
-            // Check if employee is on approved leave using allLeaves state
-            const isOnLeave = allLeaves.some(l => {
-              if (l.employee_id !== formData.employee_id || l.status !== 'approved') return false;
-              const start = new Date(l.start_date);
-              const end = new Date(l.end_date);
-              const current = new Date(dStr);
-              return current >= start && current <= end;
-            });
-
-            if (isOnLeave) continue;
-
-            const record = attendance?.find((a: any) => a.date === dStr);
-            if (!record) {
-              calculatedAbsentCount++;
-            } else {
-              const status = (record.status || '').toLowerCase().trim();
-              if (status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa') {
-                calculatedAbsentCount++;
-              }
-            }
-          }
-
-          absentCount = calculatedAbsentCount;
+          absentCount = calculateAbsenceCount(formData.employee_id, new Date(formData.start_date), new Date(formData.end_date), attendance || [], allLeaves, hDates);
 
           if (absentCount > 0) {
             const workingDays = 26;
@@ -799,7 +773,7 @@ export function PayrollManagement() {
 
   // Create a unified list of employees and their payroll status
   const unifiedPayroll = employees
-    .filter(emp => emp.status === 'active') // Only active employees
+    .filter(emp => emp.status === 'active' && !emp.position?.toLowerCase().includes('administrator')) // Only active employees, exclude administrators
     .map(emp => {
       const existingPay = payroll.find(p => p.employee_id === emp.id);
       const draft = !existingPay ? calculateDraftValues(emp) : null;
@@ -1142,13 +1116,19 @@ export function PayrollManagement() {
           amount: r.points || 0
         }));
 
-        const absentCount = attendance?.filter((a: any) => {
-          const status = (a.status || '').toLowerCase().trim();
-          return status === 'absent' || status === 'tidak hadir' || status === 'alpha' || status === 'alpa';
-        }).length || 0;
+        const hDates = attendanceSettings?.attendance_holidays || [];
+        const absentCount = calculateAbsenceCount(employee.id, new Date(startDate), new Date(endDate), attendance || [], allLeaves, hDates);
+
+        const attendanceByDate = new Map<string, any>();
+        attendance?.forEach(record => {
+          if (!record.date) return;
+          if (!attendanceByDate.has(record.date) || (record.check_in && !attendanceByDate.get(record.date).check_in)) {
+            attendanceByDate.set(record.date, record);
+          }
+        });
 
         let totalLateMinutes = 0;
-        attendance?.forEach((record: any) => {
+        attendanceByDate.forEach((record: any) => {
           const status = (record.status || '').toLowerCase().trim();
           if (status === 'late' && record.check_in) {
             const schedule = getWorkSchedule(record.date);
@@ -1327,6 +1307,10 @@ export function PayrollManagement() {
     generatePayrollReport(payrollData, period, printSettings);
   };
 
+  const handleExportChecklist = () => {
+    setShowChecklistPreview(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1374,6 +1358,10 @@ export function PayrollManagement() {
             <FileText className="w-4 h-4 mr-2" />
             PDF
           </Button>
+          <Button variant="outline" onClick={handleExportChecklist} className="font-body text-blue-600 border-blue-200 hover:bg-blue-50">
+            <Printer className="w-4 h-4 mr-2" />
+            Cheklis
+          </Button>
         </div>
       </div>
 
@@ -1394,6 +1382,15 @@ export function PayrollManagement() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Checklist Preview Modal */}
+        <ChecklistPreviewModal
+          isOpen={showChecklistPreview}
+          onClose={() => setShowChecklistPreview(false)}
+          employees={filteredPayroll}
+          period={`${months[selectedMonth - 1]} ${selectedYear}`}
+          companyName={printSettings?.companyName || 'PT. DELAPAN BELAS JAYA'}
+        />
         <Card className="border-none shadow-sm bg-yellow-50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -1962,7 +1959,7 @@ export function PayrollManagement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="font-body text-xs">Potongan Telat</Label>
+                  <Label className="text-xs font-bold text-gray-700">Potongan Telat (Rp)</Label>
                   <Input
                     type="number"
                     placeholder="0"

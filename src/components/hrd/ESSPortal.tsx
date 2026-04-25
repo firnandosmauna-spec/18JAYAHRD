@@ -205,10 +205,16 @@ export function ESSPortal() {
                      employee?.position?.toLowerCase().includes('pekerja') ||
                      employee?.department?.toLowerCase().includes('tukang');
 
-    let isAttendanceRequired = user?.role !== 'Administrator' || (attendanceSettings?.admin_attendance_required ?? true);
+    let isAttendanceRequired = user?.role !== 'Administrator' && !employee?.position?.toLowerCase().includes('administrator');
     
-    if (isTukang && attendanceSettings && attendanceSettings.worker_attendance_required === false) {
-        isAttendanceRequired = false;
+    // Also check settings if explicitly allowed/disallowed
+    if (attendanceSettings) {
+        if (user?.role === 'Administrator' && attendanceSettings.admin_attendance_required) {
+            isAttendanceRequired = true;
+        }
+        if (isTukang && attendanceSettings.worker_attendance_required === false) {
+            isAttendanceRequired = false;
+        }
     }
 
     if (!user?.employee_id && isAttendanceRequired) {
@@ -455,22 +461,24 @@ export function ESSPortal() {
                             </Card>
                         )}
 
-                        <Card
-                            className="shadow-sm border-gray-200 overflow-hidden group cursor-pointer hover:border-hrd transition-all"
-                            onClick={() => setActiveTab('attendance')}
-                        >
-                            <CardContent className="p-0">
-                                <div className="bg-hrd/5 p-6 flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm font-semibold text-hrd"><span>ABSENSI ONLINE</span></p>
-                                        <h3 className="text-xl font-bold mt-1"><span>Belum Absen</span></h3>
+                        {isAttendanceRequired && (
+                            <Card
+                                className="shadow-sm border-gray-200 overflow-hidden group cursor-pointer hover:border-hrd transition-all"
+                                onClick={() => setActiveTab('attendance')}
+                            >
+                                <CardContent className="p-0">
+                                    <div className="bg-hrd/5 p-6 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-semibold text-hrd"><span>ABSENSI ONLINE</span></p>
+                                            <h3 className="text-xl font-bold mt-1"><span>Cek Kehadiran</span></h3>
+                                        </div>
+                                        <div className="h-12 w-12 rounded-full bg-hrd text-white flex items-center justify-center group-hover:scale-110 transition-transform">
+                                            <Clock className="w-6 h-6" />
+                                        </div>
                                     </div>
-                                    <div className="h-12 w-12 rounded-full bg-hrd text-white flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <Clock className="w-6 h-6" />
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
                 </TabsContent>
 

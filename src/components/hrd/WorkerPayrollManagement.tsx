@@ -43,6 +43,8 @@ import { useProjects, useProjectWorkers, useProjectWorkerPayments, useProjectLab
 import { useEmployees } from '@/hooks/useSupabase';
 import { useProjectLocations } from '@/hooks/useInventory';
 import { projectService } from '@/services/projectService';
+import { generateEmployeeChecklist } from '@/utils/pdfGenerator';
+import { ChecklistPreviewModal } from './ChecklistPreviewModal';
 
 function NativeSelect({
     value,
@@ -143,6 +145,7 @@ export function WorkerPayrollManagement() {
     }, [selectedLocation, projects, initialProjectId]);
 
     const [formData, setFormData] = useState(getDefaultFormData());
+    const [showChecklistPreview, setShowChecklistPreview] = useState(false);
 
     const tukangEmployees = employees.filter(emp => 
         emp.position?.toLowerCase().includes('tukang') || 
@@ -371,6 +374,10 @@ export function WorkerPayrollManagement() {
         }).format(val);
     };
 
+    const handleExportChecklist = () => {
+        setShowChecklistPreview(true);
+    };
+
     const navigate = useNavigate();
     const currentProject = projects.find(p => p.id === selectedProjectId);
 
@@ -419,6 +426,15 @@ export function WorkerPayrollManagement() {
                                 </div>
                             )}
                         </div>
+                        <Button 
+                            variant="outline"
+                            onClick={handleExportChecklist}
+                            disabled={!selectedProjectId || payments.length === 0}
+                            className="border-blue-200 text-blue-600 hover:bg-blue-50"
+                        >
+                            <Printer className="w-4 h-4 mr-2" />
+                            Cheklis
+                        </Button>
                         <Button 
                             onClick={() => {
                                 if (!selectedProjectId) {
@@ -472,6 +488,24 @@ export function WorkerPayrollManagement() {
                     )}
                 </div>
             </div>
+
+            {showChecklistPreview && (
+                <ChecklistPreviewModal
+                    isOpen={showChecklistPreview}
+                    onClose={() => setShowChecklistPreview(false)}
+                    employees={payments.map(p => {
+                        const worker = workers.find(w => w.id === p.worker_id);
+                        const emp = employees.find(e => e.id === worker?.employee_id);
+                        return {
+                            employee_name: emp?.name || 'Tukang',
+                            employee_position: worker?.role || 'Pekerja',
+                            status: 'paid'
+                        };
+                    })}
+                    period={currentProject?.name || selectedLocation || 'Proyek'}
+                    companyName="PT. DELAPAN BELAS JAYA"
+                />
+            )}
 
             {showAddForm && (
                     <div>

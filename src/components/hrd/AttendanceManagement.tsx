@@ -408,6 +408,11 @@ export function AttendanceManagement() {
                     (emp.position || '').toLowerCase().includes('pekerja') ||
                     (emp.departments?.name || '').toLowerCase().includes('lapangan');
     
+    // Jika Administrator, tidak perlu absen
+    if (emp.position?.toLowerCase().includes('administrator')) {
+      return false;
+    }
+
     // Jika Tukang dan absensi online tidak wajib, jangan tampilkan di daftar "Belum Absen"
     if (!attendanceSettings?.worker_attendance_required && isTukang) {
       return false;
@@ -460,6 +465,7 @@ export function AttendanceManagement() {
     const filteredEmployees = employees.filter(emp => {
        const matchesSearch = emp.name.toLowerCase().includes(searchQuery.toLowerCase());
        const matchesEmployee = selectedEmployeeFilter === 'all' || emp.id === selectedEmployeeFilter;
+       if (emp.position?.toLowerCase().includes('administrator')) return false;
        if (user?.role === 'staff') return emp.id === user.employee_id;
        return matchesSearch && matchesEmployee;
     });
@@ -504,6 +510,7 @@ export function AttendanceManagement() {
     const isTukang = (emp.position || '').toLowerCase().includes('tukang') || 
                     (emp.position || '').toLowerCase().includes('pekerja') ||
                     (emp.departments?.name || '').toLowerCase().includes('lapangan');
+    if (emp.position?.toLowerCase().includes('administrator')) return false;
     return attendanceSettings?.worker_attendance_required || !isTukang;
   }).length;
 
@@ -533,11 +540,8 @@ export function AttendanceManagement() {
         return matchesSearch && emp.id === user.employee_id;
       }
       
-      // Jika Tukang dan absensi online tidak wajib, jangan tampilkan jika belum absen
-      const attRecord = todayAttendance.find(att => att.employee_id === emp.id);
-      if (!attendanceSettings?.worker_attendance_required && isTukang && !attRecord) {
-        return false;
-      }
+      // Jika Administrator, sembunyikan
+      if (emp.position?.toLowerCase().includes('administrator')) return false;
 
       return matchesSearch && matchesEmployee;
     }).map(emp => {
@@ -577,6 +581,41 @@ export function AttendanceManagement() {
       location: '',
       notes: ''
     });
+  };
+
+  // Handle quick attendance (one-click present/absent)
+  const handleQuickAttendance = async (employeeId: string, status: AttendanceStatus, date: string = today) => {
+    try {
+      setIsSubmitting(true);
+      const schedule = getWorkSchedule(date, attendanceSettings?.attendance_holidays || []);
+      
+      const newAttendance = {
+        employee_id: employeeId,
+        date: date,
+        check_in: status === 'present' ? schedule.start : null,
+        check_out: null,
+        status: status,
+        work_hours: null,
+        location: 'Input Manual',
+        notes: 'Diinput oleh admin'
+      };
+
+      await addAttendance(newAttendance);
+
+      toast({
+        title: 'Berhasil',
+        description: `Berhasil mencatat ${statusLabels[status]} untuk ${employees.find(e => e.id === employeeId)?.name}`,
+      });
+    } catch (error) {
+      console.error('Failed to record quick attendance:', error);
+      toast({
+        title: 'Error',
+        description: 'Gagal mencatat kehadiran',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle add attendance
@@ -1382,40 +1421,62 @@ export function AttendanceManagement() {
                                     {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
                                   </Button>
                                 )}
-                              {!attendance.is_virtual ? (
-                                <>
+                                {attendance.is_virtual ? (
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
                                     onClick={() => {
-                                      handleViewAttendance(attendance);
-                                      setIsEditing(true);
+                                      setIsEditing(false);
                                       setFormData({
                                         employee_id: attendance.employee_id,
                                         date: attendance.date,
-                                        check_in: attendance.check_in || '',
-                                        check_out: attendance.check_out || '',
+                                        check_in: '',
+                                        check_out: '',
                                         status: attendance.status as AttendanceStatus,
-                                        location: attendance.location || '',
-                                        notes: attendance.notes || ''
+                                        location: '',
+                                        notes: ''
                                       });
+                                      setShowAddDialog(true);
                                     }}
-                                    title="Edit Data"
+                                    title="Catat Kehadiran"
                                   >
-                                    <Edit className="w-4 h-4" />
+                                    <Plus className="w-4 h-4" />
                                   </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => handleDeleteAttendance(attendance.id)}
-                                    title="Hapus Data"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </>
-                              ) : null}
+                                ) : (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                      onClick={() => {
+                                        handleViewAttendance(attendance);
+                                        setIsEditing(true);
+                                        setFormData({
+                                          employee_id: attendance.employee_id,
+                                          date: attendance.date,
+                                          check_in: attendance.check_in || '',
+                                          check_out: attendance.check_out || '',
+                                          status: attendance.status as AttendanceStatus,
+                                          location: attendance.location || '',
+                                          notes: attendance.notes || ''
+                                        });
+                                      }}
+                                      title="Edit Data"
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() => handleDeleteAttendance(attendance.id)}
+                                      title="Hapus Data"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </>
+                                )}
                               {!attendance.is_virtual && (
                                 <Button
                                   variant="ghost"
@@ -1535,13 +1596,59 @@ export function AttendanceManagement() {
                   {notPresentToday.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                       {notPresentToday.map((emp) => (
-                        <div key={emp.id} className="flex items-center gap-2 p-2 border border-gray-100 rounded-md bg-gray-50/50">
-                          <Avatar className="w-6 h-6">
-                            <AvatarFallback className="text-[10px] bg-gray-200 text-gray-600">
-                              {emp.name.split(' ').map(n => n[0]).join('')}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-xs font-medium font-body truncate">{emp.name}</span>
+                        <div key={emp.id} className="flex items-center justify-between p-2 border border-gray-100 rounded-md bg-gray-50/50">
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <Avatar className="w-6 h-6">
+                              <AvatarFallback className="text-[10px] bg-gray-200 text-gray-600">
+                                {emp.name.split(' ').map(n => n[0]).join('')}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-xs font-medium font-body truncate">{emp.name}</span>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className="w-6 h-6 text-green-600 hover:bg-green-50" 
+                              title="Catat Hadir"
+                              onClick={() => handleQuickAttendance(emp.id, 'present')}
+                              disabled={isSubmitting}
+                            >
+                              <LogIn className="w-3 h-3" />
+                            </Button>
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className="w-6 h-6 text-red-600 hover:bg-red-50" 
+                              title="Catat Tidak Hadir"
+                              onClick={() => handleQuickAttendance(emp.id, 'absent')}
+                              disabled={isSubmitting}
+                            >
+                              <UserX className="w-3 h-3" />
+                            </Button>
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className="w-6 h-6 text-blue-600 hover:bg-blue-50" 
+                              title="Input Manual"
+                              onClick={() => {
+                                setIsEditing(false);
+                                setFormData({
+                                  employee_id: emp.id,
+                                  date: today,
+                                  check_in: '',
+                                  check_out: '',
+                                  status: 'present',
+                                  location: '',
+                                  notes: ''
+                                });
+                                setShowAddDialog(true);
+                              }}
+                              disabled={isSubmitting}
+                            >
+                              <Edit className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>

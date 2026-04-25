@@ -226,6 +226,11 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
         detailedDeductions.push(['Potongan Absen', formatCurrency(payroll.absent_deduction)]);
     }
 
+    // Potongan Telat
+    if (payroll.late_deduction && payroll.late_deduction > 0) {
+        detailedDeductions.push(['Potongan Telat', formatCurrency(payroll.late_deduction)]);
+    }
+
     // Pinjaman
     if (payroll.loan_amount && payroll.loan_amount > 0) {
         detailedDeductions.push(['Pinjaman', formatCurrency(payroll.loan_amount)]);
@@ -564,4 +569,101 @@ export const generateSampleSalarySlip = (customSettings: PrintSettings) => {
     };
 
     generateSalarySlip(dummyPayroll, dummyEmployee, customSettings);
+};
+
+export const generateEmployeeChecklist = (
+    employees: any[],
+    period: string,
+    customSettings?: Partial<PrintSettings>
+) => {
+    const settings = { ...defaultSettings, ...customSettings };
+    const doc = new jsPDF({
+        orientation: 'p',
+        format: 'a4',
+        unit: 'mm'
+    });
+    
+    const pageWidth = doc.internal.pageSize.width;
+
+    // --- HEADER ---
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(settings.companyName, pageWidth / 2, 15, { align: 'center' });
+    
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CHECKLIST PENGAMBILAN GAJI KARYAWAN', pageWidth / 2, 22, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Periode: ${period}`, pageWidth / 2, 27, { align: 'center' });
+
+    doc.setLineWidth(0.2);
+    doc.line(15, 32, pageWidth - 15, 32);
+
+    // --- TABLE DATA ---
+    const tableHeaders = [
+        ['No', 'Nama Karyawan', 'Jabatan', 'Status', 'Tanda Tangan']
+    ];
+
+    const tableData = employees.map((emp, index) => {
+        return [
+            index + 1,
+            emp.employee_name || emp.name,
+            emp.employee_position || emp.position,
+            emp.status === 'paid' ? 'LUNAS' : 'PENDING',
+            '' // Empty for signature
+        ];
+    });
+
+    autoTable(doc, {
+        head: tableHeaders,
+        body: tableData,
+        startY: 38,
+        theme: 'grid',
+        styles: {
+            cellPadding: 3,
+            fontSize: 9,
+            valign: 'middle'
+        },
+        headStyles: { 
+            fillColor: [240, 240, 240], // Light grey for "white paper" look
+            textColor: 0,
+            fontSize: 10,
+            fontStyle: 'bold',
+            halign: 'center',
+            lineWidth: 0.1
+        },
+        columnStyles: {
+            0: { halign: 'center', cellWidth: 10 },
+            1: { cellWidth: 'auto' },
+            2: { cellWidth: 40 },
+            3: { halign: 'center', cellWidth: 25 },
+            4: { cellWidth: 40, minCellHeight: 12 } // Extra height for signature
+        },
+        didDrawCell: (data) => {
+            // Draw a faint line for signature area if it's the signature column and body
+            if (data.column.index === 4 && data.section === 'body') {
+                const x = data.cell.x + 2;
+                const y = data.cell.y + data.cell.height - 2;
+                doc.setDrawColor(200);
+                doc.setLineWidth(0.1);
+                doc.line(x, y, x + data.cell.width - 4, y);
+            }
+        }
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY || 150;
+
+    // --- FOOTER ---
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'italic');
+    doc.text('Dicetak pada: ' + new Date().toLocaleString('id-ID'), 15, finalY + 10);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text('Diserahkan oleh,', pageWidth - 60, finalY + 20);
+    doc.text('( ____________________ )', pageWidth - 60, finalY + 45);
+    doc.text('Administrasi / Kasir', pageWidth - 60, finalY + 50);
+
+    doc.save(`Checklist_Gaji_${period.replace(/\s/g, '_')}.pdf`);
 };
