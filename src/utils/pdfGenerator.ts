@@ -253,6 +253,8 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
         detailedDeductions.push(['Potongan', formatCurrency(payroll.deductions)]);
     }
 
+    let finalY = currentY;
+
     if (settings.tableLayout === 'stacked') {
         // STACKED LAYOUT
         autoTable(doc, {
@@ -285,6 +287,8 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
             margin: { left: 15, right: 15 },
             tableWidth: pageWidth - 30
         });
+        // @ts-ignore
+        finalY = doc.lastAutoTable.finalY + 10;
 
     } else {
         // SIDE BY SIDE LAYOUT (Default)
@@ -301,6 +305,8 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
             margin: { left: 15, right: pageWidth / 2 + 2 },
             tableWidth: (pageWidth / 2) - 20
         });
+        // @ts-ignore
+        const table1FinalY = doc.lastAutoTable.finalY;
 
         autoTable(doc, {
             startY: currentY,
@@ -315,11 +321,10 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
             margin: { left: pageWidth / 2 + 5, right: 15 },
             tableWidth: (pageWidth / 2) - 20
         });
+        // @ts-ignore
+        const table2FinalY = doc.lastAutoTable.finalY;
+        finalY = Math.max(table1FinalY, table2FinalY) + 10;
     }
-
-    // Get the lower Y after tables
-    // @ts-ignore
-    const finalY = Math.max(doc.lastAutoTable.finalY) + 10;
 
     // --- SUMMARY ---
     // Recalculate Total Earnings for display consistency
@@ -335,8 +340,8 @@ export const generateSalarySlip = (payroll: PayrollRecord, employee: Employee, c
         ],
         theme: 'plain',
         columnStyles: {
-            0: { cellWidth: 100 },
-            1: { halign: 'right' },
+            0: { cellWidth: 'auto' },
+            1: { halign: 'right', cellWidth: 'auto' },
         },
         margin: { left: 15, right: 15 }, // Full width
     });

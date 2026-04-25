@@ -53,6 +53,7 @@ import { userService } from '@/services/userService';
 import { settingsService } from '@/services/settingsService';
 import { DEFAULT_PAYROLL_SETTINGS, PayrollSettings, DEFAULT_ATTENDANCE_SETTINGS, AttendanceSettings } from '@/types/settings';
 import { ChecklistPreviewModal } from './ChecklistPreviewModal';
+import { SalarySlipPreviewModal } from './SalarySlipPreviewModal';
 import { useAuth } from '@/contexts/AuthContext';
 import type { PayrollRecord } from '@/lib/supabase';
 
@@ -238,6 +239,8 @@ export function PayrollManagement() {
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
   const [showChecklistPreview, setShowChecklistPreview] = useState(false);
+  const [showSlipPreview, setShowSlipPreview] = useState(false);
+  const [previewPayroll, setPreviewPayroll] = useState<PayrollRecord | null>(null);
     const [formData, setFormData] = useState<PayrollFormData>({
     start_date: new Date(currentYear, currentMonth - 1, 1).toLocaleDateString('en-CA'),
     end_date: new Date(currentYear, currentMonth, 0).toLocaleDateString('en-CA'),
@@ -1286,9 +1289,8 @@ export function PayrollManagement() {
   };
 
   const handlePrintSlip = (pay: PayrollRecord) => {
-    const employee = employees.find(e => e.id === pay.employee_id);
-    if (!employee) return;
-    generateSalarySlip(pay, employee, printSettings);
+    setPreviewPayroll(pay);
+    setShowSlipPreview(true);
   };
 
   const handleExportExcel = () => {
@@ -2170,6 +2172,19 @@ export function PayrollManagement() {
             <Button variant="outline" onClick={() => setShowViewDialog(false)}>Tutup</Button>
           </div>
         </InlineModal>
+      )}
+
+      {showSlipPreview && previewPayroll && (
+        <SalarySlipPreviewModal
+          isOpen={showSlipPreview}
+          onClose={() => {
+            setShowSlipPreview(false);
+            setPreviewPayroll(null);
+          }}
+          payroll={previewPayroll}
+          employee={employees.find(e => e.id === previewPayroll.employee_id)!}
+          printSettings={printSettings}
+        />
       )}
     </div>
   );

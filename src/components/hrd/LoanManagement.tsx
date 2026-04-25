@@ -169,6 +169,17 @@ export function LoanManagement() {
         return matchesSearch && matchesStatus && matchesRole;
     });
 
+    // Calculate totals
+    const totalActiveLoan = loans
+        .filter(l => l.status === 'approved')
+        .reduce((sum, l) => sum + l.remaining_amount, 0);
+    
+    const totalPaidOffLoan = loans
+        .filter(l => l.status === 'paid_off')
+        .reduce((sum, l) => sum + l.amount, 0);
+    
+    const activeLoanCount = loans.filter(l => l.status === 'approved').length;
+
     // ===== ADD LOAN =====
     const handleAddLoan = async () => {
         try {
@@ -477,6 +488,48 @@ export function LoanManagement() {
         }
     };
 
+    const handleMarkAsPaidOff = async (loan: EmployeeLoan) => {
+        if (!confirm(`Apakah Anda yakin ingin menandai kasbon ${employees.find(e => e.id === loan.employee_id)?.name} sebagai LUNAS? Tindakan ini akan mengosongkan sisa saldo.`)) return;
+        try {
+            setIsSubmitting(true);
+            await updateLoan(loan.id, {
+                status: 'paid_off',
+                remaining_amount: 0,
+                updated_at: new Date().toISOString()
+            });
+            toast({ title: 'Sukses', description: 'Kasbon telah ditandai sebagai Lunas.' });
+        } catch (error) {
+            toast({ title: 'Error', description: 'Gagal merubah status kasbon', variant: 'destructive' });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleRevertToUnpaid = async (loan: EmployeeLoan) => {
+        const promptAmount = prompt(`Masukkan kembali sisa saldo yang benar untuk ${employees.find(e => e.id === loan.employee_id)?.name}:`, loan.amount.toString());
+        if (promptAmount === null) return;
+        
+        const newRemaining = parseFloat(promptAmount);
+        if (isNaN(newRemaining) || newRemaining <= 0) {
+            toast({ title: 'Error', description: 'Nominal tidak valid', variant: 'destructive' });
+            return;
+        }
+
+        try {
+            setIsSubmitting(true);
+            await updateLoan(loan.id, {
+                status: 'approved',
+                remaining_amount: newRemaining,
+                updated_at: new Date().toISOString()
+            });
+            toast({ title: 'Sukses', description: 'Status kasbon dikembalikan ke Belum Lunas.' });
+        } catch (error) {
+            toast({ title: 'Error', description: 'Gagal merubah status kasbon', variant: 'destructive' });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handleReject = async (id: string) => {
         try {
             await updateLoan(id, { status: 'rejected' });
@@ -526,6 +579,54 @@ export function LoanManagement() {
                     <Plus className="w-4 h-4 mr-2" />
                     <span>Ajukan Kasbon</span>
                 </Button>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="bg-red-50 border-red-100">
+                    <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-red-600 uppercase tracking-wider">Total Belum Lunas</p>
+                                <p className="text-xl font-bold text-red-900 mt-1">{formatCurrency(totalActiveLoan)}</p>
+                                <p className="text-[10px] text-red-500 mt-1">{activeLoanCount} Transaksi Aktif</p>
+                            </div>
+                            <div className="p-2 bg-red-100 rounded-lg text-red-600">
+                                <AlertCircle className="w-5 h-5" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-green-50 border-green-100">
+                    <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-green-600 uppercase tracking-wider">Total Lunas</p>
+                                <p className="text-xl font-bold text-green-900 mt-1">{formatCurrency(totalPaidOffLoan)}</p>
+                                <p className="text-[10px] text-green-500 mt-1">Kasbon Selesai</p>
+                            </div>
+                            <div className="p-2 bg-green-100 rounded-lg text-green-600">
+                                <BadgeCheck className="w-5 h-5" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-blue-50 border-blue-100">
+                    <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Permintaan Bayar</p>
+                                <p className="text-xl font-bold text-blue-900 mt-1">{pendingPayments.length} Permintaan</p>
+                                <p className="text-[10px] text-blue-500 mt-1">Menunggu Persetujuan</p>
+                            </div>
+                            <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+                                <Receipt className="w-5 h-5" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             {/* ===== PENDING PAYMENT REQUESTS PANEL (Admin/HR only) ===== */}
@@ -638,10 +739,10 @@ export function LoanManagement() {
                             <SelectValue placeholder="Status" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">Semua Status</SelectItem>
-                            <SelectItem value="pending">Menunggu</SelectItem>
-                            <SelectItem value="approved">Disetujui</SelectItem>
-                            <SelectItem value="paid_off">Lunas</SelectItem>
+                            <SelectItem value="all">Semua Data</SelectItem>
+                            <SelectItem value="pending">Menunggu Persetujuan</SelectItem>
+                            <SelectItem value="approved">Belum Lunas (Aktif)</SelectItem>
+                            <SelectItem value="paid_off">Lunas (Selesai)</SelectItem>
                             <SelectItem value="rejected">Ditolak</SelectItem>
                         </SelectContent>
                     </Select>
@@ -766,6 +867,16 @@ export function LoanManagement() {
                                                     <Button size="icon" variant="ghost" title="Cetak" className="text-purple-600 hover:bg-purple-50" onClick={() => handlePrintClick(loan)}>
                                                         <Printer className="w-4 h-4" />
                                                     </Button>
+                                                    {isAdminOrHR && loan.status === 'approved' && (
+                                                        <Button size="icon" variant="ghost" title="Tandai Lunas" className="text-green-600 hover:bg-green-50" onClick={() => handleMarkAsPaidOff(loan)}>
+                                                            <BadgeCheck className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                    {isAdminOrHR && loan.status === 'paid_off' && (
+                                                        <Button size="icon" variant="ghost" title="Kembalikan ke Belum Lunas" className="text-orange-600 hover:bg-orange-50" onClick={() => handleRevertToUnpaid(loan)}>
+                                                            <History className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
                                                     {/* Admin: edit & delete */}
                                                     {isAdminOrHR && (
                                                         <Button size="icon" variant="ghost" title="Edit Nominal" className="text-amber-600 hover:bg-amber-50" onClick={() => handleEditClick(loan)}>
