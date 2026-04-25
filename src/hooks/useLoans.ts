@@ -206,6 +206,8 @@ export function useLoans() {
         updateLoan,
         deleteLoan,
         payInstallment,
+        deletePayment,
+        updatePayment,
         submitPaymentRequest,
         approvePaymentRequest,
         rejectPaymentRequest,

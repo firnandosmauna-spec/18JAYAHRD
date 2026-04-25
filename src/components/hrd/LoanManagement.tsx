@@ -332,7 +332,7 @@ export function LoanManagement() {
                 loan_id: selectedLoan.id,
                 amount,
                 payment_date: new Date(paymentReqData.date).toISOString(),
-                payment_method: paymentReqData.method,
+                payment_method: paymentReqData.method as "cash" | "payroll" | "transfer",
                 notes: paymentReqData.notes,
                 requested_by: user?.id
             });
@@ -470,7 +470,7 @@ export function LoanManagement() {
                 loan_id: selectedLoan.id,
                 amount: amount,
                 payment_date: new Date(directPaymentData.date).toISOString(),
-                payment_method: directPaymentData.method,
+                payment_method: directPaymentData.method as "cash" | "payroll" | "transfer",
                 notes: directPaymentData.notes,
                 payment_status: 'approved'
             });
