@@ -98,6 +98,48 @@ export function useLoans() {
         }
     };
 
+    const deletePayment = async (paymentId: string) => {
+        try {
+            // 1. Delete and get the payment details
+            const deletedPayment = await loanService.deletePayment(paymentId);
+            
+            if (deletedPayment && deletedPayment.loan_id && deletedPayment.payment_status === 'approved') {
+                // 2. Fetch current loan to get current balance
+                const allLoans = await loanService.getAll();
+                const loan = allLoans.find(l => l.id === deletedPayment.loan_id);
+                
+                if (loan) {
+                    // 3. Restore the balance
+                    const newRemaining = loan.remaining_amount + deletedPayment.amount;
+                    // If it was paid_off, it might become approved again
+                    const newStatus = loan.status === 'paid_off' ? 'approved' : loan.status;
+                    
+                    await loanService.update(loan.id, {
+                        remaining_amount: newRemaining,
+                        status: newStatus
+                    });
+                }
+            }
+            
+            await fetchLoans(); // Refresh all
+        } catch (err: any) {
+            const errorMsg = handleSupabaseError(err);
+            setError(errorMsg);
+            throw err;
+        }
+    };
+
+    const updatePayment = async (paymentId: string, updates: Partial<LoanPayment>) => {
+        try {
+            await loanService.updatePayment(paymentId, updates);
+            await fetchLoans(); // Refresh balance
+        } catch (err: any) {
+            const errorMsg = handleSupabaseError(err);
+            setError(errorMsg);
+            throw err;
+        }
+    };
+
     // Employee: submit payment request for admin approval
     const submitPaymentRequest = async (payment: {
         loan_id: string;

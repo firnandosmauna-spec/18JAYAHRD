@@ -23,10 +23,12 @@ import {
     ChevronDown,
     ChevronUp,
     Trash2,
+    DollarSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -92,7 +94,7 @@ export function LoanManagement() {
         addLoan, updateLoan, deleteLoan,
         pendingPayments, pendingLoading,
         submitPaymentRequest, approvePaymentRequest, rejectPaymentRequest,
-        payInstallment, fetchPayments,
+        payInstallment, deletePayment, updatePayment, fetchPayments,
         refetch, refetchPending
     } = useLoans();
     const { employees } = useEmployees();
@@ -109,6 +111,7 @@ export function LoanManagement() {
     const [showRejectPaymentDialog, setShowRejectPaymentDialog] = useState(false);
     const [showHistoryDialog, setShowHistoryDialog] = useState(false);
     const [showEditDialog, setShowEditDialog] = useState(false);
+    const [showDirectPaymentDialog, setShowDirectPaymentDialog] = useState(false);
     const [showPrintDialog, setShowPrintDialog] = useState(false);
     const [showPendingPanel, setShowPendingPanel] = useState(true);
     const [selectedLoan, setSelectedLoan] = useState<EmployeeLoan | null>(null);
@@ -130,6 +133,14 @@ export function LoanManagement() {
         amount: '',
         method: 'cash',
         date: new Date().toLocaleDateString('en-CA'),
+        notes: ''
+    });
+
+    // Direct Payment Form (Admin)
+    const [directPaymentData, setDirectPaymentData] = useState({
+        amount: '',
+        date: new Date().toLocaleDateString('en-CA'),
+        method: 'cash',
         notes: ''
     });
 
@@ -430,6 +441,84 @@ export function LoanManagement() {
 
     // ===== EDIT =====
     const [editFormData, setEditFormData] = useState({ amount: '', installment_amount: '', reason: '' });
+
+    const handleDirectPaymentClick = (loan: EmployeeLoan) => {
+        setSelectedLoan(loan);
+        setDirectPaymentData({
+            amount: loan.installment_amount.toString(),
+            date: new Date().toISOString().split('T')[0],
+            method: 'cash',
+            notes: `Cicilan manual - ${formatDateShort(new Date().toISOString())}`
+        });
+        setShowDirectPaymentDialog(true);
+    };
+
+    const handleDirectPaymentConfirm = async () => {
+        if (!selectedLoan) return;
+        const amount = parseFloat(directPaymentData.amount);
+        if (isNaN(amount) || amount <= 0) {
+            toast({ title: 'Error', description: 'Nominal tidak valid', variant: 'destructive' });
+            return;
+        }
+
+        try {
+            setIsSubmitting(true);
+            const amount = parseFloat(directPaymentData.amount);
+            
+            // 1. Record the payment record in database
+            await payInstallment({
+                loan_id: selectedLoan.id,
+                amount: amount,
+                payment_date: new Date(directPaymentData.date).toISOString(),
+                payment_method: directPaymentData.method,
+                notes: directPaymentData.notes,
+                payment_status: 'approved'
+            });
+
+            // 2. Explicitly update the loan balance in database
+            const newRemaining = Math.max(0, selectedLoan.remaining_amount - amount);
+            const newStatus = newRemaining === 0 ? 'paid_off' : selectedLoan.status;
+            
+            await updateLoan(selectedLoan.id, { 
+                remaining_amount: newRemaining,
+                status: newStatus
+            });
+
+            toast({ 
+                title: 'Pembayaran Berhasil', 
+                description: `Saldo berkurang sebesar ${formatCurrency(amount)}. Sisa saldo sekarang: ${formatCurrency(newRemaining)}` 
+            });
+            
+            setShowDirectPaymentDialog(false);
+            
+            // 3. Refresh all data to ensure sync with database
+            if (typeof refetch === 'function') {
+                await refetch();
+            }
+        } catch (error: any) {
+            toast({ title: 'Error', description: error.message || 'Gagal mencatat pembayaran', variant: 'destructive' });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDeletePayment = async (pay: any) => {
+        if (!confirm(`Hapus catatan pembayaran ini? Saldo pinjaman akan dikembalikan sebesar ${formatCurrency(pay.amount)}.`)) return;
+        try {
+            setIsSubmitting(true);
+            await deletePayment(pay.id);
+            // Refresh local history list
+            if (selectedLoan) {
+                const history = await fetchPayments(selectedLoan.id);
+                setLoanPayments(history);
+            }
+            toast({ title: 'Berhasil', description: 'Catatan pembayaran telah dihapus dan saldo dikembalikan.' });
+        } catch (error: any) {
+            toast({ title: 'Error', description: error.message || 'Gagal menghapus pembayaran', variant: 'destructive' });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     const handleEditClick = (loan: EmployeeLoan) => {
         setSelectedLoan(loan);
@@ -814,13 +903,35 @@ export function LoanManagement() {
                                                     )}
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="font-mono text-red-600 font-medium">
-                                                <div className="flex flex-col">
-                                                    <span>{formatCurrency(loan.remaining_amount)}</span>
+                                            <TableCell className="font-mono font-medium">
+                                                <div className="flex flex-col gap-1.5 min-w-[120px]">
+                                                    <div className="flex justify-between items-end">
+                                                        <span className="text-red-600">{formatCurrency(loan.remaining_amount)}</span>
+                                                        <span className="text-[10px] text-slate-400">dr {formatCurrency(loan.amount)}</span>
+                                                    </div>
                                                     {loan.status === 'approved' && (
-                                                        <span className="text-[10px] text-blue-600">
-                                                            {(100 - (loan.remaining_amount / loan.amount * 100)).toFixed(0)}% Terbayar
-                                                        </span>
+                                                        <div className="space-y-1">
+                                                            <Progress 
+                                                                value={Math.min(100, Math.max(0, (100 - (loan.remaining_amount / loan.amount * 100))))} 
+                                                                className="h-1.5 bg-slate-100"
+                                                            />
+                                                            <div className="flex justify-between text-[9px]">
+                                                                <span className="text-blue-600 font-bold">
+                                                                    {(100 - (loan.remaining_amount / loan.amount * 100)).toFixed(0)}% Terbayar
+                                                                </span>
+                                                                <button 
+                                                                    onClick={() => handleShowHistory(loan)}
+                                                                    className="text-slate-400 hover:text-blue-600 underline flex items-center gap-0.5"
+                                                                >
+                                                                    <History className="w-2 h-2" /> Riwayat
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {loan.status === 'paid_off' && (
+                                                        <div className="flex items-center gap-1 text-[9px] text-emerald-600 font-bold">
+                                                            <BadgeCheck className="w-3 h-3" /> 100% LUNAS
+                                                        </div>
                                                     )}
                                                 </div>
                                             </TableCell>
@@ -851,6 +962,12 @@ export function LoanManagement() {
                                                     )}
                                                     {loan.status === 'approved' && (
                                                         <>
+                                                            {/* Admin: Input Pembayaran Langsung */}
+                                                            {isAdminOrHR && (
+                                                                <Button size="icon" variant="ghost" title="Input Pembayaran" className="text-emerald-600 hover:bg-emerald-50" onClick={() => handleDirectPaymentClick(loan)}>
+                                                                    <DollarSign className="w-4 h-4" />
+                                                                </Button>
+                                                            )}
                                                             {/* Staff/non-admin: submit payment request */}
                                                             {!isAdminOrHR && isMyLoan && (
                                                                 <Button size="icon" variant="ghost" title="Ajukan Pembayaran Cicilan" className="text-blue-600 hover:bg-blue-50" onClick={() => handlePaymentRequestClick(loan)}>
@@ -1128,6 +1245,7 @@ export function LoanManagement() {
                                             <TableHead>Nominal</TableHead>
                                             <TableHead>Status</TableHead>
                                             <TableHead>Keterangan</TableHead>
+                                            {isAdminOrHR && <TableHead className="text-right">Aksi</TableHead>}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1147,6 +1265,19 @@ export function LoanManagement() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-xs">{pay.notes || '-'}</TableCell>
+                                                {isAdminOrHR && (
+                                                    <TableCell className="text-right">
+                                                        <Button 
+                                                            size="icon" 
+                                                            variant="ghost" 
+                                                            className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                            onClick={() => handleDeletePayment(pay)}
+                                                            disabled={isSubmitting}
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </TableCell>
+                                                )}
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -1195,6 +1326,57 @@ export function LoanManagement() {
                         <Button variant="outline" onClick={() => setShowEditDialog(false)}>Batal</Button>
                         <Button onClick={handleEditConfirm} disabled={isSubmitting} className="bg-amber-600 hover:bg-amber-700 text-white">
                             {isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ===== DIALOG: INPUT PEMBAYARAN LANGSUNG (Admin) ===== */}
+            <Dialog open={showDirectPaymentDialog} onOpenChange={setShowDirectPaymentDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-emerald-700">
+                            <DollarSign className="w-5 h-5" />
+                            Input Pembayaran Cicilan
+                        </DialogTitle>
+                        <DialogDescription>
+                            Catat pembayaran cicilan secara manual untuk {employees.find(e => e.id === selectedLoan?.employee_id)?.name}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-sm text-emerald-800">
+                            <div className="flex justify-between mb-1"><span>Total Pinjaman:</span><span className="font-bold">{formatCurrency(selectedLoan?.amount || 0)}</span></div>
+                            <div className="flex justify-between text-red-700"><span>Sisa Saldo Saat Ini:</span><span className="font-bold">{formatCurrency(selectedLoan?.remaining_amount || 0)}</span></div>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Nominal Pembayaran (Rp)</Label>
+                            <Input type="number" value={directPaymentData.amount} onChange={(e) => setDirectPaymentData(p => ({ ...p, amount: e.target.value }))} />
+                            <p className="text-[10px] text-muted-foreground italic">Default: Nominal cicilan bulanan ({formatCurrency(selectedLoan?.installment_amount || 0)})</p>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Tanggal Pembayaran</Label>
+                            <Input type="date" value={directPaymentData.date} onChange={(e) => setDirectPaymentData(p => ({ ...p, date: e.target.value }))} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Metode Pembayaran</Label>
+                            <Select value={directPaymentData.method} onValueChange={(v) => setDirectPaymentData(p => ({ ...p, method: v }))}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="cash">Tunai / Langsung</SelectItem>
+                                    <SelectItem value="transfer">Transfer Bank</SelectItem>
+                                    <SelectItem value="payroll">Potong Gaji</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Keterangan</Label>
+                            <Input value={directPaymentData.notes} onChange={(e) => setDirectPaymentData(p => ({ ...p, notes: e.target.value }))} placeholder="Misal: Cicilan ke-3" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowDirectPaymentDialog(false)}>Batal</Button>
+                        <Button onClick={handleDirectPaymentConfirm} disabled={isSubmitting} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                            {isSubmitting ? 'Memproses...' : 'Simpan Pembayaran'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

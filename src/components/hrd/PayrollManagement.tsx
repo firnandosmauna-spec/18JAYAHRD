@@ -776,9 +776,13 @@ export function PayrollManagement() {
 
   // Create a unified list of employees and their payroll status
   const unifiedPayroll = employees
-    .filter(emp => emp.status === 'active' && !emp.position?.toLowerCase().includes('administrator')) // Only active employees, exclude administrators
+    .filter(emp => {
+      const status = (emp.status || '').toLowerCase();
+      const position = (emp.position || '').toLowerCase();
+      return status === 'active' && !position.includes('administrator');
+    })
     .map(emp => {
-      const existingPay = payroll.find(p => p.employee_id === emp.id);
+      const existingPay = payroll.find(p => p.employee_id === emp.id && p.status !== 'cancelled');
       const draft = !existingPay ? calculateDraftValues(emp) : null;
 
       return {
@@ -816,15 +820,22 @@ export function PayrollManagement() {
     return item.employee_name.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
-  // Calculate statistics
+  // Calculate statistics based on current filtered/unified data
+  const processedPayrolls = payroll.filter(p => {
+    const emp = employees.find(e => e.id === p.employee_id);
+    if (!emp) return false;
+    const position = (emp.position || '').toLowerCase();
+    return !position.includes('administrator') && p.status !== 'cancelled';
+  });
+
   const stats = {
-    totalPayroll: payroll.reduce((sum, pay) => sum + pay.net_salary, 0),
+    totalPayroll: processedPayrolls.reduce((sum, pay) => sum + pay.net_salary, 0),
     potentialTotalPayroll: unifiedPayroll.reduce((sum, item) => sum + item.net_salary, 0),
-    pendingPayroll: payroll.filter(pay => pay.status === 'pending').length,
-    paidPayroll: payroll.filter(pay => pay.status === 'paid').length,
+    pendingPayroll: processedPayrolls.filter(pay => pay.status === 'pending').length,
+    paidPayroll: processedPayrolls.filter(pay => pay.status === 'paid').length,
     unprocessedEmployees: unifiedPayroll.filter(p => !p.is_payroll_exists).length,
     totalEmployees: unifiedPayroll.length,
-    averageSalary: payroll.length > 0 ? payroll.reduce((sum, pay) => sum + pay.net_salary, 0) / payroll.length : 0
+    averageSalary: processedPayrolls.length > 0 ? processedPayrolls.reduce((sum, pay) => sum + pay.net_salary, 0) / processedPayrolls.length : 0
   };
 
   // Reset form
