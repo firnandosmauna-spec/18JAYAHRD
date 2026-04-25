@@ -86,7 +86,7 @@ export function useLoans() {
     };
 
     // Admin: directly pay installment
-    const payInstallment = async (payment: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at'>) => {
+    const payInstallment = async (payment: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at' | 'payment_status'>) => {
         try {
             const newPayment = await loanService.payInstallment(payment);
             await fetchLoans(); // Refresh balances

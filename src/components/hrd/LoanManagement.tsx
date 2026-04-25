@@ -470,10 +470,9 @@ export function LoanManagement() {
                 loan_id: selectedLoan.id,
                 amount: amount,
                 payment_date: new Date(directPaymentData.date).toISOString(),
-                payment_method: directPaymentData.method as "cash" | "payroll" | "transfer",
-                notes: directPaymentData.notes,
-                payment_status: 'approved'
-            });
+                payment_method: directPaymentData.method as any,
+                notes: directPaymentData.notes
+            } as any);
 
             // 2. Explicitly update the loan balance in database
             const newRemaining = Math.max(0, selectedLoan.remaining_amount - amount);

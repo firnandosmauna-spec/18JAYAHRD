@@ -822,7 +822,7 @@ export const loanService = {
   },
 
   // Admin: directly record a payment (old behaviour, admin-only)
-  async payInstallment(payment: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at'>) {
+  async payInstallment(payment: Omit<LoanPayment, 'id' | 'created_at' | 'updated_at' | 'payment_status'>) {
     const { data, error } = await supabase.rpc('process_loan_payment', {
       p_loan_id: payment.loan_id,
       p_amount: payment.amount,
