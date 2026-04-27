@@ -423,6 +423,7 @@ export interface LoanPayment {
   amount: number
   payment_date: string
   payment_method: 'cash' | 'payroll' | 'transfer'
+  payment_status?: 'pending_approval' | 'approved' | 'rejected'
   notes?: string
   created_at: string
   updated_at: string

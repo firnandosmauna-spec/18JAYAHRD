@@ -125,6 +125,35 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    const generateCode = async () => {
+        try {
+            const date = new Date();
+            const year = date.getFullYear().toString().substring(2);
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const yyMMDD = year + month + day;
+            
+            // Get start of today
+            const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+
+            const { count, error } = await supabase
+                .from('consumer_profiles')
+                .select('id', { count: 'exact', head: true })
+                .gte('created_at', startOfDay);
+            
+            if (error) throw error;
+            
+            const sequence = ((count || 0) + 1).toString().padStart(3, '0');
+            
+            const newCode = `CUST-${yyMMDD}-${sequence}`;
+            setFormData(prev => ({ ...prev, code: newCode }));
+        } catch (error) {
+            console.error('Error generating code:', error);
+            const fallback = `CUST-${Date.now().toString().substring(7)}`;
+            setFormData(prev => ({ ...prev, code: fallback }));
+        }
+    };
+
     const handleSelectChange = (name: string, value: string) => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
@@ -398,43 +427,65 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}code`}>Kode Konsumen <span className="text-red-500">*</span></Label>
-                                <Input id={`${idPrefix}code`} name="code" value={formData.code} onChange={handleInputChange} required placeholder="Cth: CUST-001" readOnly={readOnly} />
+                                <div className="flex gap-2">
+                                    <Input 
+                                        id={`${idPrefix}code`} 
+                                        name="code" 
+                                        value={formData.code || ''} 
+                                        onChange={handleInputChange} 
+                                        required 
+                                        placeholder="Cth: CUST-2401-0001" 
+                                        readOnly={readOnly} 
+                                        className="flex-1"
+                                    />
+                                    {!readOnly && !consumerId && (
+                                        <Button 
+                                            type="button" 
+                                            variant="outline" 
+                                            onClick={generateCode}
+                                            className="px-3"
+                                            title="Generate Otomatis"
+                                        >
+                                            Auto
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}npwp`}>NPWP</Label>
-                                <Input id={`${idPrefix}npwp`} name="npwp" value={formData.npwp} onChange={handleInputChange} placeholder="Nomor NPWP" readOnly={readOnly} />
+                                <Input id={`${idPrefix}npwp`} name="npwp" value={formData.npwp || ''} onChange={handleInputChange} placeholder="Nomor NPWP" readOnly={readOnly} />
                             </div>
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor={`${idPrefix}name`}>Nama Lengkap <span className="text-red-500">*</span></Label>
-                                <Input id={`${idPrefix}name`} name="name" value={formData.name} onChange={handleInputChange} required placeholder="Nama lengkap sesuai KTP" readOnly={readOnly} />
+                                <Input id={`${idPrefix}name`} name="name" value={formData.name || ''} onChange={handleInputChange} required placeholder="Nama lengkap sesuai KTP" readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}phone`}>No. HP / WA <span className="text-red-500">*</span></Label>
-                                <Input id={`${idPrefix}phone`} name="phone" value={formData.phone} onChange={handleInputChange} required placeholder="08xxxxxxxxxx" readOnly={readOnly} />
+                                <Input id={`${idPrefix}phone`} name="phone" value={formData.phone || ''} onChange={handleInputChange} required placeholder="08xxxxxxxxxx" readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}company`}>ID Perusahaan / NIK Karyawan</Label>
-                                <Input id={`${idPrefix}company`} name="company_id_number" value={formData.company_id_number} onChange={handleInputChange} placeholder="ID Karyawan jika ada" readOnly={readOnly} />
+                                <Input id={`${idPrefix}company`} name="company_id_number" value={formData.company_id_number || ''} onChange={handleInputChange} placeholder="ID Karyawan jika ada" readOnly={readOnly} />
                             </div>
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor={`${idPrefix}id_card`}>Nomor KTP (NIK)</Label>
-                                <Input id={`${idPrefix}id_card`} name="id_card_number" value={formData.id_card_number} onChange={handleInputChange} placeholder="16 digit NIK" readOnly={readOnly} />
+                                <Input id={`${idPrefix}id_card`} name="id_card_number" value={formData.id_card_number || ''} onChange={handleInputChange} placeholder="16 digit NIK" readOnly={readOnly} />
                             </div>
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor={`${idPrefix}address`}>Alamat Lengkap Domisili</Label>
-                                <Textarea id={`${idPrefix}address`} name="address" value={formData.address} onChange={handleInputChange} placeholder="Alamat tempat tinggal saat ini" rows={3} readOnly={readOnly} />
+                                <Textarea id={`${idPrefix}address`} name="address" value={formData.address || ''} onChange={handleInputChange} placeholder="Alamat tempat tinggal saat ini" rows={3} readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}email`}>Email</Label>
-                                <Input id={`${idPrefix}email`} name="email" type="email" value={formData.email} onChange={handleInputChange} placeholder="email@example.com" readOnly={readOnly} />
+                                <Input id={`${idPrefix}email`} name="email" type="email" value={formData.email || ''} onChange={handleInputChange} placeholder="email@example.com" readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}salary`}>Gaji / Penghasilan Per Bulan</Label>
-                                <Input id={`${idPrefix}salary`} name="salary" type="number" value={formData.salary} onChange={handleInputChange} placeholder="0" readOnly={readOnly} />
+                                <Input id={`${idPrefix}salary`} name="salary" type="number" value={formData.salary || ''} onChange={handleInputChange} placeholder="0" readOnly={readOnly} />
                             </div>
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor={`${idPrefix}booking`}>Keterangan / Booking</Label>
-                                <Textarea id={`${idPrefix}booking`} name="booking_remarks" value={formData.booking_remarks} onChange={handleInputChange} placeholder="Catatan booking atau keterangan lainnya" rows={2} readOnly={readOnly} />
+                                <Textarea id={`${idPrefix}booking`} name="booking_remarks" value={formData.booking_remarks || ''} onChange={handleInputChange} placeholder="Catatan booking atau keterangan lainnya" rows={2} readOnly={readOnly} />
                             </div>
                         </div>
                         <div className="pt-4 border-t mt-4">
@@ -527,23 +578,23 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                         <div className="grid grid-cols-1 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}occupation`}>Pekerjaan</Label>
-                                <Input id={`${idPrefix}occupation`} name="occupation" value={formData.occupation} onChange={handleInputChange} placeholder="Jenis pekerjaan" readOnly={readOnly} />
+                                <Input id={`${idPrefix}occupation`} name="occupation" value={formData.occupation || ''} onChange={handleInputChange} placeholder="Jenis pekerjaan" readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}emp_name`}>Nama Perusahaan / Usaha</Label>
-                                <Input id={`${idPrefix}emp_name`} name="employer_name" value={formData.employer_name} onChange={handleInputChange} placeholder="Tempat bekerja" readOnly={readOnly} />
+                                <Input id={`${idPrefix}emp_name`} name="employer_name" value={formData.employer_name || ''} onChange={handleInputChange} placeholder="Tempat bekerja" readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}emp_address`}>Alamat Perusahaan / Usaha</Label>
-                                <Textarea id={`${idPrefix}emp_address`} name="employer_address" value={formData.employer_address} onChange={handleInputChange} rows={3} readOnly={readOnly} />
+                                <Textarea id={`${idPrefix}emp_address`} name="employer_address" value={formData.employer_address || ''} onChange={handleInputChange} rows={3} readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}emp_phone`}>No. Telp Perusahaan</Label>
-                                <Input id={`${idPrefix}emp_phone`} name="employer_phone" value={formData.employer_phone} onChange={handleInputChange} readOnly={readOnly} />
+                                <Input id={`${idPrefix}emp_phone`} name="employer_phone" value={formData.employer_phone || ''} onChange={handleInputChange} readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}emp_remarks`}>Keterangan Pekerjaan</Label>
-                                <Textarea id={`${idPrefix}emp_remarks`} name="employer_remarks" value={formData.employer_remarks} onChange={handleInputChange} rows={2} readOnly={readOnly} />
+                                <Textarea id={`${idPrefix}emp_remarks`} name="employer_remarks" value={formData.employer_remarks || ''} onChange={handleInputChange} rows={2} readOnly={readOnly} />
                             </div>
                         </div>
                     </TabsContent>
@@ -564,19 +615,19 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}spouse_name`}>Nama Pasangan</Label>
-                                <Input id={`${idPrefix}spouse_name`} name="spouse_name" value={formData.spouse_name} onChange={handleInputChange} readOnly={readOnly} />
+                                <Input id={`${idPrefix}spouse_name`} name="spouse_name" value={formData.spouse_name || ''} onChange={handleInputChange} readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}spouse_phone`}>No. HP / WA Pasangan</Label>
-                                <Input id={`${idPrefix}spouse_phone`} name="spouse_phone" value={formData.spouse_phone} onChange={handleInputChange} readOnly={readOnly} />
+                                <Input id={`${idPrefix}spouse_phone`} name="spouse_phone" value={formData.spouse_phone || ''} onChange={handleInputChange} readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}spouse_occ`}>Pekerjaan Pasangan</Label>
-                                <Input id={`${idPrefix}spouse_occ`} name="spouse_occupation" value={formData.spouse_occupation} onChange={handleInputChange} readOnly={readOnly} />
+                                <Input id={`${idPrefix}spouse_occ`} name="spouse_occupation" value={formData.spouse_occupation || ''} onChange={handleInputChange} readOnly={readOnly} />
                             </div>
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor={`${idPrefix}spouse_dir`}>Alamat Kantor Pasangan</Label>
-                                <Textarea id={`${idPrefix}spouse_dir`} name="spouse_office_address" value={formData.spouse_office_address} onChange={handleInputChange} rows={2} readOnly={readOnly} />
+                                <Textarea id={`${idPrefix}spouse_dir`} name="spouse_office_address" value={formData.spouse_office_address || ''} onChange={handleInputChange} rows={2} readOnly={readOnly} />
                             </div>
                         </div>
                     </TabsContent>
@@ -585,7 +636,7 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                         <div className="grid grid-cols-1 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}fam_name`}>Nama Keluarga (Kontak Darurat)</Label>
-                                <Input id={`${idPrefix}fam_name`} name="family_name" value={formData.family_name} onChange={handleInputChange} readOnly={readOnly} />
+                                <Input id={`${idPrefix}fam_name`} name="family_name" value={formData.family_name || ''} onChange={handleInputChange} readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}fam_rel`}>Hubungan</Label>
@@ -602,11 +653,11 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}fam_phone`}>No. HP / WA Keluarga</Label>
-                                <Input id={`${idPrefix}fam_phone`} name="family_phone" value={formData.family_phone} onChange={handleInputChange} readOnly={readOnly} />
+                                <Input id={`${idPrefix}fam_phone`} name="family_phone" value={formData.family_phone || ''} onChange={handleInputChange} readOnly={readOnly} />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}fam_addr`}>Alamat Keluarga</Label>
-                                <Textarea id={`${idPrefix}fam_addr`} name="family_address" value={formData.family_address} onChange={handleInputChange} rows={3} readOnly={readOnly} />
+                                <Textarea id={`${idPrefix}fam_addr`} name="family_address" value={formData.family_address || ''} onChange={handleInputChange} rows={3} readOnly={readOnly} />
                             </div>
                         </div>
                     </TabsContent>

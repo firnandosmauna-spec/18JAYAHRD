@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Filter, Phone, Mail, User, MapPin, Plus, Loader2, Briefcase, Heart, Users, LayoutGrid, List, Pencil, Trash, CheckCircle2, Upload, X, FileText, Eye as EyeIcon, Download } from 'lucide-react';
+import { Search, Filter, Phone, Mail, User, MapPin, Plus, Loader2, Briefcase, Heart, Users, LayoutGrid, List, Pencil, Trash, CheckCircle2, Upload, X, FileText, Eye as EyeIcon, Download, Receipt, Printer } from 'lucide-react';
 import { ConsumerPemberkasan } from './ConsumerPemberkasan';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -15,6 +15,8 @@ import { ConsumerProfile, HOUSING_PROJECTS } from './MarketingTypes';
 import { useToast } from '@/components/ui/use-toast';
 import { useProjectLocations } from '@/hooks/useInventory';
 import { ConsumerProfileForm } from './ConsumerProfileForm';
+import BookingPOS from './BookingPOS';
+import ConsumerBioData from './ConsumerBioData';
 
 export default function ConsumerDatabaseView() {
     const [consumers, setConsumers] = useState<ConsumerProfile[]>([]);
@@ -29,7 +31,7 @@ export default function ConsumerDatabaseView() {
         try {
             const { data, error } = await supabase
                 .from('consumer_profiles')
-                .select('*')
+                .select('*, consumer_pemberkasan(*)')
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -52,6 +54,8 @@ export default function ConsumerDatabaseView() {
 
     const [selectedConsumer, setSelectedConsumer] = useState<ConsumerProfile | null>(null);
     const [pemberkasanConsumer, setPemberkasanConsumer] = useState<ConsumerProfile | null>(null);
+    const [posConsumer, setPosConsumer] = useState<ConsumerProfile | null>(null);
+    const [bioDataConsumer, setBioDataConsumer] = useState<ConsumerProfile | null>(null);
 
     const handleEdit = (consumer: ConsumerProfile) => {
         setEditingId(consumer.id);
@@ -102,6 +106,31 @@ export default function ConsumerDatabaseView() {
     const [selectedProject, setSelectedProject] = useState<string>('all');
     const { locations: projectLocations } = useProjectLocations();
 
+    const calculateProgress = (pemberkasan: any) => {
+        if (!pemberkasan) return 0;
+        
+        // Handle both array (joined) and single object formats
+        const p = Array.isArray(pemberkasan) ? pemberkasan[0] : pemberkasan;
+        if (!p) return 0;
+
+        const stages = [
+            'booking', 
+            'slik_ojk', 
+            'proses_berkas', 
+            'ots', 
+            'penginputan', 
+            'analis_data', 
+            'lpa_aprasial', 
+            'pip', 
+            'pk', 
+            'akad', 
+            'pencairan_akad'
+        ];
+        
+        const completed = stages.filter(stage => !!p[stage]).length;
+        return Math.round((completed / stages.length) * 100);
+    };
+
     const filteredConsumers = consumers.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             c.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -110,6 +139,19 @@ export default function ConsumerDatabaseView() {
         const matchesProject = selectedProject === 'all' || c.housing_project === selectedProject;
 
         return matchesSearch && matchesProject;
+    });
+
+    const groupedData = filteredConsumers.reduce((acc, consumer) => {
+        const project = consumer.housing_project || 'Tanpa Proyek';
+        if (!acc[project]) acc[project] = [];
+        acc[project].push(consumer);
+        return acc;
+    }, {} as Record<string, typeof consumers>);
+
+    const sortedProjects = Object.keys(groupedData).sort((a, b) => {
+        if (a === 'Tanpa Proyek') return 1;
+        if (b === 'Tanpa Proyek') return -1;
+        return a.localeCompare(b);
     });
 
     return (
@@ -445,6 +487,21 @@ export default function ConsumerDatabaseView() {
                 </DialogContent>
             </Dialog>
 
+            {/* Booking POS Dialog */}
+            <BookingPOS 
+                consumer={posConsumer}
+                isOpen={!!posConsumer}
+                onClose={() => setPosConsumer(null)}
+                onSuccess={() => fetchConsumers()}
+            />
+
+            {/* Consumer Bio Data (Print View) */}
+            <ConsumerBioData 
+                consumer={bioDataConsumer}
+                isOpen={!!bioDataConsumer}
+                onClose={() => setBioDataConsumer(null)}
+            />
+
             {/* Pemberkasan Dialog */}
             <Dialog open={!!pemberkasanConsumer} onOpenChange={(open) => !open && setPemberkasanConsumer(null)}>
                 <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden border-none shadow-2xl">
@@ -459,6 +516,7 @@ export default function ConsumerDatabaseView() {
                             <ConsumerPemberkasan
                                 consumerId={pemberkasanConsumer.id}
                                 consumerName={pemberkasanConsumer.name}
+                                onUpdate={fetchConsumers}
                             />
                         )}
                     </div>
@@ -545,6 +603,24 @@ export default function ConsumerDatabaseView() {
                                         </Button>
                                         <Button
                                             size="sm"
+                                            variant="outline"
+                                            className="h-8 w-8 p-0 text-blue-600 border-blue-100 hover:bg-blue-50"
+                                            title="Bayar Booking"
+                                            onClick={() => setPosConsumer(consumer)}
+                                        >
+                                            <Receipt className="w-3.5 h-3.5" />
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 w-8 p-0 text-slate-600 border-slate-100 hover:bg-slate-50"
+                                            title="Cetak Biodata"
+                                            onClick={() => setBioDataConsumer(consumer)}
+                                        >
+                                            <Printer className="w-3.5 h-3.5" />
+                                        </Button>
+                                        <Button
+                                            size="sm"
                                             variant="ghost"
                                             className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600"
                                             onClick={() => handleEdit(consumer)}
@@ -566,95 +642,255 @@ export default function ConsumerDatabaseView() {
                     </div>
                 ) : (
                     // TABLE VIEW MODE
-                    <div className="border rounded-lg overflow-x-auto bg-white">
+                    <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-600 border-b">
                                 <tr>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Kode</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Nama Konsumen</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Kontak (HP/WA)</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Alamat Domisili</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Pekerjaan</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Nama Perusahaan</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Status Nikah</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Nama Pasangan</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Kontak Darurat</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Proyek</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Proses Bank</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap">Sales</th>
-                                    <th className="px-4 py-3 font-medium whitespace-nowrap text-right">Aksi</th>
+                                    <th className="px-4 py-3 font-semibold">Profil Konsumen</th>
+                                    <th className="px-4 py-3 font-semibold">Kontak & Proyek</th>
+                                    <th className="px-4 py-3 font-semibold">Progress</th>
+                                    <th className="px-4 py-3 font-semibold">Proses Bank</th>
+                                    <th className="px-4 py-3 font-semibold">Sales</th>
+                                    <th className="px-4 py-3 font-semibold text-right">Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y">
-                                {filteredConsumers.map((consumer) => (
-                                    <tr key={consumer.id} className="hover:bg-slate-50">
-                                        <td className="px-4 py-3 font-mono text-xs">{consumer.code}</td>
-                                        <td className="px-4 py-3 font-medium">{consumer.name}</td>
-                                        <td className="px-4 py-3">{consumer.phone || '-'}</td>
-                                        <td className="px-4 py-3 max-w-[200px] truncate" title={consumer.address}>{consumer.address || '-'}</td>
-                                        <td className="px-4 py-3">{consumer.occupation || '-'}</td>
-                                        <td className="px-4 py-3">{consumer.employer_name || '-'}</td>
-                                        <td className="px-4 py-3 capitalize">{consumer.marital_status?.replace('_', ' ') || '-'}</td>
-                                        <td className="px-4 py-3">{consumer.spouse_name || '-'}</td>
-                                        <td className="px-4 py-3">
-                                            {consumer.family_name ? (
+                            <tbody className="divide-y divide-slate-100">
+                                {selectedProject === 'all' ? (
+                                    sortedProjects.map(project => (
+                                        <React.Fragment key={project}>
+                                            <tr className="bg-blue-600 shadow-sm">
+                                                <td colSpan={6} className="px-4 py-2.5 text-[11px] font-extrabold text-white uppercase tracking-widest border-b border-blue-700">
+                                                    <div className="flex items-center gap-2">
+                                                        <MapPin className="w-3.5 h-3.5 text-blue-200 fill-blue-200/20" />
+                                                        {project}
+                                                        <Badge variant="outline" className="ml-2 bg-blue-500/30 text-white border-blue-400/50 text-[9px] py-0 h-4">
+                                                            {groupedData[project].length} KONSUMEN
+                                                        </Badge>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {groupedData[project].map((consumer) => (
+                                                <tr key={consumer.id} className="hover:bg-slate-50/80 transition-colors group">
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold text-slate-900">{consumer.name}</span>
+                                                            <span className="text-[10px] font-mono text-slate-500">{consumer.code}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <div className="flex items-center gap-1.5 text-xs text-slate-700">
+                                                                <Phone className="w-3 h-3 text-slate-400" />
+                                                                {consumer.phone || '-'}
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                                                {consumer.email || '-'}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 min-w-[120px]">
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex justify-between items-center text-[10px] font-medium">
+                                                                <span className={calculateProgress(consumer.consumer_pemberkasan || []) === 100 ? "text-emerald-600" : "text-slate-500"}>
+                                                                    {calculateProgress(consumer.consumer_pemberkasan || [])}% Lengkap
+                                                                </span>
+                                                            </div>
+                                                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                                                <div 
+                                                                    className={`h-full transition-all duration-500 ${
+                                                                        calculateProgress(consumer.consumer_pemberkasan || []) === 100 ? "bg-emerald-500" : 
+                                                                        calculateProgress(consumer.consumer_pemberkasan || []) > 50 ? "bg-blue-500" : "bg-orange-400"
+                                                                    }`}
+                                                                    style={{ width: `${calculateProgress(consumer.consumer_pemberkasan || [])}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {consumer.bank_process ? (
+                                                            <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200 py-0 h-5">
+                                                                {consumer.bank_process}
+                                                            </Badge>
+                                                        ) : (
+                                                            <span className="text-slate-300 text-xs">-</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-xs font-medium text-slate-600">
+                                                        {consumer.sales_person || '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <div className="flex justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+                                                                title="Pemberkasan"
+                                                                onClick={() => setPemberkasanConsumer(consumer)}
+                                                            >
+                                                                <CheckCircle2 className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                                                                title="Bayar Booking"
+                                                                onClick={() => setPosConsumer(consumer)}
+                                                            >
+                                                                <Receipt className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-slate-600 hover:bg-slate-50"
+                                                                title="Cetak Biodata"
+                                                                onClick={() => setBioDataConsumer(consumer)}
+                                                            >
+                                                                <Printer className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => setSelectedConsumer(consumer)}
+                                                                className="h-8 w-8 p-0 hover:bg-slate-100"
+                                                                title="Lihat Detail"
+                                                            >
+                                                                <Users className="w-4 h-4 text-slate-500" />
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => handleEdit(consumer)}
+                                                                className="h-8 w-8 p-0 hover:bg-blue-50"
+                                                                title="Edit Data"
+                                                            >
+                                                                <Pencil className="w-4 h-4 text-blue-600" />
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => handleDelete(consumer.id, consumer.name)}
+                                                                className="h-8 w-8 p-0 hover:bg-red-50"
+                                                                title="Hapus Data"
+                                                            >
+                                                                <Trash className="w-4 h-4 text-red-600" />
+                                                            </Button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </React.Fragment>
+                                    ))
+                                ) : (
+                                    filteredConsumers.map((consumer) => (
+                                        <tr key={consumer.id} className="hover:bg-slate-50/80 transition-colors group">
+                                            <td className="px-4 py-3">
                                                 <div className="flex flex-col">
-                                                    <span>{consumer.family_name}</span>
-                                                    <span className="text-[10px] text-slate-500 capitalize">{consumer.family_relationship}</span>
+                                                    <span className="font-bold text-slate-900">{consumer.name}</span>
+                                                    <span className="text-[10px] font-mono text-slate-500">{consumer.code}</span>
                                                 </div>
-                                            ) : '-'}
-                                        </td>
-                                        <td className="px-4 py-3">{consumer.housing_project || '-'}</td>
-                                        <td className="px-4 py-3">
-                                            {consumer.bank_process ? (
-                                                <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200">
-                                                    {consumer.bank_process}
-                                                </Badge>
-                                            ) : '-'}
-                                        </td>
-                                        <td className="px-4 py-3">{consumer.sales_person || '-'}</td>
-                                        <td className="px-4 py-3 text-right">
-                                            <div className="flex justify-end gap-1">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
-                                                    title="Pemberkasan"
-                                                    onClick={() => setPemberkasanConsumer(consumer)}
-                                                >
-                                                    <CheckCircle2 className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() => setSelectedConsumer(consumer)}
-                                                    className="h-8 w-8 p-0 hover:bg-slate-100"
-                                                    title="Lihat Detail"
-                                                >
-                                                    <Users className="w-4 h-4 text-slate-500" />
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() => handleEdit(consumer)}
-                                                    className="h-8 w-8 p-0 hover:bg-blue-50"
-                                                    title="Edit Data"
-                                                >
-                                                    <Pencil className="w-4 h-4 text-blue-600" />
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() => handleDelete(consumer.id, consumer.name)}
-                                                    className="h-8 w-8 p-0 hover:bg-red-50"
-                                                    title="Hapus Data"
-                                                >
-                                                    <Trash className="w-4 h-4 text-red-600" />
-                                                </Button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <div className="flex items-center gap-1.5 text-xs text-slate-700">
+                                                        <Phone className="w-3 h-3 text-slate-400" />
+                                                        {consumer.phone || '-'}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                                        {consumer.email || '-'}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-[120px]">
+                                                <div className="space-y-1.5">
+                                                    <div className="flex justify-between items-center text-[10px] font-medium">
+                                                        <span className={calculateProgress(consumer.consumer_pemberkasan || []) === 100 ? "text-emerald-600" : "text-slate-500"}>
+                                                            {calculateProgress(consumer.consumer_pemberkasan || [])}% Lengkap
+                                                        </span>
+                                                    </div>
+                                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                                        <div 
+                                                            className={`h-full transition-all duration-500 ${
+                                                                calculateProgress(consumer.consumer_pemberkasan || []) === 100 ? "bg-emerald-500" : 
+                                                                calculateProgress(consumer.consumer_pemberkasan || []) > 50 ? "bg-blue-500" : "bg-orange-400"
+                                                            }`}
+                                                            style={{ width: `${calculateProgress(consumer.consumer_pemberkasan || [])}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {consumer.bank_process ? (
+                                                    <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200 py-0 h-5">
+                                                        {consumer.bank_process}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-slate-300 text-xs">-</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-xs font-medium text-slate-600">
+                                                {consumer.sales_person || '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <div className="flex justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+                                                        title="Pemberkasan"
+                                                        onClick={() => setPemberkasanConsumer(consumer)}
+                                                    >
+                                                        <CheckCircle2 className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                                                        title="Bayar Booking"
+                                                        onClick={() => setPosConsumer(consumer)}
+                                                    >
+                                                        <Receipt className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-slate-600 hover:bg-slate-50"
+                                                        title="Cetak Biodata"
+                                                        onClick={() => setBioDataConsumer(consumer)}
+                                                    >
+                                                        <Printer className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => setSelectedConsumer(consumer)}
+                                                        className="h-8 w-8 p-0 hover:bg-slate-100"
+                                                        title="Lihat Detail"
+                                                    >
+                                                        <Users className="w-4 h-4 text-slate-500" />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => handleEdit(consumer)}
+                                                        className="h-8 w-8 p-0 hover:bg-blue-50"
+                                                        title="Edit Data"
+                                                    >
+                                                        <Pencil className="w-4 h-4 text-blue-600" />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => handleDelete(consumer.id, consumer.name)}
+                                                        className="h-8 w-8 p-0 hover:bg-red-50"
+                                                        title="Hapus Data"
+                                                    >
+                                                        <Trash className="w-4 h-4 text-red-600" />
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>

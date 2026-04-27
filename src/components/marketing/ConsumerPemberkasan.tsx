@@ -17,6 +17,7 @@ import { Check, RotateCcw, ThumbsUp, ThumbsDown, Clock } from 'lucide-react';
 interface ConsumerPemberkasanProps {
     consumerId: string;
     consumerName: string;
+    onUpdate?: () => void;
 }
 
 const CHECKLIST_ITEMS = [
@@ -33,7 +34,7 @@ const CHECKLIST_ITEMS = [
     { key: 'pencairan_akad', label: 'Pencairan Akad' },
 ];
 
-export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPemberkasanProps) {
+export function ConsumerPemberkasan({ consumerId, consumerName, onUpdate }: ConsumerPemberkasanProps) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -130,6 +131,8 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
                 title: "Tersimpan",
                 description: `Status ${CHECKLIST_ITEMS.find(i => i.key === key)?.label} diperbarui`,
             });
+
+            if (onUpdate) onUpdate();
         } catch (error: any) {
             console.error('Error updating pemberkasan:', error);
             toast({
@@ -168,6 +171,8 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
                 title: "SLIK OJK Disetujui",
                 description: "Status persetujuan SLIK OJK berhasil diperbarui oleh Administrator",
             });
+            
+            if (onUpdate) onUpdate();
         } catch (error: any) {
             console.error('Error approving slik:', error);
             toast({
@@ -204,6 +209,8 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
                 title: "SLIK OJK Ditolak",
                 description: "Status SLIK OJK telah ditandai sebagai ditolak",
             });
+            
+            if (onUpdate) onUpdate();
         } catch (error: any) {
             console.error('Error rejecting slik:', error);
             toast({
@@ -236,6 +243,8 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
                 title: "Tanggal Diperbarui",
                 description: `Tanggal untuk ${CHECKLIST_ITEMS.find(i => i.key === key)?.label} berhasil diubah`,
             });
+            
+            if (onUpdate) onUpdate();
         } catch (error: any) {
             console.error('Error updating date:', error);
             toast({
@@ -315,6 +324,8 @@ export function ConsumerPemberkasan({ consumerId, consumerName }: ConsumerPember
                 title: "File Terunggah",
                 description: `Dokumen untuk ${CHECKLIST_ITEMS.find(i => i.key === activeKey)?.label} berhasil disimpan`,
             });
+            
+            if (onUpdate) onUpdate();
         } catch (error: any) {
             console.error('Error uploading file:', error);
             // Show more detailed error message

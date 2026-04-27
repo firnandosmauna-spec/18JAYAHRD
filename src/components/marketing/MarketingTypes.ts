@@ -99,6 +99,7 @@ export interface ConsumerProfile {
     bank_process?: string; // Proses Bank
     document_urls?: string[]; // Lampiran Dokumen
     unreal_data?: any; // Data Perbandingan (Unreal)
+    consumer_pemberkasan?: ConsumerPemberkasan[];
 }
 
 export interface ConsumerFollowUp {
@@ -154,4 +155,18 @@ export interface ConsumerPemberkasan {
     slik_ojk_approved_at?: string;
     updated_at: string;
     updated_by?: string;
+}
+
+export interface ConsumerTransaction {
+    id: string;
+    consumer_id: string;
+    amount: number;
+    transaction_type: 'booking_fee' | 'dp' | 'installment' | 'other';
+    payment_method: 'cash' | 'transfer' | 'edc';
+    payment_date: string;
+    receipt_number?: string;
+    notes?: string;
+    attachment_url?: string;
+    created_by?: string;
+    created_at: string;
 }
