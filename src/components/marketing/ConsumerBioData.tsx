@@ -103,6 +103,7 @@ export default function ConsumerBioData({ consumer, isOpen, onClose }: ConsumerB
 
                             <SectionTitle title="Rencana Pembelian" />
                             <Field label="Proyek Perumahan" value={consumer.housing_project} />
+                            <Field label="Blok dan NO" value={consumer.housing_block_no} />
                             <Field label="Sumber Info" value={consumer.source} />
                             <Field label="Sales Marketing" value={consumer.sales_person} />
                             <Field label="Proses Bank" value={consumer.bank_process} />

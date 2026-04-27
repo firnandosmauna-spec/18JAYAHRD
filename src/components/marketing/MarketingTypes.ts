@@ -64,6 +64,7 @@ export interface ConsumerProfile {
     sales_person?: string;
     sales_person_id?: string; // Link to auth.users
     housing_project?: string; // New field
+    housing_block_no?: string; // Blok dan No yang dipilih
     booking_fee_status?: 'paid' | 'unpaid'; // Added field
     created_at: string;
 

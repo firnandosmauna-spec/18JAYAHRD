@@ -41,6 +41,7 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
         sales_person: '',
         sales_person_id: null,
         housing_project: '',
+        housing_block_no: '',
         npwp: '',
         company_id_number: '',
         booking_remarks: '',
@@ -237,6 +238,7 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
             safeAdd('sales_person', formData.sales_person);
             safeAdd('sales_person_id', formData.sales_person_id);
             safeAdd('housing_project', formData.housing_project);
+            safeAdd('housing_block_no', formData.housing_block_no);
             safeAdd('npwp', formData.npwp);
             safeAdd('company_id_number', formData.company_id_number);
             safeAdd('booking_remarks', formData.booking_remarks);
@@ -512,6 +514,17 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
+                                    <Label htmlFor={`${idPrefix}block_no`}>Blok dan NO yang dipilih</Label>
+                                    <Input 
+                                        id={`${idPrefix}block_no`} 
+                                        name="housing_block_no" 
+                                        value={formData.housing_block_no || ''} 
+                                        onChange={handleInputChange} 
+                                        placeholder="Cth: Blok A No. 12" 
+                                        readOnly={readOnly} 
+                                    />
+                                </div>
+                                <div className="space-y-2 md:col-span-2">
                                     <Label htmlFor={`${idPrefix}sales`}>Nama Sales / Marketing</Label>
                                     <Select
                                         value={formData.sales_person_id || ''}

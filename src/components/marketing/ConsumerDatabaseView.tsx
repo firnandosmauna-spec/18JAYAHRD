@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Filter, Phone, Mail, User, MapPin, Plus, Loader2, Briefcase, Heart, Users, LayoutGrid, List, Pencil, Trash, CheckCircle2, Upload, X, FileText, Eye as EyeIcon, Download, Receipt, Printer } from 'lucide-react';
+import { Search, Filter, Phone, Mail, User, MapPin, Plus, Loader2, Briefcase, Heart, Users, LayoutGrid, List, Pencil, Trash, CheckCircle2, Upload, X, FileText, Eye as EyeIcon, Download, Receipt, Printer, Home } from 'lucide-react';
 import { ConsumerPemberkasan } from './ConsumerPemberkasan';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -307,6 +307,10 @@ export default function ConsumerDatabaseView() {
                                             <p className="font-medium text-blue-600">{selectedConsumer.housing_project || '-'}</p>
                                         </div>
                                         <div>
+                                            <Label className="text-slate-500 text-xs">Blok dan NO yang dipilih</Label>
+                                            <p className="font-medium text-blue-700">{selectedConsumer.housing_block_no || '-'}</p>
+                                        </div>
+                                        <div>
                                             <Label className="text-slate-500 text-xs">Sumber Konsumen</Label>
                                             <p className="font-medium">{selectedConsumer.source || '-'}</p>
                                         </div>
@@ -580,6 +584,12 @@ export default function ConsumerDatabaseView() {
                                                     </Badge>
                                                 </div>
                                             )}
+                                            {consumer.housing_block_no && (
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <Home className="w-3.5 h-3.5 text-blue-500" />
+                                                    <span className="text-[10px] font-bold text-blue-700 uppercase">{consumer.housing_block_no}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -674,7 +684,14 @@ export default function ConsumerDatabaseView() {
                                                     <td className="px-4 py-3">
                                                         <div className="flex flex-col">
                                                             <span className="font-bold text-slate-900">{consumer.name}</span>
-                                                            <span className="text-[10px] font-mono text-slate-500">{consumer.code}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[10px] font-mono text-slate-500">{consumer.code}</span>
+                                                                {consumer.housing_block_no && (
+                                                                    <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-100">
+                                                                        {consumer.housing_block_no}
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -786,7 +803,14 @@ export default function ConsumerDatabaseView() {
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-col">
                                                     <span className="font-bold text-slate-900">{consumer.name}</span>
-                                                    <span className="text-[10px] font-mono text-slate-500">{consumer.code}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] font-mono text-slate-500">{consumer.code}</span>
+                                                        {consumer.housing_block_no && (
+                                                            <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-100">
+                                                                {consumer.housing_block_no}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3">

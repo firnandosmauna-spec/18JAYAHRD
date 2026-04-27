@@ -57,6 +57,8 @@ export default function PemberkasanView() {
                     <ConsumerPemberkasan
                         consumerId={selectedConsumer.id}
                         consumerName={selectedConsumer.name}
+                        housingProject={selectedConsumer.housing_project}
+                        housingBlockNo={selectedConsumer.housing_block_no}
                     />
                 </div>
             </div>
@@ -88,6 +90,7 @@ export default function PemberkasanView() {
                             <TableHead>Kode</TableHead>
                             <TableHead>Nama Konsumen</TableHead>
                             <TableHead>Proyek</TableHead>
+                            <TableHead>Blok/No</TableHead>
                             <TableHead>Sales / Marketing</TableHead>
                             <TableHead>Proses Bank</TableHead>
                             <TableHead className="text-right">Aksi</TableHead>
@@ -96,7 +99,7 @@ export default function PemberkasanView() {
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-32 text-center">
+                                <TableCell colSpan={7} className="h-32 text-center">
                                     <div className="flex justify-center items-center gap-2 text-slate-500">
                                         <Loader2 className="h-5 w-5 animate-spin" /> Memuat data...
                                     </div>
@@ -104,7 +107,7 @@ export default function PemberkasanView() {
                             </TableRow>
                         ) : filteredConsumers.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-32 text-center text-slate-500">
+                                <TableCell colSpan={7} className="h-32 text-center text-slate-500">
                                     Data konsumen tidak ditemukan.
                                 </TableCell>
                             </TableRow>
@@ -117,6 +120,9 @@ export default function PemberkasanView() {
                                         <Badge variant="outline" className="text-blue-600 bg-blue-50 border-blue-100 font-normal">
                                             {consumer.housing_project || '-'}
                                         </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-sm font-bold text-slate-700">
+                                        {consumer.housing_block_no || '-'}
                                     </TableCell>
                                     <TableCell className="text-slate-600 text-sm">{consumer.sales_person || '-'}</TableCell>
                                     <TableCell>

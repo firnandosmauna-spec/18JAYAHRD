@@ -17,6 +17,8 @@ import { Check, RotateCcw, ThumbsUp, ThumbsDown, Clock } from 'lucide-react';
 interface ConsumerPemberkasanProps {
     consumerId: string;
     consumerName: string;
+    housingProject?: string;
+    housingBlockNo?: string;
     onUpdate?: () => void;
 }
 
@@ -34,7 +36,7 @@ const CHECKLIST_ITEMS = [
     { key: 'pencairan_akad', label: 'Pencairan Akad' },
 ];
 
-export function ConsumerPemberkasan({ consumerId, consumerName, onUpdate }: ConsumerPemberkasanProps) {
+export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, housingBlockNo, onUpdate }: ConsumerPemberkasanProps) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -411,7 +413,17 @@ export function ConsumerPemberkasan({ consumerId, consumerName, onUpdate }: Cons
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div>
                     <h3 className="text-xl font-bold text-slate-900">{consumerName}</h3>
-                    <p className="text-sm text-slate-500 mt-1">Status Pengerjaan Pemberkasan</p>
+                    <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-100 py-0 h-5">
+                            {housingProject || 'Tanpa Proyek'}
+                        </Badge>
+                        {housingBlockNo && (
+                            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-100 py-0 h-5">
+                                {housingBlockNo}
+                            </Badge>
+                        )}
+                        <span className="text-xs text-slate-400 ml-1">Status Pengerjaan Pemberkasan</span>
+                    </div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="text-right">
