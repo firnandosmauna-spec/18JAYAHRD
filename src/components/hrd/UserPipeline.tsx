@@ -94,6 +94,7 @@ export function UserPipeline({ initialTab = 'deals' }: UserPipelineProps) {
         status: 'Follow Up'
     });
     const [projectList, setProjectList] = useState<string[]>([]);
+    const [groupBy, setGroupBy] = useState<'project' | 'none'>('project');
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('id-ID', {
@@ -311,6 +312,58 @@ export function UserPipeline({ initialTab = 'deals' }: UserPipelineProps) {
         });
         setIsAddOpen(true);
     };
+
+    const renderConsumerRow = (consumer: ConsumerProfile) => (
+        <TableRow key={consumer.id}>
+            <TableCell className="font-medium">
+                <div>{consumer.name}</div>
+                <div className="text-[10px] text-slate-500">{consumer.code}</div>
+            </TableCell>
+            <TableCell>
+                <div className="flex items-center gap-1 text-sm">
+                    <Phone className="h-3 w-3 text-slate-400" />
+                    {consumer.phone}
+                </div>
+            </TableCell>
+            <TableCell>
+                <Badge variant="outline" className="text-blue-600 bg-blue-50">
+                    {consumer.housing_project || '-'}
+                </Badge>
+            </TableCell>
+            <TableCell className="text-sm">{consumer.occupation || '-'}</TableCell>
+            <TableCell>
+                {consumer.bank_process ? (
+                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                        {consumer.bank_process}
+                    </Badge>
+                ) : (
+                    <span className="text-slate-400 text-xs">-</span>
+                )}
+            </TableCell>
+            <TableCell>
+                <Badge variant={consumer.booking_fee_status === 'paid' ? 'default' : 'secondary'}>
+                    {consumer.booking_fee_status === 'paid' ? 'Paid' : 'Unpaid'}
+                </Badge>
+            </TableCell>
+            <TableCell className="text-xs text-slate-500 max-w-[200px] truncate">
+                {consumer.booking_remarks || '-'}
+            </TableCell>
+            <TableCell>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-blue-600 hover:bg-blue-50 h-8"
+                    onClick={() => {
+                        setSelectedConsumer(consumer);
+                        setIsFollowUpOpen(true);
+                    }}
+                >
+                    <MessageSquare className="h-4 w-4 mr-1" />
+                    Follow Up
+                </Button>
+            </TableCell>
+        </TableRow>
+    );
 
     const filteredPipelines = pipelines.filter(p =>
         p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -600,6 +653,18 @@ export function UserPipeline({ initialTab = 'deals' }: UserPipelineProps) {
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Grup:</span>
+                            <Select value={groupBy} onValueChange={(val: any) => setGroupBy(val)}>
+                                <SelectTrigger className="w-[140px] bg-white h-9">
+                                    <SelectValue placeholder="Grup" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="project">Per Proyek</SelectItem>
+                                    <SelectItem value="none">Tanpa Grup</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
 
                     <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -617,69 +682,44 @@ export function UserPipeline({ initialTab = 'deals' }: UserPipelineProps) {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {consumers.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={8} className="h-24 text-center text-slate-500">
-                                            Belum ada data konsumen yang ditugaskan ke Anda.
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    consumers.filter(c =>
+                                {(() => {
+                                    const filtered = consumers.filter(c =>
                                         c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                        c.phone.includes(searchQuery) ||
+                                        (c.phone && c.phone.includes(searchQuery)) ||
                                         (c.code && c.code.toLowerCase().includes(searchQuery.toLowerCase()))
-                                    ).map((consumer) => (
-                                        <TableRow key={consumer.id}>
-                                            <TableCell className="font-medium">
-                                                <div>{consumer.name}</div>
-                                                <div className="text-[10px] text-slate-500">{consumer.code}</div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-1 text-sm">
-                                                    <Phone className="h-3 w-3 text-slate-400" />
-                                                    {consumer.phone}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant="outline" className="text-blue-600 bg-blue-50">
-                                                    {consumer.housing_project || '-'}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-sm">{consumer.occupation || '-'}</TableCell>
-                                            <TableCell>
-                                                {consumer.bank_process ? (
-                                                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                                                        {consumer.bank_process}
-                                                    </Badge>
-                                                ) : (
-                                                    <span className="text-slate-400 text-xs">-</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant={consumer.booking_fee_status === 'paid' ? 'default' : 'secondary'}>
-                                                    {consumer.booking_fee_status === 'paid' ? 'Paid' : 'Unpaid'}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-xs text-slate-500 max-w-[200px] truncate">
-                                                {consumer.booking_remarks || '-'}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-blue-600 hover:bg-blue-50 h-8"
-                                                    onClick={() => {
-                                                        setSelectedConsumer(consumer);
-                                                        setIsFollowUpOpen(true);
-                                                    }}
-                                                >
-                                                    <MessageSquare className="h-4 w-4 mr-1" />
-                                                    Follow Up
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
+                                    );
+
+                                    if (groupBy === 'none') {
+                                        return filtered.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={8} className="h-24 text-center text-slate-500">
+                                                    Tidak ada data ditemukan.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : filtered.map(consumer => renderConsumerRow(consumer));
+                                    }
+
+                                    const groups = filtered.reduce((acc, c) => {
+                                        const key = c.housing_project || 'Tanpa Proyek';
+                                        if (!acc[key]) acc[key] = [];
+                                        acc[key].push(c);
+                                        return acc;
+                                    }, {} as Record<string, typeof consumers>);
+
+                                    return Object.keys(groups).sort().map(group => (
+                                        <React.Fragment key={group}>
+                                            <tr className="bg-slate-50/80">
+                                                <td colSpan={8} className="px-4 py-2 text-[10px] font-bold text-slate-600 uppercase tracking-wider border-y border-slate-200">
+                                                    <div className="flex items-center gap-2">
+                                                        <MapPin className="w-3 h-3 text-slate-400" />
+                                                        {group} ({groups[group].length})
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {groups[group].map(consumer => renderConsumerRow(consumer))}
+                                        </React.Fragment>
+                                    ));
+                                })()}
                             </TableBody>
                         </Table>
                     </div>

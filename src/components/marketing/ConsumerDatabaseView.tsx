@@ -104,6 +104,9 @@ export default function ConsumerDatabaseView() {
 
     const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
     const [selectedProject, setSelectedProject] = useState<string>('all');
+    const [groupBy, setGroupBy] = useState<'project' | 'marketing'>('project');
+    const [sortBy, setSortBy] = useState<'name' | 'marketing'>('name');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
     const { locations: projectLocations } = useProjectLocations();
 
     const calculateProgress = (pemberkasan: any) => {
@@ -139,18 +142,33 @@ export default function ConsumerDatabaseView() {
         const matchesProject = selectedProject === 'all' || c.housing_project === selectedProject;
 
         return matchesSearch && matchesProject;
+    }).sort((a, b) => {
+        if (sortBy === 'name') {
+            return sortOrder === 'asc' 
+                ? a.name.localeCompare(b.name)
+                : b.name.localeCompare(a.name);
+        } else {
+            const m1 = a.sales_person || '';
+            const m2 = b.sales_person || '';
+            return sortOrder === 'asc'
+                ? m1.localeCompare(m2)
+                : m2.localeCompare(m1);
+        }
     });
 
     const groupedData = filteredConsumers.reduce((acc, consumer) => {
-        const project = consumer.housing_project || 'Tanpa Proyek';
-        if (!acc[project]) acc[project] = [];
-        acc[project].push(consumer);
+        const groupKey = groupBy === 'project' 
+            ? (consumer.housing_project || 'Tanpa Proyek')
+            : (consumer.sales_person || 'Tanpa Marketing');
+        
+        if (!acc[groupKey]) acc[groupKey] = [];
+        acc[groupKey].push(consumer);
         return acc;
     }, {} as Record<string, typeof consumers>);
 
-    const sortedProjects = Object.keys(groupedData).sort((a, b) => {
-        if (a === 'Tanpa Proyek') return 1;
-        if (b === 'Tanpa Proyek') return -1;
+    const sortedGroups = Object.keys(groupedData).sort((a, b) => {
+        if (a === 'Tanpa Proyek' || a === 'Tanpa Marketing') return 1;
+        if (b === 'Tanpa Proyek' || b === 'Tanpa Marketing') return -1;
         return a.localeCompare(b);
     });
 
@@ -199,15 +217,25 @@ export default function ConsumerDatabaseView() {
                         </SelectContent>
                     </Select>
 
-                    <div className="relative flex-1 md:w-[300px]">
+                    <div className="relative flex-1 md:w-[250px]">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <Input
-                            placeholder="Cari nama, kode, atau email..."
+                            placeholder="Cari nama, kode..."
                             className="pl-9"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
+
+                    <Select value={groupBy} onValueChange={(val: any) => setGroupBy(val)}>
+                        <SelectTrigger className="w-[160px] mr-2">
+                            <SelectValue placeholder="Grup Berdasarkan" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="project">Grup Proyek</SelectItem>
+                            <SelectItem value="marketing">Grup Marketing</SelectItem>
+                        </SelectContent>
+                    </Select>
 
                     <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
                         setIsAddDialogOpen(open);
@@ -656,30 +684,38 @@ export default function ConsumerDatabaseView() {
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-600 border-b">
                                 <tr>
-                                    <th className="px-4 py-3 font-semibold">Profil Konsumen</th>
+                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:text-blue-600 transition-colors" onClick={() => { setSortBy('name'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>
+                                        Profil Konsumen {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
                                     <th className="px-4 py-3 font-semibold">Kontak & Proyek</th>
                                     <th className="px-4 py-3 font-semibold">Progress</th>
                                     <th className="px-4 py-3 font-semibold">Proses Bank</th>
-                                    <th className="px-4 py-3 font-semibold">Sales</th>
+                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:text-blue-600 transition-colors" onClick={() => { setSortBy('marketing'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>
+                                        Sales {sortBy === 'marketing' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
                                     <th className="px-4 py-3 font-semibold text-right">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {selectedProject === 'all' ? (
-                                    sortedProjects.map(project => (
-                                        <React.Fragment key={project}>
-                                            <tr className="bg-blue-600 shadow-sm">
-                                                <td colSpan={6} className="px-4 py-2.5 text-[11px] font-extrabold text-white uppercase tracking-widest border-b border-blue-700">
+                                    sortedGroups.map(group => (
+                                        <React.Fragment key={group}>
+                                            <tr className={groupBy === 'project' ? "bg-blue-600 shadow-sm" : "bg-emerald-600 shadow-sm"}>
+                                                <td colSpan={6} className={`px-4 py-2.5 text-[11px] font-extrabold text-white uppercase tracking-widest border-b ${groupBy === 'project' ? 'border-blue-700' : 'border-emerald-700'}`}>
                                                     <div className="flex items-center gap-2">
-                                                        <MapPin className="w-3.5 h-3.5 text-blue-200 fill-blue-200/20" />
-                                                        {project}
-                                                        <Badge variant="outline" className="ml-2 bg-blue-500/30 text-white border-blue-400/50 text-[9px] py-0 h-4">
-                                                            {groupedData[project].length} KONSUMEN
+                                                        {groupBy === 'project' ? (
+                                                            <MapPin className="w-3.5 h-3.5 text-blue-200 fill-blue-200/20" />
+                                                        ) : (
+                                                            <Briefcase className="w-3.5 h-3.5 text-emerald-200 fill-emerald-200/20" />
+                                                        )}
+                                                        {group}
+                                                        <Badge variant="outline" className={`ml-2 text-white text-[9px] py-0 h-4 ${groupBy === 'project' ? 'bg-blue-500/30 border-blue-400/50' : 'bg-emerald-500/30 border-emerald-400/50'}`}>
+                                                            {groupedData[group].length} KONSUMEN
                                                         </Badge>
                                                     </div>
                                                 </td>
                                             </tr>
-                                            {groupedData[project].map((consumer) => (
+                                            {groupedData[group].map((consumer) => (
                                                 <tr key={consumer.id} className="hover:bg-slate-50/80 transition-colors group">
                                                     <td className="px-4 py-3">
                                                         <div className="flex flex-col">
