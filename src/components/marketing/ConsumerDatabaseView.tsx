@@ -28,7 +28,7 @@ export default function ConsumerDatabaseView() {
     const { toast } = useToast();
     const [editingId, setEditingId] = useState<string | null>(null);
     const { user } = useAuth();
-    const isAdmin = user?.role === 'Administrator' || user?.role === 'administrator';
+    const isAdmin = user?.role === 'Administrator';
 
     const fetchConsumers = async () => {
         setLoading(true);

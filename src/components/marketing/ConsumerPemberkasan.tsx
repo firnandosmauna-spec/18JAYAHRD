@@ -49,7 +49,7 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
     const [formMode, setFormMode] = useState<'edit' | 'preview'>('edit');
     const { user } = useAuth();
     const { addNotification } = useNotificationsContext();
-    const isAdmin = user?.role?.toLowerCase() === 'administrator' || user?.role === 'Administrator';
+    const isAdmin = user?.role === 'Administrator';
 
     const fetchPemberkasan = async () => {
         try {
