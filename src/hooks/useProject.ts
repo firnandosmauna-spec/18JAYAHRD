@@ -276,6 +276,18 @@ export function useProjectWorkerPayments(projectId?: string) {
         }
     }
 
+    const updatePayment = async (id: string, updates: any) => {
+        try {
+            const updatedPayment = await projectService.updateWorkerPayment(id, updates)
+            setPayments(prev => prev.map(p => p.id === id ? updatedPayment : p))
+            return updatedPayment
+        } catch (err) {
+            const errorMsg = handleSupabaseError(err)
+            setError(errorMsg)
+            throw new Error(errorMsg)
+        }
+    }
+
     const deletePayment = async (id: string) => {
         try {
             await projectService.deleteWorkerPayment(id)
@@ -297,6 +309,7 @@ export function useProjectWorkerPayments(projectId?: string) {
         error,
         refetch: fetchPayments,
         addPayment,
+        updatePayment,
         deletePayment
     }
 }
@@ -513,6 +526,16 @@ export function useProjectWorkerActivities(projectId?: string) {
         }
     }
 
+    const updateActivity = async (id: string, updates: any) => {
+        try {
+            const updatedActivity = await projectService.updateWorkerActivity(id, updates)
+            fetchActivities()
+            return updatedActivity
+        } catch (err) {
+            throw new Error(handleSupabaseError(err))
+        }
+    }
+
     const deleteActivity = async (id: string) => {
         try {
             await projectService.deleteWorkerActivity(id)
@@ -526,7 +549,7 @@ export function useProjectWorkerActivities(projectId?: string) {
         fetchActivities()
     }, [projectId])
 
-    return { activities, loading, error, refetch: fetchActivities, addActivity, deleteActivity }
+    return { activities, loading, error, refetch: fetchActivities, addActivity, updateActivity, deleteActivity }
 }
 
 // Project Progress Logs Hook

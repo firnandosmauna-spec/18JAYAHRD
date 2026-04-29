@@ -20,7 +20,9 @@ import {
     Users,
     MapPin,
     Loader2,
-    Printer
+    Printer,
+    Pencil,
+    X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -96,7 +98,8 @@ export function WorkerPayrollManagement() {
         labor_rate_id: 'none',
         quantity: '1',
         unit: '',
-        loan_deduction: '0'
+        loan_deduction: '0',
+        late_deduction: '0'
     });
 
     // Initial project selection from query param
@@ -145,6 +148,8 @@ export function WorkerPayrollManagement() {
     }, [selectedLocation, projects, initialProjectId]);
 
     const [formData, setFormData] = useState(getDefaultFormData());
+    const [isEditing, setIsEditing] = useState(false);
+    const [editId, setEditId] = useState<string | null>(null);
     const [showChecklistPreview, setShowChecklistPreview] = useState(false);
 
     const tukangEmployees = employees.filter(emp => 
@@ -156,9 +161,9 @@ export function WorkerPayrollManagement() {
 
     // Worker Hooks (conditional on project selection)
     const { workers, loading: workersLoading } = useProjectWorkers(selectedProjectId);
-    const { payments, loading: paymentsLoading, addPayment, deletePayment, refetch: refetchPayments } = useProjectWorkerPayments(selectedProjectId);
+    const { payments, loading: paymentsLoading, addPayment, updatePayment, deletePayment, refetch: refetchPayments } = useProjectWorkerPayments(selectedProjectId);
     const { rates } = useProjectLaborRates();
-    const { addActivity, refetch: refetchActivities } = useProjectWorkerActivities(selectedProjectId);
+    const { addActivity, updateActivity, refetch: refetchActivities } = useProjectWorkerActivities(selectedProjectId);
 
     // Load worker details when selected
     useEffect(() => {
@@ -200,11 +205,13 @@ export function WorkerPayrollManagement() {
     const calculateTotal = () => {
         const rate = parseFloat(formData.daily_rate) || 0;
         const loanDeduction = parseFloat(formData.loan_deduction) || 0;
+        const lateDeduction = parseFloat(formData.late_deduction) || 0;
+        
         const baseTotal = formData.payment_type === 'Borongan'
             ? (parseFloat(formData.quantity) || 0) * rate
             : (parseFloat(formData.working_days) || 0) * rate;
 
-        return Math.max(0, baseTotal - loanDeduction);
+        return Math.max(0, baseTotal - (loanDeduction + lateDeduction));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -277,8 +284,8 @@ export function WorkerPayrollManagement() {
                 ? `${boronganDetail} | ${formData.activity_detail.trim()}`
                 : boronganDetail;
 
-            // 1. Add Payment
-            await addPayment({
+            // 1. Add or Update Payment
+            const paymentPayload = {
                 project_id: selectedProjectId,
                 worker_id: workerIdToUse,
                 amount: totalAmount,
@@ -286,30 +293,58 @@ export function WorkerPayrollManagement() {
                 working_days: isBorongan ? parseFloat(formData.quantity) : parseFloat(formData.working_days),
                 daily_rate: parseFloat(formData.daily_rate),
                 loan_deduction: parseFloat(formData.loan_deduction),
+                late_deduction: parseFloat(formData.late_deduction),
                 activity_detail: finalActivityDetail,
                 progress_percentage: parseFloat(formData.progress_percentage),
                 worker_count: parseInt(formData.worker_count),
                 payment_type: formData.payment_type,
                 notes: isBorongan ? formData.activity_detail.trim() || null : null
-            });
+            };
 
-            if (isBorongan) {
-                await addActivity({
-                    project_id: selectedProjectId,
-                    worker_id: workerIdToUse,
-                    activity_id: formData.labor_rate_id,
-                    quantity: parseFloat(formData.quantity),
-                    unit: resolvedUnit || null,
-                    rate: parseFloat(formData.daily_rate) || 0,
-                    activity_date: formData.payment_date,
-                    notes: formData.activity_detail.trim() || null
-                });
+            if (isEditing && editId) {
+                await updatePayment(editId, paymentPayload);
+                
+                // If borongan, try to update activity too (matching by date and worker)
+                if (isBorongan) {
+                    const activities = await projectService.getWorkerActivities(selectedProjectId);
+                    const matchedActivity = activities.find((a: any) => 
+                        a.worker_id === workerIdToUse && 
+                        a.activity_date === formData.payment_date &&
+                        a.activity_id === formData.labor_rate_id
+                    );
+                    
+                    if (matchedActivity) {
+                        await updateActivity(matchedActivity.id, {
+                            quantity: parseFloat(formData.quantity),
+                            unit: resolvedUnit || null,
+                            rate: parseFloat(formData.daily_rate) || 0,
+                            notes: formData.activity_detail.trim() || null
+                        });
+                    }
+                }
+            } else {
+                await addPayment(paymentPayload);
+
+                if (isBorongan) {
+                    await addActivity({
+                        project_id: selectedProjectId,
+                        worker_id: workerIdToUse,
+                        activity_id: formData.labor_rate_id,
+                        quantity: parseFloat(formData.quantity),
+                        unit: resolvedUnit || null,
+                        rate: parseFloat(formData.daily_rate) || 0,
+                        activity_date: formData.payment_date,
+                        notes: formData.activity_detail.trim() || null
+                    });
+                }
             }
 
             // 2. Update Project Progress and Spent Amount
             const project = projects.find(p => p.id === selectedProjectId);
             if (project) {
-                const newSpent = (project.spent || 0) + totalAmount;
+                // If editing, we should ideally subtract old amount first, but for simplicity we add if new
+                // This is a rough update logic
+                const newSpent = isEditing ? (project.spent || 0) : (project.spent || 0) + totalAmount;
                 const newProgress = Math.max(project.progress || 0, parseFloat(formData.progress_percentage));
                 
                 await projectService.update(selectedProjectId, { 
@@ -320,23 +355,81 @@ export function WorkerPayrollManagement() {
 
             toast({
                 title: "Berhasil",
-                description: "Data penggajian tukang berhasil disimpan dan progress proyek diperbarui"
+                description: isEditing ? "Data penggajian berhasil diperbarui" : "Data penggajian tukang berhasil disimpan dan progress proyek diperbarui"
             });
             
             setShowAddForm(false);
+            setIsEditing(false);
+            setEditId(null);
             setFormData(getDefaultFormData());
             refetchPayments();
             refetchActivities();
-        } catch (error) {
-            console.error(error);
+        } catch (error: any) {
+            console.error("Submit error:", error);
             toast({
                 title: "Gagal",
-                description: "Terjadi kesalahan saat menyimpan data",
+                description: `Terjadi kesalahan saat menyimpan data: ${error.message || 'Unknown error'}`,
                 variant: "destructive"
             });
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    const handleEdit = (p: any) => {
+        console.log("Editing payment:", p);
+        const worker = workers.find(w => w.id === p.worker_id);
+        
+        // Even if worker is not found in the local project workers list, we should try to allow editing
+        // although worker_id is crucial for the payload.
+        if (!worker && !p.worker_id) {
+            toast({ title: "Error", description: "Data pekerja tidak ditemukan", variant: "destructive" });
+            return;
+        }
+
+        // Try to reverse-engineer labor_rate_id if borongan by matching rate
+        let laborRateId = 'none';
+        if (p.payment_type === 'Borongan') {
+            const matchedRate = rates.find(r => 
+                parseFloat(r.default_rate?.toString() || '0') === parseFloat(p.daily_rate?.toString() || '0')
+            );
+            if (matchedRate) laborRateId = matchedRate.id;
+        }
+
+        setFormData({
+            payment_type: p.payment_type || 'Harian',
+            employee_id: worker?.employee_id || '',
+            working_days: p.payment_type === 'Harian' ? (p.working_days || 1).toString() : '1',
+            daily_rate: (p.daily_rate || 0).toString(),
+            activity_detail: p.activity_detail || '',
+            progress_percentage: (p.progress_percentage || 0).toString(),
+            worker_count: (p.worker_count || 1).toString(),
+            payment_date: p.payment_date,
+            labor_rate_id: laborRateId,
+            quantity: p.payment_type === 'Borongan' ? (p.working_days || 1).toString() : '1',
+            unit: '', 
+            loan_deduction: (p.loan_deduction || 0).toString(),
+            late_deduction: (p.late_deduction || 0).toString()
+        });
+
+        setEditId(p.id);
+        setIsEditing(true);
+        setShowAddForm(true);
+        
+        // Scroll to form
+        const formElement = document.getElementById('payroll-form');
+        if (formElement) {
+            formElement.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
+
+    const handleCancelEdit = () => {
+        setIsEditing(false);
+        setEditId(null);
+        setFormData(getDefaultFormData());
+        setShowAddForm(false);
     };
 
     const handlePrint = (p: any) => {
@@ -358,11 +451,18 @@ export function WorkerPayrollManagement() {
     const handleDelete = async (id: string) => {
         if (!confirm('Yakin ingin menghapus data ini?')) return;
         try {
+            console.log("Deleting payment:", id);
             await deletePayment(id);
             toast({ title: "Berhasil", description: "Data berhasil dihapus" });
+            // Local state update should handle it, but refetching ensures sync
             refetchPayments();
-        } catch (err) {
-            toast({ title: "Gagal", description: "Gagal menghapus data", variant: "destructive" });
+        } catch (err: any) {
+            console.error("Delete error:", err);
+            toast({ 
+                title: "Gagal", 
+                description: `Gagal menghapus data: ${err.message || 'Unknown error'}`, 
+                variant: "destructive" 
+            });
         }
     };
 
@@ -508,14 +608,16 @@ export function WorkerPayrollManagement() {
             )}
 
             {showAddForm && (
-                    <div>
+                    <div id="payroll-form" className="scroll-mt-6">
                         <Card className="border-hrd/20 shadow-lg">
                             <CardHeader className="bg-hrd/5 pb-4">
                                 <CardTitle className="text-lg flex items-center gap-2">
                                     <Hammer className="w-5 h-5 text-hrd" />
-                                    Form Penggajian & Kegiatan Tukang
+                                    {isEditing ? 'Update Laporan & Gaji Tukang' : 'Form Penggajian & Kegiatan Tukang'}
                                 </CardTitle>
-                                <CardDescription>Input gaji tukang harian maupun borongan beserta progres pekerjaan</CardDescription>
+                                <CardDescription>
+                                    {isEditing ? 'Perbarui data penggajian atau rincian kegiatan yang sudah ada' : 'Input gaji tukang harian maupun borongan beserta progres pekerjaan'}
+                                </CardDescription>
                             </CardHeader>
                             <CardContent className="pt-6">
                                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -640,6 +742,16 @@ export function WorkerPayrollManagement() {
                                             />
                                         </div>
                                         <div className="space-y-2">
+                                            <Label className="text-xs uppercase text-muted-foreground font-bold text-red-500">Potongan Telat (Rp)</Label>
+                                            <Input 
+                                                type="number" 
+                                                value={formData.late_deduction}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, late_deduction: e.target.value }))}
+                                                placeholder="0"
+                                                className="border-red-200 focus:border-red-500"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
                                             <Label className="text-xs uppercase text-hrd font-bold font-bold">Total Gaji</Label>
                                             <div className="h-10 flex items-center px-3 bg-hrd/10 border border-hrd/20 rounded-md font-bold text-hrd">
                                                 {formatCurrency(calculateTotal())}
@@ -675,14 +787,27 @@ export function WorkerPayrollManagement() {
                                                     />
                                                 </div>
                                             </div>
-                                            <Button 
-                                                type="submit" 
-                                                className="w-full mt-auto bg-hrd hover:bg-hrd/90"
-                                                disabled={isSubmitting}
-                                            >
-                                                {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                                                Simpan Laporan & Gaji
-                                            </Button>
+                                            <div className="flex gap-2 mt-auto">
+                                                {isEditing && (
+                                                    <Button 
+                                                        type="button" 
+                                                        variant="outline"
+                                                        onClick={handleCancelEdit}
+                                                        className="flex-1"
+                                                    >
+                                                        <X className="w-4 h-4 mr-2" />
+                                                        Batal
+                                                    </Button>
+                                                )}
+                                                <Button 
+                                                    type="submit" 
+                                                    className={`flex-[2] ${isEditing ? 'bg-blue-600 hover:bg-blue-700' : 'bg-hrd hover:bg-hrd/90'}`}
+                                                    disabled={isSubmitting}
+                                                >
+                                                    {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                                                    {isEditing ? 'Update Data' : 'Simpan Laporan & Gaji'}
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
                                 </form>
@@ -719,7 +844,8 @@ export function WorkerPayrollManagement() {
                                         <TableHead>Kegiatan</TableHead>
                                         <TableHead className="text-right">Volume / Hari</TableHead>
                                         <TableHead className="text-right">Tarif</TableHead>
-                                        <TableHead className="text-right text-red-500">Potongan</TableHead>
+                                        <TableHead className="text-right text-red-500">Pot. Pinjaman</TableHead>
+                                        <TableHead className="text-right text-red-500">Pot. Telat</TableHead>
                                         <TableHead className="text-right">Total Gaji</TableHead>
                                         <TableHead className="text-center">Progress</TableHead>
                                         <TableHead className="text-right">Aksi</TableHead>
@@ -769,8 +895,10 @@ export function WorkerPayrollManagement() {
                                                         {formatCurrency(p.daily_rate || 0)}
                                                     </TableCell>
                                                     <TableCell className="text-right text-xs text-red-500">
-                                                        {p.loan_deduction > 0 && <div>L: {formatCurrency(p.loan_deduction)}</div>}
-                                                        {!(p.loan_deduction > 0) && '-'}
+                                                        {p.loan_deduction > 0 ? formatCurrency(p.loan_deduction) : '-'}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-xs text-red-500">
+                                                        {p.late_deduction > 0 ? formatCurrency(p.late_deduction) : '-'}
                                                     </TableCell>
                                                     <TableCell className="text-right font-bold text-hrd">
                                                         {formatCurrency(p.amount)}
@@ -780,23 +908,36 @@ export function WorkerPayrollManagement() {
                                                             {p.progress_percentage}%
                                                         </Badge>
                                                     </TableCell>
-                                                    <TableCell className="text-right flex gap-1 justify-end">
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="icon"
-                                                            className="text-blue-500 hover:text-blue-700 hover:bg-blue-50"
-                                                            onClick={() => handlePrint(p)}
-                                                        >
-                                                            <Printer className="w-4 h-4" />
-                                                        </Button>
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="icon"
-                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                            onClick={() => handleDelete(p.id!)}
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </Button>
+                                                    <TableCell className="text-right">
+                                                        <div className="flex gap-1 justify-end">
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon"
+                                                                className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                                                                onClick={() => handlePrint(p)}
+                                                                title="Cetak Slip"
+                                                            >
+                                                                <Printer className="w-4 h-4" />
+                                                            </Button>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon"
+                                                                className="h-8 w-8 text-amber-500 hover:text-amber-700 hover:bg-amber-50"
+                                                                onClick={() => handleEdit(p)}
+                                                                title="Edit Data"
+                                                            >
+                                                                <Pencil className="w-4 h-4" />
+                                                            </Button>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon"
+                                                                className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                                onClick={() => handleDelete(p.id!)}
+                                                                title="Hapus Data"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </Button>
+                                                        </div>
                                                     </TableCell>
                                                 </TableRow>
                                             );

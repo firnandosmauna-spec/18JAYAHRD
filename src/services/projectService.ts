@@ -322,6 +322,18 @@ export const projectService = {
         return data;
     },
 
+    async updateWorkerPayment(id: string, updates: any) {
+        const { data, error } = await supabase
+            .from('project_worker_payments')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
     async deleteWorkerPayment(id: string) {
         const { error } = await supabase
             .from('project_worker_payments')
@@ -431,6 +443,17 @@ export const projectService = {
         const { data, error } = await supabase
             .from('project_worker_activities')
             .insert(activity)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async updateWorkerActivity(id: string, updates: any) {
+        const { data, error } = await supabase
+            .from('project_worker_activities')
+            .update(updates)
+            .eq('id', id)
             .select()
             .single();
         if (error) throw error;
