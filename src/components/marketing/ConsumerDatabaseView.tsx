@@ -17,6 +17,8 @@ import { useProjectLocations } from '@/hooks/useInventory';
 import { ConsumerProfileForm } from './ConsumerProfileForm';
 import BookingPOS from './BookingPOS';
 import ConsumerBioData from './ConsumerBioData';
+import { useAuth } from '@/contexts/AuthContext';
+import { cn } from '@/lib/utils';
 
 export default function ConsumerDatabaseView() {
     const [consumers, setConsumers] = useState<ConsumerProfile[]>([]);
@@ -25,6 +27,8 @@ export default function ConsumerDatabaseView() {
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const { toast } = useToast();
     const [editingId, setEditingId] = useState<string | null>(null);
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'Administrator' || user?.role === 'administrator';
 
     const fetchConsumers = async () => {
         setLoading(true);
@@ -687,15 +691,17 @@ export default function ConsumerDatabaseView() {
                                         >
                                             <CheckCircle2 className="w-3.5 h-3.5" />
                                         </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-8 w-8 p-0 text-blue-600 border-blue-100 hover:bg-blue-50"
-                                            title="Bayar Booking"
-                                            onClick={() => setPosConsumer(consumer)}
-                                        >
-                                            <Receipt className="w-3.5 h-3.5" />
-                                        </Button>
+                                        {isAdmin && (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-8 w-8 p-0 text-blue-600 border-blue-100 hover:bg-blue-50"
+                                                title="Bayar Booking"
+                                                onClick={() => setPosConsumer(consumer)}
+                                            >
+                                                <Receipt className="w-3.5 h-3.5" />
+                                            </Button>
+                                        )}
                                         <Button
                                             size="sm"
                                             variant="outline"
@@ -847,15 +853,17 @@ export default function ConsumerDatabaseView() {
                                                             >
                                                                 <CheckCircle2 className="h-4 w-4" />
                                                             </Button>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                                                                title="Bayar Booking"
-                                                                onClick={() => setPosConsumer(consumer)}
-                                                            >
-                                                                <Receipt className="h-4 w-4" />
-                                                            </Button>
+                                                            {isAdmin && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                                                                    title="Bayar Booking"
+                                                                    onClick={() => setPosConsumer(consumer)}
+                                                                >
+                                                                    <Receipt className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
