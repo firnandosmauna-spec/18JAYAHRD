@@ -64,6 +64,7 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
         source: '',
         bank_process: '',
         document_urls: [],
+        status: 'aktif',
         ...initialData
     });
 
@@ -484,6 +485,22 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                             <div className="space-y-2">
                                 <Label htmlFor={`${idPrefix}salary`}>Gaji / Penghasilan Per Bulan</Label>
                                 <Input id={`${idPrefix}salary`} name="salary" type="number" value={formData.salary || ''} onChange={handleInputChange} placeholder="0" readOnly={readOnly} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor={`${idPrefix}status`}>Status Konsumen</Label>
+                                <Select 
+                                    value={formData.status || 'aktif'} 
+                                    onValueChange={(val: any) => setFormData({ ...formData, status: val })}
+                                    disabled={readOnly}
+                                >
+                                    <SelectTrigger id={`${idPrefix}status`} className={formData.status === 'batal' ? "border-red-200 bg-red-50 text-red-700 h-10" : "h-10"}>
+                                        <SelectValue placeholder="Pilih Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="aktif">Aktif</SelectItem>
+                                        <SelectItem value="batal">Batal (Cancel)</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor={`${idPrefix}booking`}>Keterangan / Booking</Label>

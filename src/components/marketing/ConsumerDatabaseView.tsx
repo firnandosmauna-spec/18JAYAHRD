@@ -104,7 +104,7 @@ export default function ConsumerDatabaseView() {
 
     const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
     const [selectedProject, setSelectedProject] = useState<string>('all');
-    const [groupBy, setGroupBy] = useState<'project' | 'marketing'>('project');
+    const [groupBy, setGroupBy] = useState<'project' | 'marketing' | 'status'>('project');
     const [sortBy, setSortBy] = useState<'name' | 'marketing'>('name');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
     const { locations: projectLocations } = useProjectLocations();
@@ -157,9 +157,24 @@ export default function ConsumerDatabaseView() {
     });
 
     const groupedData = filteredConsumers.reduce((acc, consumer) => {
-        const groupKey = groupBy === 'project' 
-            ? (consumer.housing_project || 'Tanpa Proyek')
-            : (consumer.sales_person || 'Tanpa Marketing');
+        let groupKey = '';
+        
+        if (groupBy === 'project') {
+            groupKey = consumer.housing_project || 'Tanpa Proyek';
+        } else if (groupBy === 'marketing') {
+            groupKey = consumer.sales_person || 'Tanpa Marketing';
+        } else {
+            // Group by Status Tahap
+            const pemberkasan = Array.isArray(consumer.consumer_pemberkasan) 
+                ? consumer.consumer_pemberkasan[0] 
+                : consumer.consumer_pemberkasan;
+            
+            if (consumer.status === 'batal') groupKey = 'BATAL';
+            else if (pemberkasan?.akad) groupKey = 'AKAD';
+            else if (pemberkasan?.sp3k) groupKey = 'SP3K';
+            else if (pemberkasan?.booking) groupKey = 'BOOKING';
+            else groupKey = 'PROSPEK';
+        }
         
         if (!acc[groupKey]) acc[groupKey] = [];
         acc[groupKey].push(consumer);
@@ -167,8 +182,20 @@ export default function ConsumerDatabaseView() {
     }, {} as Record<string, typeof consumers>);
 
     const sortedGroups = Object.keys(groupedData).sort((a, b) => {
-        if (a === 'Tanpa Proyek' || a === 'Tanpa Marketing') return 1;
-        if (b === 'Tanpa Proyek' || b === 'Tanpa Marketing') return -1;
+        const priority: Record<string, number> = {
+            'AKAD': 1,
+            'SP3K': 2,
+            'BOOKING': 3,
+            'PROSPEK': 4,
+            'BATAL': 5,
+            'Tanpa Proyek': 6,
+            'Tanpa Marketing': 6
+        };
+        
+        if (priority[a] && priority[b]) return priority[a] - priority[b];
+        if (priority[a]) return -1;
+        if (priority[b]) return 1;
+        
         return a.localeCompare(b);
     });
 
@@ -227,15 +254,36 @@ export default function ConsumerDatabaseView() {
                         />
                     </div>
 
-                    <Select value={groupBy} onValueChange={(val: any) => setGroupBy(val)}>
-                        <SelectTrigger className="w-[160px] mr-2">
-                            <SelectValue placeholder="Grup Berdasarkan" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="project">Grup Proyek</SelectItem>
-                            <SelectItem value="marketing">Grup Marketing</SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Grup Berdasarkan:</span>
+                            <Select value={groupBy} onValueChange={(val: any) => setGroupBy(val)}>
+                                <SelectTrigger className="w-[180px] bg-white border-slate-200 shadow-sm">
+                                    <SelectValue placeholder="Grup Berdasarkan" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="project">
+                                        <div className="flex items-center gap-2">
+                                            <MapPin className="w-3.5 h-3.5 text-blue-500" />
+                                            <span>Proyek Perumahan</span>
+                                        </div>
+                                    </SelectItem>
+                                    <SelectItem value="marketing">
+                                        <div className="flex items-center gap-2">
+                                            <Briefcase className="w-3.5 h-3.5 text-emerald-500" />
+                                            <span>Sales Marketing</span>
+                                        </div>
+                                    </SelectItem>
+                                    <SelectItem value="status">
+                                        <div className="flex items-center gap-2">
+                                            <Filter className="w-3.5 h-3.5 text-orange-500" />
+                                            <span>Status Tahap</span>
+                                        </div>
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
 
                     <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
                         setIsAddDialogOpen(open);
@@ -700,16 +748,30 @@ export default function ConsumerDatabaseView() {
                                 {selectedProject === 'all' ? (
                                     sortedGroups.map(group => (
                                         <React.Fragment key={group}>
-                                            <tr className={groupBy === 'project' ? "bg-blue-600 shadow-sm" : "bg-emerald-600 shadow-sm"}>
-                                                <td colSpan={6} className={`px-4 py-2.5 text-[11px] font-extrabold text-white uppercase tracking-widest border-b ${groupBy === 'project' ? 'border-blue-700' : 'border-emerald-700'}`}>
+                                            <tr className={
+                                                groupBy === 'project' ? "bg-blue-600 shadow-sm" : 
+                                                groupBy === 'marketing' ? "bg-emerald-600 shadow-sm" : 
+                                                "bg-orange-600 shadow-sm"
+                                            }>
+                                                <td colSpan={6} className={`px-4 py-2.5 text-[11px] font-extrabold text-white uppercase tracking-widest border-b ${
+                                                    groupBy === 'project' ? 'border-blue-700' : 
+                                                    groupBy === 'marketing' ? 'border-emerald-700' :
+                                                    'border-orange-700'
+                                                }`}>
                                                     <div className="flex items-center gap-2">
                                                         {groupBy === 'project' ? (
                                                             <MapPin className="w-3.5 h-3.5 text-blue-200 fill-blue-200/20" />
-                                                        ) : (
+                                                        ) : groupBy === 'marketing' ? (
                                                             <Briefcase className="w-3.5 h-3.5 text-emerald-200 fill-emerald-200/20" />
+                                                        ) : (
+                                                            <Filter className="w-3.5 h-3.5 text-orange-200 fill-orange-200/20" />
                                                         )}
                                                         {group}
-                                                        <Badge variant="outline" className={`ml-2 text-white text-[9px] py-0 h-4 ${groupBy === 'project' ? 'bg-blue-500/30 border-blue-400/50' : 'bg-emerald-500/30 border-emerald-400/50'}`}>
+                                                        <Badge variant="outline" className={`ml-2 text-white text-[9px] py-0 h-4 ${
+                                                            groupBy === 'project' ? 'bg-blue-500/30 border-blue-400/50' : 
+                                                            groupBy === 'marketing' ? 'bg-emerald-500/30 border-emerald-400/50' :
+                                                            'bg-orange-500/30 border-orange-400/50'
+                                                        }`}>
                                                             {groupedData[group].length} KONSUMEN
                                                         </Badge>
                                                     </div>
@@ -722,6 +784,9 @@ export default function ConsumerDatabaseView() {
                                                             <span className="font-bold text-slate-900">{consumer.name}</span>
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-[10px] font-mono text-slate-500">{consumer.code}</span>
+                                                                {consumer.status === 'batal' && (
+                                                                    <Badge variant="destructive" className="text-[8px] h-3.5 px-1 font-bold uppercase">BATAL</Badge>
+                                                                )}
                                                                 {consumer.housing_block_no && (
                                                                     <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-100">
                                                                         {consumer.housing_block_no}

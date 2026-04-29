@@ -28,6 +28,7 @@ const CHECKLIST_ITEMS = [
     { key: 'proses_berkas', label: 'Proses Berkas' },
     { key: 'ots', label: 'OTS' },
     { key: 'penginputan', label: 'Penginputan' },
+    { key: 'sp3k', label: 'SP3K' },
     { key: 'analis_data', label: 'Analis Data (Bank)' },
     { key: 'lpa_aprasial', label: 'LPA dan Aprasial' },
     { key: 'pip', label: 'PIP' },

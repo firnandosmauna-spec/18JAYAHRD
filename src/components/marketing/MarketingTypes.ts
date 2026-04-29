@@ -66,6 +66,7 @@ export interface ConsumerProfile {
     housing_project?: string; // New field
     housing_block_no?: string; // Blok dan No yang dipilih
     booking_fee_status?: 'paid' | 'unpaid'; // Added field
+    status?: 'aktif' | 'batal'; // New field
     created_at: string;
 
     // Data Diri Tambahan
@@ -133,6 +134,9 @@ export interface ConsumerPemberkasan {
     penginputan: boolean;
     penginputan_date?: string;
     penginputan_file_url?: string;
+    sp3k: boolean;
+    sp3k_date?: string;
+    sp3k_file_url?: string;
     analis_data: boolean;
     analis_data_date?: string;
     analis_data_file_url?: string;
