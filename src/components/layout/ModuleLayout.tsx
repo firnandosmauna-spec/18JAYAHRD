@@ -257,7 +257,7 @@ export default function ModuleLayout({ children, moduleId, title, navItems }: Mo
         </header>
 
         {/* Page Content */}
-        <div className="p-4 md:p-8">
+        <div className="p-2 md:p-4 lg:p-6 w-full">
           {children}
         </div>
       </main>

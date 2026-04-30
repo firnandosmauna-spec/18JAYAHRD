@@ -181,7 +181,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     }, []);
 
     // Get Location Promise
-    const getLocation = (): Promise<string | null> => {
+    const getLocation = (): Promise<{ address: string | null; lat: number | null; lng: number | null }> => {
         setGettingLocation(true);
         setLocationError(null);
 
@@ -190,7 +190,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 const error = 'Geolocation is not supported';
                 setLocationError(error);
                 setGettingLocation(false);
-                resolve(null);
+                resolve({ address: null, lat: null, lng: null });
                 return;
             }
 
@@ -206,18 +206,18 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                             const addr = [data.locality, data.city, data.principalSubdivision].filter(Boolean).join(', ');
                             setLocation(addr || 'Lokasi Terdeteksi');
                             setGettingLocation(false);
-                            resolve(addr || 'Lokasi Terdeteksi');
+                            resolve({ address: addr || 'Lokasi Terdeteksi', lat: latitude, lng: longitude });
                         } else {
                             const latlng = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
                             setLocation(latlng);
                             setGettingLocation(false);
-                            resolve(latlng);
+                            resolve({ address: latlng, lat: latitude, lng: longitude });
                         }
                     } catch (e) {
                         const latlng = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
                         setLocation(latlng);
                         setGettingLocation(false);
-                        resolve(latlng);
+                        resolve({ address: latlng, lat: latitude, lng: longitude });
                     }
                 },
                 (error) => {
@@ -225,7 +225,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                     setLocationError(msg);
                     setLocation('Lokasi tidak tersedia');
                     setGettingLocation(false);
-                    resolve(null);
+                    resolve({ address: null, lat: null, lng: null });
                 },
                 { enableHighAccuracy: true, timeout: 10000 }
             );
@@ -273,16 +273,20 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             const officeRadius = settings.office_radius || 100;
 
             // 2. Get Location
-            const loc = await getLocation() || location;
-            if (!coordinates) {
+            const locResult = await getLocation();
+            const loc = locResult.address || location;
+            const currentLat = locResult.lat || coordinates?.lat;
+            const currentLng = locResult.lng || coordinates?.lng;
+
+            if (!currentLat || !currentLng) {
                 toast({ title: 'Gagal Mendapatkan Lokasi', description: 'Pastikan izin GPS aktif.', variant: 'destructive' });
                 return;
             }
 
             // 3. Validate Distance
             const distance = calculateDistance(
-                coordinates.lat,
-                coordinates.lng,
+                currentLat,
+                currentLng,
                 officeLat,
                 officeLng
             );
@@ -310,17 +314,17 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
 
             if (distance > officeRadius) {
                 // Bypass dialog as requested, but still log the reason automatically
-                await processCheckIn(loc, status, distance, 'Akurasi GPS/Luar Jangkauan (Auto-Accept)');
+                await processCheckIn(loc, status, distance, 'Akurasi GPS/Luar Jangkauan (Auto-Accept)', currentLat, currentLng);
                 return;
             }
 
-            await processCheckIn(loc, status, distance);
+            await processCheckIn(loc, status, distance, '', currentLat, currentLng);
         } catch (error: any) {
             toast({ title: 'Gagal Check In', description: error.message, variant: 'destructive' });
         }
     };
 
-    const processCheckIn = async (loc: string, status: string, distance: number, reason: string = '') => {
+    const processCheckIn = async (loc: string, status: string, distance: number, reason: string = '', lat?: number | null, lng?: number | null) => {
         setIsSubmitting(true);
         try {
             const now = new Date();
@@ -349,6 +353,8 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 check_in: checkInTime,
                 status: status as any,
                 location: loc,
+                latitude: lat || coordinates?.lat,
+                longitude: lng || coordinates?.lng,
                 notes: notes.join('. ')
             });
 

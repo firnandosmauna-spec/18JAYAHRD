@@ -19,8 +19,10 @@ import BookingPOS from './BookingPOS';
 import ConsumerBioData from './ConsumerBioData';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 
 export default function ConsumerDatabaseView() {
+    const navigate = useNavigate();
     const [consumers, setConsumers] = useState<ConsumerProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -57,7 +59,6 @@ export default function ConsumerDatabaseView() {
     }, []);
 
     const [selectedConsumer, setSelectedConsumer] = useState<ConsumerProfile | null>(null);
-    const [pemberkasanConsumer, setPemberkasanConsumer] = useState<ConsumerProfile | null>(null);
     const [posConsumer, setPosConsumer] = useState<ConsumerProfile | null>(null);
     const [bioDataConsumer, setBioDataConsumer] = useState<ConsumerProfile | null>(null);
 
@@ -586,29 +587,6 @@ export default function ConsumerDatabaseView() {
                 onClose={() => setBioDataConsumer(null)}
             />
 
-            {/* Pemberkasan Dialog */}
-            <Dialog open={!!pemberkasanConsumer} onOpenChange={(open) => !open && setPemberkasanConsumer(null)}>
-                <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden border-none shadow-2xl">
-                    <DialogHeader className="p-6 bg-slate-900 text-white">
-                        <DialogTitle className="text-xl">Progres Pemberkasan</DialogTitle>
-                        <DialogDescription className="text-slate-400">
-                            Kelola checklist dokumen untuk {pemberkasanConsumer?.name}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="p-6 max-h-[70vh] overflow-y-auto bg-slate-50">
-                        {pemberkasanConsumer && (
-                            <ConsumerPemberkasan
-                                consumerId={pemberkasanConsumer.id}
-                                consumerName={pemberkasanConsumer.name}
-                                onUpdate={fetchConsumers}
-                            />
-                        )}
-                    </div>
-                    <DialogFooter className="p-4 bg-white border-t">
-                        <Button onClick={() => setPemberkasanConsumer(null)}>Tutup</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             {
                 loading ? (
@@ -687,7 +665,7 @@ export default function ConsumerDatabaseView() {
                                             variant="outline"
                                             className="h-8 w-8 p-0 text-emerald-600 border-emerald-100 hover:bg-emerald-50"
                                             title="Pemberkasan"
-                                            onClick={() => setPemberkasanConsumer(consumer)}
+                                            onClick={() => navigate(`/marketing/pemberkasan?consumerId=${consumer.id}`)}
                                         >
                                             <CheckCircle2 className="w-3.5 h-3.5" />
                                         </Button>
@@ -849,7 +827,7 @@ export default function ConsumerDatabaseView() {
                                                                 size="icon"
                                                                 className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
                                                                 title="Pemberkasan"
-                                                                onClick={() => setPemberkasanConsumer(consumer)}
+                                                                onClick={() => navigate(`/marketing/pemberkasan?consumerId=${consumer.id}`)}
                                                             >
                                                                 <CheckCircle2 className="h-4 w-4" />
                                                             </Button>
@@ -970,7 +948,7 @@ export default function ConsumerDatabaseView() {
                                                         size="icon"
                                                         className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
                                                         title="Pemberkasan"
-                                                        onClick={() => setPemberkasanConsumer(consumer)}
+                                                        onClick={() => navigate(`/marketing/pemberkasan?consumerId=${consumer.id}`)}
                                                     >
                                                         <CheckCircle2 className="h-4 w-4" />
                                                     </Button>

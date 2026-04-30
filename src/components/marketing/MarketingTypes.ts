@@ -162,6 +162,18 @@ export interface ConsumerPemberkasan {
     updated_by?: string;
 }
 
+export interface ConsumerPemberkasanLog {
+    id: string;
+    pemberkasan_id: string;
+    stage_key: string;
+    status: boolean;
+    notes?: string;
+    created_at: string;
+    created_by?: string;
+    // For display
+    user_name?: string;
+}
+
 export interface ConsumerTransaction {
     id: string;
     consumer_id: string;

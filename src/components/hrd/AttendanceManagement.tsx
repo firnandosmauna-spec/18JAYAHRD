@@ -20,7 +20,8 @@ import {
   Users,
   RefreshCcw,
   UserX,
-  Loader2
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1238,10 +1239,15 @@ export function AttendanceManagement() {
                             {formatTime(attendance.check_out)}
                           </TableCell>
                           <TableCell>
-                            <Badge className={`${statusColors[attendance.status as AttendanceStatus]} font-body`}>
-                              <StatusIcon className="w-3 h-3 mr-1" />
-                              <span>{statusLabels[attendance.status as AttendanceStatus]}</span>
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge className={`${statusColors[attendance.status as AttendanceStatus]} font-body`}>
+                                <StatusIcon className="w-3 h-3 mr-1" />
+                                <span>{statusLabels[attendance.status as AttendanceStatus]}</span>
+                              </Badge>
+                              {attendance.latitude && (
+                                <MapPin className="w-3 h-3 text-blue-500 animate-pulse" title="Lokasi Detail Tersedia" />
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -1390,10 +1396,15 @@ export function AttendanceManagement() {
                             {formatTime(attendance.check_out)}
                           </TableCell>
                           <TableCell>
-                            <Badge className={`${statusColors[attendance.status as AttendanceStatus]} font-body`}>
-                              <StatusIcon className="w-3 h-3 mr-1" />
-                              <span>{statusLabels[attendance.status as AttendanceStatus]}</span>
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge className={`${statusColors[attendance.status as AttendanceStatus]} font-body`}>
+                                <StatusIcon className="w-3 h-3 mr-1" />
+                                <span>{statusLabels[attendance.status as AttendanceStatus]}</span>
+                              </Badge>
+                              {attendance.latitude && (
+                                <MapPin className="w-3 h-3 text-blue-500 animate-pulse" title="Lokasi Detail Tersedia" />
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="font-mono text-sm">
                             {(() => {
@@ -1996,10 +2007,33 @@ export function AttendanceManagement() {
                         <p className="font-mono font-medium">{selectedAttendance.work_hours}</p>
                       </div>
                     )}
-                    {selectedAttendance.location && (
-                      <div className="space-y-2">
-                        <Label className="font-body text-muted-foreground">Lokasi</Label>
-                        <p className="font-body font-medium">{selectedAttendance.location}</p>
+                    {(selectedAttendance.location || selectedAttendance.latitude) && (
+                      <div className="space-y-2 col-span-2 p-4 bg-blue-50/50 border border-blue-100 rounded-xl">
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="font-body text-blue-700 font-bold flex items-center gap-2">
+                            <MapPin className="w-4 h-4" />
+                            Lokasi Presensi
+                          </Label>
+                          {selectedAttendance.latitude && selectedAttendance.longitude && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="h-8 text-xs font-bold bg-white border-blue-200 text-blue-600 hover:bg-blue-50"
+                              onClick={() => window.open(`https://www.google.com/maps?q=${selectedAttendance.latitude},${selectedAttendance.longitude}`, '_blank')}
+                            >
+                              <ExternalLink className="w-3 h-3 mr-1" />
+                              Buka di Google Maps
+                            </Button>
+                          )}
+                        </div>
+                        <p className="font-body font-medium text-sm text-gray-700 leading-relaxed">
+                          {selectedAttendance.location || 'Alamat tidak tersedia'}
+                        </p>
+                        {selectedAttendance.latitude && (
+                          <p className="font-mono text-[10px] text-gray-500 mt-1">
+                            Koordinat: {selectedAttendance.latitude.toFixed(6)}, {selectedAttendance.longitude?.toFixed(6)}
+                          </p>
+                        )}
                       </div>
                     )}
                     {selectedAttendance.status === 'late' && (

@@ -7,12 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
 import { Search, Loader2, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 
 export default function PemberkasanView() {
     const [consumers, setConsumers] = useState<ConsumerProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedConsumer, setSelectedConsumer] = useState<ConsumerProfile | null>(null);
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const fetchConsumers = async () => {
         setLoading(true);
@@ -23,7 +25,21 @@ export default function PemberkasanView() {
                 .order('name', { ascending: true });
 
             if (error) throw error;
-            setConsumers(data || []);
+            const fetchedConsumers = data || [];
+            setConsumers(fetchedConsumers);
+
+            // Auto-select if consumerId is in URL
+            const consumerId = searchParams.get('consumerId');
+            if (consumerId) {
+                const consumer = fetchedConsumers.find(c => c.id === consumerId);
+                if (consumer) {
+                    setSelectedConsumer(consumer);
+                }
+                // Clear the param after selection to avoid re-selecting on refresh
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete('consumerId');
+                setSearchParams(newParams, { replace: true });
+            }
         } catch (error) {
             console.error('Error fetching consumers:', error);
         } finally {
@@ -46,14 +62,14 @@ export default function PemberkasanView() {
                 <Button
                     variant="outline"
                     size="sm"
-                    className="mb-4"
+                    className="mb-4 bg-white hover:bg-slate-50 border-slate-200 text-slate-600 font-bold"
                     onClick={() => setSelectedConsumer(null)}
                 >
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Kembali ke Daftar
                 </Button>
 
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <div className="bg-white p-2 md:p-4 rounded-xl border border-slate-200 shadow-sm">
                     <ConsumerPemberkasan
                         consumerId={selectedConsumer.id}
                         consumerName={selectedConsumer.name}
@@ -135,8 +151,7 @@ export default function PemberkasanView() {
                                     <TableCell className="text-right">
                                         <Button
                                             size="sm"
-                                            variant="secondary"
-                                            className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border-emerald-100"
+                                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
                                             onClick={() => setSelectedConsumer(consumer)}
                                         >
                                             <CheckCircle2 className="h-4 w-4 mr-2" />

@@ -316,6 +316,8 @@ export interface AttendanceRecord {
   status: 'present' | 'late' | 'absent' | 'leave' | 'holiday'
   work_hours?: string
   location?: string
+  latitude?: number
+  longitude?: number
   notes?: string
   is_manual?: boolean
   manual_status?: 'pending' | 'approved' | 'rejected'
