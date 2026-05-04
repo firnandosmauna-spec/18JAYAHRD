@@ -406,6 +406,7 @@ class AccountingService {
             .eq('account_id', accountId)
             .gte('journal.date', startDate)
             .lte('journal.date', endDate)
+            .order('date', { foreignTable: 'accounting_journals', ascending: true })
             .order('created_at', { ascending: true });
 
         if (error) throw error;
