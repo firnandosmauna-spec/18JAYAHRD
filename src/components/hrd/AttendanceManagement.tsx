@@ -1245,7 +1245,7 @@ export function AttendanceManagement() {
                                 <span>{statusLabels[attendance.status as AttendanceStatus]}</span>
                               </Badge>
                               {attendance.latitude && (
-                                <MapPin className="w-3 h-3 text-blue-500 animate-pulse" title="Lokasi Detail Tersedia" />
+                                <span title="Lokasi Detail Tersedia"><MapPin className="w-3 h-3 text-blue-500 animate-pulse" /></span>
                               )}
                             </div>
                           </TableCell>
@@ -1402,7 +1402,7 @@ export function AttendanceManagement() {
                                 <span>{statusLabels[attendance.status as AttendanceStatus]}</span>
                               </Badge>
                               {attendance.latitude && (
-                                <MapPin className="w-3 h-3 text-blue-500 animate-pulse" title="Lokasi Detail Tersedia" />
+                                <span title="Lokasi Detail Tersedia"><MapPin className="w-3 h-3 text-blue-500 animate-pulse" /></span>
                               )}
                             </div>
                           </TableCell>

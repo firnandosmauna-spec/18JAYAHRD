@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, CheckCircle2, Circle, Upload, FileText, X, Eye, Paperclip, Printer } from 'lucide-react';
+import { Loader2, CheckCircle2, Circle, Upload, FileText, X, Eye, Paperclip, Printer, Receipt } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ConsumerPemberkasan as ConsumerPemberkasanType, ConsumerPemberkasanLog } from './MarketingTypes';
-import { format, differenceInDays, differenceInHours, parseISO } from 'date-fns';
+import { format, differenceInDays, differenceInHours, parseISO, isValid } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { cn } from "@/lib/utils";
 import { ConsumerProfileForm } from './ConsumerProfileForm';
+import BookingPOS from './BookingPOS';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotificationsContext } from '@/contexts/NotificationContext';
@@ -54,6 +55,9 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
     const isAdmin = user?.role === 'Administrator';
     const [logs, setLogs] = useState<ConsumerPemberkasanLog[]>([]);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [isPOSOpen, setIsPOSOpen] = useState(false);
+    const [consumerProfile, setConsumerProfile] = useState<any>(null);
 
     const fetchPemberkasan = async () => {
         try {
@@ -90,7 +94,15 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                     setData(newData);
                 }
             } else {
-                setData(results[0]);
+                const consumerData = results[0];
+                setData(consumerData);
+                // Also fetch full profile for POS
+                const { data: profile } = await supabase
+                    .from('consumer_profiles')
+                    .select('*')
+                    .eq('id', consumerId)
+                    .single();
+                setConsumerProfile(profile);
             }
         } catch (error: any) {
             console.error('Error fetching pemberkasan:', error);
@@ -109,76 +121,71 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
 
     const fetchLogs = async () => {
         if (!data?.id) return;
+        
+        let logData: any[] = [];
         try {
-            const { data: logData, error } = await supabase
+            // Try with join first
+            const { data: fetched, error: joinError } = await supabase
                 .from('consumer_pemberkasan_logs')
                 .select(`
                     *,
-                    profiles:created_by ( name )
+                    profiles:created_by (
+                        name
+                    )
                 `)
                 .eq('pemberkasan_id', data.id)
                 .order('created_at', { ascending: false });
 
-            let finalLogs: ConsumerPemberkasanLog[] = [];
-            
-            if (logData && logData.length > 0) {
-                finalLogs = logData.map(log => ({
-                    ...log,
-                    user_name: log.profiles?.name || 'System'
-                }));
+            if (joinError) {
+                const { data: simpleData, error: simpleError } = await supabase
+                    .from('consumer_pemberkasan_logs')
+                    .select('*')
+                    .eq('pemberkasan_id', data.id)
+                    .order('created_at', { ascending: false });
+                
+                if (simpleError) throw simpleError;
+                logData = simpleData || [];
+            } else {
+                logData = fetched || [];
             }
-            
-            // Backfill/Synthetic logs from existing dates in 'data'
-            const syntheticLogs: ConsumerPemberkasanLog[] = [];
+        } catch (dbError: any) {
+            console.error('Database error in fetchLogs:', dbError);
+        }
+
+        const finalLogs: ConsumerPemberkasanLog[] = logData.map((item: any) => ({
+            ...item,
+            user_name: item.profiles?.name || 'System',
+        }));
+
+        // ALWAYS compute synthetic logs from existing dates in 'data'
+        const syntheticLogs: ConsumerPemberkasanLog[] = [];
+        if (data) {
             CHECKLIST_ITEMS.forEach(item => {
                 const dateVal = (data as any)[`${item.key}_date`];
                 const isCompleted = (data as any)[item.key];
                 
                 if (isCompleted && dateVal) {
-                    const hasLog = logData?.some(l => l.stage_key === item.key && l.status === true);
+                    const hasLog = logData.some(l => l.stage_key === item.key && l.status === true);
                     if (!hasLog) {
                         syntheticLogs.push({
                             id: `syn-${item.key}`,
                             pemberkasan_id: data.id,
                             stage_key: item.key,
                             status: true,
-                            notes: `${item.label} (Data Terdata)`,
+                            notes: `${item.label} (Data Migrasi)`,
                             created_at: dateVal,
                             user_name: 'System'
                         });
                     }
                 }
             });
-            
-            const combined = [...finalLogs, ...syntheticLogs].sort((a, b) => 
-                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-            );
-            
-            setLogs(combined);
-
-            if (error) throw error;
-        } catch (error: any) {
-            console.error('Error fetching logs:', error);
-            // Handle case where table might not exist yet by showing only synthetic logs
-            if (error.code === '42P01' || error.message?.includes('not found')) {
-                const syntheticLogs: ConsumerPemberkasanLog[] = [];
-                CHECKLIST_ITEMS.forEach(item => {
-                    const dateVal = (data as any)[`${item.key}_date`];
-                    if ((data as any)[item.key] && dateVal) {
-                        syntheticLogs.push({
-                            id: `syn-${item.key}`,
-                            pemberkasan_id: data.id,
-                            stage_key: item.key,
-                            status: true,
-                            notes: `${item.label} (Data Terdata)`,
-                            created_at: dateVal,
-                            user_name: 'System'
-                        });
-                    }
-                });
-                setLogs(syntheticLogs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-            }
         }
+        
+        const combined = [...finalLogs, ...syntheticLogs].sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        setLogs(combined);
     };
 
     const logMovement = async (key: string, value: boolean, notes?: string) => {
@@ -223,12 +230,22 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                 updates[`${key}_date`] = null;
             }
 
+            console.log('Updating pemberkasan with payload:', updates);
+            
+            // Sanitize payload: convert empty strings to null to satisfy DB/Zod constraints
+            const sanitizedUpdates = Object.fromEntries(
+                Object.entries(updates).map(([k, v]) => [k, v === "" ? null : v])
+            );
+
             const { error } = await supabase
                 .from('consumer_pemberkasan')
-                .update(updates)
+                .update(sanitizedUpdates)
                 .eq('consumer_id', consumerId);
 
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase update error:', error);
+                throw error;
+            }
 
             setData(prev => prev ? { ...prev, ...updates } : null);
             await logMovement(key, value);
@@ -241,9 +258,10 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
             if (onUpdate) onUpdate();
         } catch (error: any) {
             console.error('Error updating pemberkasan:', error);
+            console.error('Detailed error object:', JSON.stringify(error, null, 2));
             toast({
                 title: "Gagal menyimpan",
-                description: error.message,
+                description: error.message || "Terjadi kesalahan saat menyimpan data",
                 variant: 'destructive'
             });
         } finally {
@@ -313,7 +331,6 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
             setData(prev => prev ? { ...prev, ...updates } : null);
             await logMovement('slik_ojk', false, 'SLIK OJK Ditolak Admin');
 
-
             toast({
                 title: "SLIK OJK Ditolak",
                 description: "Status SLIK OJK telah ditandai sebagai ditolak",
@@ -338,10 +355,15 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
         try {
             setSaving(true);
             const updates = { [`${key}_date`]: dateStr ? new Date(dateStr).toISOString() : null };
+            
+            // Sanitize
+            const sanitizedUpdates = Object.fromEntries(
+                Object.entries(updates).map(([k, v]) => [k, v === "" ? null : v])
+            );
 
             const { error } = await supabase
                 .from('consumer_pemberkasan')
-                .update(updates)
+                .update(sanitizedUpdates)
                 .eq('consumer_id', consumerId);
 
             if (error) throw error;
@@ -375,11 +397,8 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
             setUploadingKey(activeKey);
             const fileExt = file.name.split('.').pop();
             const fileName = `${activeKey}_${Date.now()}.${fileExt}`;
-            // Use 'consumers/' prefix because it's established in other components (likely for RLS policies)
             const filePath = `consumers/pemberkasan/${consumerId}/${fileName}`;
 
-            // Upload to Supabase Storage
-            // Using 'pipeline-uploads' bucket
             const { error: uploadError } = await supabase.storage
                 .from('pipeline-uploads')
                 .upload(filePath, file, {
@@ -388,24 +407,20 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
 
             if (uploadError) throw uploadError;
 
-            // Get Public URL
             const { data: { publicUrl } } = supabase.storage
                 .from('pipeline-uploads')
                 .getPublicUrl(filePath);
 
-            // Update Database
             const updates: any = {
                 [`${activeKey}_file_url`]: publicUrl,
             };
 
-            // Business logic: slik_ojk requires admin approval
             if (activeKey === 'slik_ojk') {
-                updates.slik_ojk = false; // Stay false until approved
+                updates.slik_ojk = false; 
                 updates.slik_ojk_status = 'pending';
-                updates.slik_ojk_date = new Date().toISOString(); // Still record upload date
+                updates.slik_ojk_date = new Date().toISOString(); 
             } else {
-                updates[activeKey] = true; // Automatically check if file is uploaded for other items
-                // If it wasn't checked before, add timestamp
+                updates[activeKey] = true; 
                 if (!(data as any)[activeKey]) {
                     updates[`${activeKey}_date`] = new Date().toISOString();
                 }
@@ -421,7 +436,6 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
             setData(prev => prev ? { ...prev, ...updates } : null);
             await logMovement(activeKey, true, `File dokumen diunggah`);
 
-            // Trigger notification for SLIK OJK upload
             if (activeKey === 'slik_ojk') {
                 addNotification({
                     title: "Pengajuan SLIK OJK Baru",
@@ -439,7 +453,6 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
             if (onUpdate) onUpdate();
         } catch (error: any) {
             console.error('Error uploading file:', error);
-            // Show more detailed error message
             const errorMsg = error.message || error.error_description || "Terjadi kesalahan upload";
             toast({
                 title: "Gagal mengunggah",
@@ -460,10 +473,9 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
             setSaving(true);
             const updates: any = { 
                 [`${key}_file_url`]: null,
-                [key]: false // Reset completion if file is removed
+                [key]: false 
             };
 
-            // Reset SLIK OJK specific fields
             if (key === 'slik_ojk') {
                 updates.slik_ojk_status = 'none';
                 updates.slik_ojk_date = null;
@@ -480,7 +492,6 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
 
             setData(prev => prev ? { ...prev, ...updates } : null);
             await logMovement(key, false, 'File dokumen dihapus');
-
 
             toast({
                 title: "File Dihapus",
@@ -519,7 +530,6 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                 onChange={handleFileUpload}
             />
 
-            {/* Header with Progress */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="flex items-center gap-4">
                     <div className="p-3 bg-blue-50 rounded-xl">
@@ -556,6 +566,15 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                     <Button 
                         variant="outline" 
                         size="sm" 
+                        onClick={() => setIsPreviewOpen(true)}
+                        className="h-9 px-4 font-black text-[11px] uppercase tracking-wider shadow-sm transition-all flex items-center gap-2 bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                    >
+                        <Printer className="w-4 h-4" />
+                        Preview
+                    </Button>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
                         onClick={() => setIsHistoryOpen(!isHistoryOpen)}
                         className={cn(
                             "h-9 px-4 font-black text-[11px] uppercase tracking-wider shadow-sm transition-all flex items-center gap-2",
@@ -570,9 +589,7 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                 </div>
             </div>
 
-            {/* Main Content Area: Split View */}
             <div className="flex flex-col lg:flex-row gap-6 items-start relative">
-                {/* Left Side: Checklists Grid */}
                 <div className={cn(
                     "transition-all duration-500 ease-in-out",
                     isHistoryOpen ? "w-full lg:w-[75%]" : "w-full"
@@ -643,7 +660,6 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                                         </div>
                                     </div>
 
-                                    {/* SLIK OJK Special Handling */}
                                     {item.key === 'slik_ojk' && (data as any).slik_ojk_status && (data as any).slik_ojk_status !== 'none' && (
                                         <div className="mt-3 bg-white/60 p-2 rounded-lg border border-slate-100">
                                             <div className="flex items-center justify-between gap-2">
@@ -668,18 +684,29 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                                         </div>
                                     )}
 
-                                    {/* Action Footer */}
                                     <div className="mt-4 flex items-center justify-between border-t border-slate-50 pt-3">
-                                        {item.key === 'penginputan' && (
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-7 px-2 text-[9px] text-blue-600 hover:bg-blue-50 font-bold"
-                                                onClick={() => { setFormMode('edit'); setIsMasterFormOpen(true); }}
-                                            >
-                                                <FileText className="w-3 h-3 mr-1" /> Form Master
-                                            </Button>
-                                        )}
+                                        <div className="flex gap-2">
+                                            {item.key === 'booking' && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-[9px] text-emerald-600 hover:bg-emerald-50 font-bold border border-emerald-100"
+                                                    onClick={() => setIsPOSOpen(true)}
+                                                >
+                                                    <Receipt className="w-3 h-3 mr-1" /> Bayar Booking
+                                                </Button>
+                                            )}
+                                            {item.key === 'penginputan' && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-[9px] text-blue-600 hover:bg-blue-50 font-bold"
+                                                    onClick={() => { setFormMode('edit'); setIsMasterFormOpen(true); }}
+                                                >
+                                                    <FileText className="w-3 h-3 mr-1" /> Form Master
+                                                </Button>
+                                            )}
+                                        </div>
 
                                         {fileUrl ? (
                                             <div className="flex items-center gap-2">
@@ -708,7 +735,6 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                     </div>
                 </div>
 
-                {/* Right Side: History Sidebar (Inline) */}
                 {isHistoryOpen && (
                     <div className="w-full lg:w-[25%] sticky top-6 self-start animate-in slide-in-from-right-4 duration-500">
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-xl flex flex-col max-h-[calc(100vh-100px)] overflow-hidden">
@@ -719,12 +745,22 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                                     </div>
                                     <h4 className="font-bold text-slate-900 text-sm">Riwayat Aktivitas</h4>
                                 </div>
-                                <Button variant="ghost" size="icon" onClick={() => setIsHistoryOpen(false)} className="h-8 w-8 rounded-full">
-                                    <X className="h-4 w-4 text-slate-400" />
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Button 
+                                        variant="outline" 
+                                        size="icon" 
+                                        onClick={() => setIsPreviewOpen(true)} 
+                                        className="h-8 w-8 rounded-full border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200"
+                                        title="Preview Kertas Putih"
+                                    >
+                                        <Printer className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => setIsHistoryOpen(false)} className="h-8 w-8 rounded-full">
+                                        <X className="h-4 w-4 text-slate-400" />
+                                    </Button>
+                                </div>
                             </div>
 
-                            {/* Summary Card */}
                             {logs.length > 1 && (
                                 <div className="mx-5 mt-4 p-3 bg-slate-900 rounded-xl text-white flex items-center justify-between shadow-lg">
                                     <div className="flex items-center gap-2">
@@ -800,7 +836,6 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                 )}
             </div>
 
-            {/* Master Form Dialog (Keep as Dialog) */}
             <Dialog open={isMasterFormOpen} onOpenChange={setIsMasterFormOpen}>
                 <DialogContent className="max-w-[95vw] xl:max-w-[1400px] h-[90vh] p-0 overflow-hidden flex flex-col bg-slate-50">
                     <DialogHeader className="p-6 bg-white border-b shrink-0">
@@ -809,14 +844,209 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                     </DialogHeader>
                     <div className="flex-grow flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
                         <div className="flex-1 h-full bg-white rounded-xl border overflow-y-auto">
-                            <ConsumerProfileForm consumerId={consumerId} readOnly={formMode === 'preview'} onSuccess={() => fetchPemberkasan()} />
+                            <ConsumerProfileForm 
+                                consumerId={consumerId} 
+                                readOnly={formMode === 'preview'} 
+                                onSuccess={() => fetchPemberkasan()} 
+                                onCancel={() => setIsMasterFormOpen(false)}
+                            />
                         </div>
                         <div className="flex-1 h-full bg-white rounded-xl border-2 border-blue-100 overflow-y-auto">
-                            <ConsumerProfileForm consumerId={consumerId} readOnly={formMode === 'preview'} isUnrealData={true} />
+                            <ConsumerProfileForm 
+                                consumerId={consumerId} 
+                                readOnly={formMode === 'preview'} 
+                                isUnrealData={true} 
+                                onSuccess={() => fetchPemberkasan()}
+                                onCancel={() => setIsMasterFormOpen(false)}
+                            />
                         </div>
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 bg-slate-800 border-none shadow-2xl">
+                    <div className="sticky top-0 z-10 bg-slate-900 p-4 border-b border-slate-700 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-600 rounded-lg">
+                                <Printer className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                                <h3 className="text-white font-bold text-sm">Preview Kertas Putih</h3>
+                                <p className="text-slate-400 text-[10px]">Siap untuk dicetak atau disimpan sebagai PDF</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button 
+                                size="sm" 
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs"
+                                onClick={() => window.print()}
+                            >
+                                <Printer className="w-3.5 h-3.5 mr-2" /> CETAK SEKARANG
+                            </Button>
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => setIsPreviewOpen(false)} 
+                                className="text-slate-400 hover:text-white hover:bg-slate-800"
+                            >
+                                <X className="w-5 h-5" />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="p-12 bg-slate-800 flex justify-center">
+                        <div id="printable-history" className="bg-white w-full max-w-[210mm] min-h-[297mm] shadow-[0_0_50px_rgba(0,0,0,0.3)] p-12 text-slate-900 print:shadow-none print:p-0 print:m-0">
+                            <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
+                                <div>
+                                    <h1 className="text-2xl font-black tracking-tighter text-slate-900 uppercase">Riwayat Aktivitas Pemberkasan</h1>
+                                    <p className="text-sm font-bold text-blue-600 mt-1 uppercase tracking-widest">Sistem Manajemen Property JAYA TEMPO</p>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-[10px] font-black text-slate-400 uppercase">Tanggal Cetak</div>
+                                    <div className="text-xs font-bold">{format(new Date(), 'dd MMMM yyyy HH:mm', { locale: localeId })}</div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-8 mb-10 bg-slate-50 p-6 rounded-xl border border-slate-100">
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Nama Konsumen</div>
+                                        <div className="text-sm font-bold text-slate-900">{consumerName}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">ID Konsumen</div>
+                                        <div className="text-sm font-mono font-bold text-slate-600">{consumerId.split('-')[0].toUpperCase()}...</div>
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Proyek Perumahan</div>
+                                        <div className="text-sm font-bold text-slate-900">{housingProject || 'Data belum diisi'}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Blok / No</div>
+                                        <div className="text-sm font-bold text-slate-900">{housingBlockNo || 'Data belum diisi'}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mb-12">
+                                <h2 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <div className="w-1.5 h-4 bg-blue-600 rounded-full" />
+                                    Detail Aktivitas Checklist
+                                </h2>
+                                <div className="overflow-hidden rounded-lg border border-slate-200">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-slate-900 text-white">
+                                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-wider">No</th>
+                                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-wider">Tahap Pemberkasan</th>
+                                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-wider">Tanggal & Waktu</th>
+                                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-wider">Durasi</th>
+                                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-wider">Status</th>
+                                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-wider">Petugas</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {logs.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={6} className="py-12 text-center text-xs text-slate-400 italic">Belum ada riwayat aktivitas yang tercatat</td>
+                                                </tr>
+                                            ) : (
+                                                logs.map((log, idx) => {
+                                                    const stage = CHECKLIST_ITEMS.find(i => i.key === log.stage_key);
+                                                    let duration = "-";
+                                                    if (idx < logs.length - 1) {
+                                                        try {
+                                                            const cur = parseISO(log.created_at);
+                                                            const prev = parseISO(logs[idx + 1].created_at);
+                                                            if (isValid(cur) && isValid(prev)) {
+                                                                const days = differenceInDays(cur, prev);
+                                                                const hours = differenceInHours(cur, prev) % 24;
+                                                                if (days > 0) duration = `${days}h ${hours}j`;
+                                                                else if (hours > 0) duration = `${hours} jam`;
+                                                                else duration = "< 1 jam";
+                                                            }
+                                                        } catch (e) { duration = "-"; }
+                                                    }
+                                                    return (
+                                                        <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                                                            <td className="py-3 px-4 text-xs font-bold text-slate-400">{logs.length - idx}</td>
+                                                            <td className="py-3 px-4">
+                                                                <div className="text-xs font-bold text-slate-900">{stage?.label || log.stage_key}</div>
+                                                                <div className="text-[9px] text-slate-500 mt-0.5 italic">{log.notes}</div>
+                                                            </td>
+                                                            <td className="py-3 px-4">
+                                                                <div className="text-xs font-medium text-slate-700">{format(parseISO(log.created_at), 'dd/MM/yyyy')}</div>
+                                                                <div className="text-[10px] font-bold text-slate-400">{format(parseISO(log.created_at), 'HH:mm')}</div>
+                                                            </td>
+                                                            <td className="py-3 px-4 text-[10px] font-black text-blue-600">{duration}</td>
+                                                            <td className="py-3 px-4">
+                                                                {log.status ? (
+                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-700 uppercase">Selesai</span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black bg-red-100 text-red-700 uppercase">Dibatalkan</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-3 px-4 text-xs font-bold text-slate-600">{log.user_name}</td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div className="mt-16 grid grid-cols-2 gap-12">
+                                <div className="space-y-4">
+                                    <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100/50">
+                                        <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider mb-2">Statistik Pemberkasan</div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-xs font-bold text-slate-600">Total Selesai</span>
+                                            <span className="text-xs font-black text-slate-900">{completedCount} dari {CHECKLIST_ITEMS.length}</span>
+                                        </div>
+                                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                            <div className="h-full bg-blue-600" style={{ width: `${progressPercentage}%` }} />
+                                        </div>
+                                    </div>
+                                    <p className="text-[9px] text-slate-400 leading-relaxed">
+                                        * Dokumen ini merupakan riwayat aktivitas digital yang dihasilkan secara otomatis oleh sistem. Segala perubahan data tercatat dengan identitas petugas terkait.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col items-center justify-end">
+                                    <div className="text-xs font-bold text-slate-900 mb-20 text-center">
+                                        Diketahui Oleh,<br/>
+                                        <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase mt-1">Admin Marketing</span>
+                                    </div>
+                                    <div className="w-48 border-b-2 border-slate-900" />
+                                    <div className="text-[10px] font-black text-slate-400 uppercase mt-2 tracking-widest">Tanda Tangan & Cap</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <BookingPOS 
+                consumer={consumerProfile}
+                isOpen={isPOSOpen}
+                onClose={() => setIsPOSOpen(false)}
+                onSuccess={() => {
+                    fetchPemberkasan();
+                    fetchLogs();
+                }}
+            />
+
+            <style dangerouslySetInnerHTML={{ __html: `
+                @media print {
+                    body * { visibility: hidden; }
+                    #printable-history, #printable-history * { visibility: visible; }
+                    #printable-history { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; box-shadow: none; }
+                    @page { size: A4; margin: 1.5cm; }
+                }
+            ` }} />
         </div>
     );
 }

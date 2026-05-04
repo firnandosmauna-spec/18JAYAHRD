@@ -672,3 +672,125 @@ export const generateEmployeeChecklist = (
 
     doc.save(`Checklist_Gaji_${period.replace(/\s/g, '_')}.pdf`);
 };
+
+export const generateLedgerPDF = (
+    account: { name: string; code: string; type: string },
+    dateRange: { start: string; end: string },
+    openingBalance: number,
+    ledgerItems: any[],
+    customSettings?: Partial<PrintSettings>
+) => {
+    try {
+        console.log('Generating PDF for account:', account.code, account.name);
+        const settings = { ...defaultSettings, ...customSettings };
+        const doc = new jsPDF({
+            orientation: 'p',
+            format: 'a4',
+            unit: 'mm'
+        });
+
+        const pageWidth = doc.internal.pageSize.width;
+
+        // --- HEADER ---
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text(settings.companyName, pageWidth / 2, 15, { align: 'center' });
+        
+        doc.setFontSize(12);
+        doc.text('BUKU BESAR (GENERAL LEDGER)', pageWidth / 2, 22, { align: 'center' });
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${account.code || '-'} - ${account.name || 'Tanpa Nama'}`, pageWidth / 2, 28, { align: 'center' });
+        doc.text(`Periode: ${formatDate(dateRange.start)} s/d ${formatDate(dateRange.end)}`, pageWidth / 2, 33, { align: 'center' });
+
+        doc.setLineWidth(0.5);
+        doc.line(15, 38, pageWidth - 15, 38);
+
+        // --- TABLE DATA ---
+        const tableHeaders = [
+            ['Tanggal', 'Referensi', 'Keterangan', 'Debit', 'Kredit', 'Saldo']
+        ];
+
+        let runningBalance = openingBalance;
+        const tableData = [
+            [
+                formatDate(dateRange.start),
+                '-',
+                'SALDO AWAL',
+                '-',
+                '-',
+                formatCurrency(openingBalance)
+            ]
+        ];
+
+        if (Array.isArray(ledgerItems)) {
+            ledgerItems.forEach((item) => {
+                const type = account.type;
+                const debit = Number(item.debit) || 0;
+                const credit = Number(item.credit) || 0;
+                
+                const adjustment = (type === 'asset' || type === 'expense')
+                    ? (debit - credit)
+                    : (credit - debit);
+                runningBalance += adjustment;
+
+                const dateStr = item.journal?.date || item.date || dateRange.start;
+                const refStr = item.journal?.reference || item.reference || '-';
+                const descStr = item.description || item.journal?.description || '-';
+
+                tableData.push([
+                    formatDate(dateStr),
+                    refStr,
+                    descStr,
+                    debit > 0 ? formatCurrency(debit) : '-',
+                    credit > 0 ? formatCurrency(credit) : '-',
+                    formatCurrency(runningBalance)
+                ]);
+            });
+        }
+
+        autoTable(doc, {
+            head: tableHeaders,
+            body: tableData,
+            startY: 45,
+            theme: 'grid',
+            headStyles: { 
+                fillColor: settings.headerColor || '#16a34a',
+                textColor: 255,
+                fontSize: 9,
+                halign: 'center'
+            },
+            bodyStyles: { fontSize: 8 },
+            columnStyles: {
+                0: { cellWidth: 25 },
+                1: { cellWidth: 25 },
+                2: { cellWidth: 'auto' },
+                3: { halign: 'right', cellWidth: 30 },
+                4: { halign: 'right', cellWidth: 30 },
+                5: { halign: 'right', cellWidth: 30, fontStyle: 'bold' }
+            },
+            didParseCell: (data) => {
+                if (data.row.index === 0 && data.section === 'body') {
+                    data.cell.styles.fontStyle = 'italic';
+                    data.cell.styles.fillColor = '#f9fafb';
+                }
+            }
+        });
+
+        const finalY = (doc as any).lastAutoTable?.finalY || 150;
+
+        // --- FOOTER ---
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(100);
+        doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 15, finalY + 10);
+        
+        const fileName = `Buku_Besar_${account.code}_${account.name}`.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        doc.save(`${fileName}.pdf`);
+        console.log('PDF generated successfully');
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        alert('Gagal membuat PDF. Silakan periksa konsol browser untuk detailnya.');
+    }
+};

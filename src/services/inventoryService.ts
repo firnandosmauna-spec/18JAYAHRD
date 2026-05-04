@@ -124,8 +124,10 @@ async function enrichProductsWithSupplierDebt(products: any[]) {
     products.forEach(p => {
       if (!p) return;
       if (p.suppliers) {
-        const isHutang = p.suppliers.payment_method?.toLowerCase() === 'hutang';
-        p.suppliers.total_debt = isHutang ? (debtMap[p.suppliers.id] || 0) : 0;
+        const supp = Array.isArray(p.suppliers) ? p.suppliers[0] : p.suppliers;
+        const pm = supp?.payment_method?.toLowerCase() || '';
+        const isHutang = pm.includes('hutang') || pm.includes('tempo') || pm.includes('kredit');
+        p.suppliers = { ...supp, total_debt: isHutang ? (debtMap[supp.id] || 0) : 0 };
       }
     });
     return products;
@@ -578,11 +580,22 @@ export const stockMovementService = {
         if (isHutang) {
           const { data: prod } = await supabase
             .from('products')
-            .select('supplier_id, name, sku, cost')
+            .select(`
+              supplier_id, 
+              name, 
+              sku, 
+              cost,
+              suppliers (id, name, payment_terms)
+            `)
             .eq('id', movement.product_id)
             .single();
 
-          if (prod?.supplier_id) {
+          if (prod) {
+            const suppRel = (prod as any).suppliers;
+            const supplier = Array.isArray(suppRel) ? suppRel[0] : suppRel;
+            const supplierId = prod.supplier_id || supplier?.id;
+
+            if (supplierId) {
             const price = movement.unit_price || (prod as any).cost || 0;
             const totalAmount = movement.quantity * price;
             
@@ -594,10 +607,10 @@ export const stockMovementService = {
               const { data: invoiceData, error: invoiceError } = await supabase
                 .from('purchase_invoices')
                 .insert({
-                  supplier_id: prod.supplier_id,
+                  supplier_id: supplierId,
                   invoice_number: invoiceNumber,
                   invoice_date: new Date().toISOString().split('T')[0],
-                  due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 30 days
+                  due_date: new Date(Date.now() + (supplier?.payment_terms || 30) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                   status: 'received',
                   payment_status: 'unpaid',
                   subtotal: totalAmount,
@@ -642,12 +655,13 @@ export const stockMovementService = {
             console.warn(`[Inventory] Skip auto-invoice: Product '${prod?.name}' has no supplier_id assigned.`);
           }
         }
-      } catch (err) {
-        console.error('[Inventory] Fatal error in auto-invoice logic:', err);
       }
+    } catch (err) {
+      console.error('[Inventory] Fatal error in auto-invoice logic:', err);
+    }
     }
 
-    return movementData
+    return movementData;
   },
 
   async update(id: string, updates: Partial<StockMovement>) {

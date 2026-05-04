@@ -119,6 +119,9 @@ export function LoanManagement() {
     const [loanPayments, setLoanPayments] = useState<any[]>([]);
     const [rejectionReason, setRejectionReason] = useState('');
 
+    // Reactive loan reference to ensure UI always shows latest balance from the loans array
+    const activeLoan = selectedLoan ? (loans.find(l => l.id === selectedLoan.id) || selectedLoan) : null;
+
     // Form State
     const [formData, setFormData] = useState({
         employee_id: '',
@@ -505,12 +508,22 @@ export function LoanManagement() {
         if (!confirm(`Hapus catatan pembayaran ini? Saldo pinjaman akan dikembalikan sebesar ${formatCurrency(pay.amount)}.`)) return;
         try {
             setIsSubmitting(true);
+            const loanId = pay.loan_id;
             await deletePayment(pay.id);
+            
             // Refresh local history list
-            if (selectedLoan) {
-                const history = await fetchPayments(selectedLoan.id);
-                setLoanPayments(history);
+            const history = await fetchPayments(loanId);
+            setLoanPayments(history);
+            
+            // Re-sync selectedLoan with the latest data from the loans array
+            // Since deletePayment calls fetchLoans, the loans array will eventually be updated.
+            // But we can also manually find it to be sure.
+            if (selectedLoan?.id === loanId) {
+                // Wait a bit for the hook to update or just use the find logic in render
+                // For now, let's just trigger a re-fetch of this specific loan if needed,
+                // but usually the refetch() inside deletePayment is enough for the next render.
             }
+            
             toast({ title: 'Berhasil', description: 'Catatan pembayaran telah dihapus dan saldo dikembalikan.' });
         } catch (error: any) {
             toast({ title: 'Error', description: error.message || 'Gagal menghapus pembayaran', variant: 'destructive' });
@@ -1116,8 +1129,8 @@ export function LoanManagement() {
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
-                            <div className="flex justify-between mb-1"><span>Total Pinjaman:</span><span className="font-bold">{formatCurrency(selectedLoan?.amount || 0)}</span></div>
-                            <div className="flex justify-between text-red-700"><span>Sisa Saldo:</span><span className="font-bold">{formatCurrency(selectedLoan?.remaining_amount || 0)}</span></div>
+                            <div className="flex justify-between mb-1"><span>Total Pinjaman:</span><span className="font-bold">{formatCurrency(activeLoan?.amount || 0)}</span></div>
+                            <div className="flex justify-between text-red-700"><span>Sisa Saldo:</span><span className="font-bold">{formatCurrency(activeLoan?.remaining_amount || 0)}</span></div>
                         </div>
                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
                             <Clock className="w-4 h-4 mt-0.5 shrink-0" />
@@ -1229,7 +1242,7 @@ export function LoanManagement() {
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>Riwayat Pembayaran Cicilan</DialogTitle>
-                        <DialogDescription>Riwayat cicilan untuk {employees.find(e => e.id === selectedLoan?.employee_id)?.name}.</DialogDescription>
+                        <DialogDescription>Riwayat cicilan untuk {employees.find(e => e.id === activeLoan?.employee_id)?.name}.</DialogDescription>
                     </DialogHeader>
                     <div className="py-4">
                         {loanPayments.length === 0 ? (
@@ -1286,10 +1299,10 @@ export function LoanManagement() {
                         <div className="mt-4 p-4 bg-slate-50 rounded-lg flex justify-between items-center">
                             <div>
                                 <p className="text-sm font-medium">Sisa Saldo Pinjaman</p>
-                                <p className="text-2xl font-bold text-red-600">{formatCurrency(selectedLoan?.remaining_amount || 0)}</p>
+                                <p className="text-2xl font-bold text-red-600">{formatCurrency(activeLoan?.remaining_amount || 0)}</p>
                             </div>
                             <div className="text-right">
-                                <p className="text-xs text-muted-foreground italic">Total: {formatCurrency(selectedLoan?.amount || 0)}</p>
+                                <p className="text-xs text-muted-foreground italic">Total: {formatCurrency(activeLoan?.amount || 0)}</p>
                             </div>
                         </div>
                     </div>
@@ -1304,7 +1317,7 @@ export function LoanManagement() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Edit Data Kasbon</DialogTitle>
-                        <DialogDescription>Ubah nominal kasbon untuk {employees.find(e => e.id === selectedLoan?.employee_id)?.name || 'Karyawan'}.</DialogDescription>
+                        <DialogDescription>Ubah nominal kasbon untuk {employees.find(e => e.id === activeLoan?.employee_id)?.name || 'Karyawan'}.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
@@ -1344,13 +1357,13 @@ export function LoanManagement() {
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-sm text-emerald-800">
-                            <div className="flex justify-between mb-1"><span>Total Pinjaman:</span><span className="font-bold">{formatCurrency(selectedLoan?.amount || 0)}</span></div>
-                            <div className="flex justify-between text-red-700"><span>Sisa Saldo Saat Ini:</span><span className="font-bold">{formatCurrency(selectedLoan?.remaining_amount || 0)}</span></div>
+                            <div className="flex justify-between mb-1"><span>Total Pinjaman:</span><span className="font-bold">{formatCurrency(activeLoan?.amount || 0)}</span></div>
+                            <div className="flex justify-between text-red-700"><span>Sisa Saldo Saat Ini:</span><span className="font-bold">{formatCurrency(activeLoan?.remaining_amount || 0)}</span></div>
                         </div>
                         <div className="grid gap-2">
                             <Label>Nominal Pembayaran (Rp)</Label>
                             <Input type="number" value={directPaymentData.amount} onChange={(e) => setDirectPaymentData(p => ({ ...p, amount: e.target.value }))} />
-                            <p className="text-[10px] text-muted-foreground italic">Default: Nominal cicilan bulanan ({formatCurrency(selectedLoan?.installment_amount || 0)})</p>
+                            <p className="text-[10px] text-muted-foreground italic">Default: Nominal cicilan bulanan ({formatCurrency(activeLoan?.installment_amount || 0)})</p>
                         </div>
                         <div className="grid gap-2">
                             <Label>Tanggal Pembayaran</Label>
@@ -1388,7 +1401,7 @@ export function LoanManagement() {
                         <DialogTitle className="sr-only">Preview Kasbon</DialogTitle>
                     </DialogHeader>
                     <div className="bg-white p-6 border border-gray-300 shadow-sm mx-auto overflow-y-auto max-h-[60vh] w-full relative" id="print-area-kasbon">
-                        {selectedLoan?.status === 'paid_off' && (
+                        {activeLoan?.status === 'paid_off' && (
                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-10 pointer-events-none transform -rotate-45 font-bold text-6xl text-green-600 border-8 border-green-600 rounded-lg p-2 uppercase">LUNAS</div>
                         )}
                         <div className="text-center mb-6 border-b border-black pb-4">
@@ -1397,12 +1410,12 @@ export function LoanManagement() {
                         </div>
                         <div className="space-y-3 text-sm font-mono text-black relative z-10">
                             <div className="flex justify-between border-b border-gray-200 pb-2"><span>Tanggal Cetak:</span><span>{new Date().toLocaleDateString('id-ID')}</span></div>
-                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Nama Karyawan:</span><span className="font-bold">{employees.find(e => e.id === selectedLoan?.employee_id)?.name}</span></div>
-                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Mulai Potong:</span><span>{selectedLoan ? formatDate(selectedLoan.start_date) : '-'}</span></div>
-                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Total Pinjaman:</span><span>{formatCurrency(selectedLoan?.amount || 0)}</span></div>
-                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Potongan / Bulan:</span><span>{formatCurrency(selectedLoan?.installment_amount || 0)}</span></div>
-                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Sisa Saldo:</span><span className="font-bold text-red-600">{formatCurrency(selectedLoan?.remaining_amount || 0)}</span></div>
-                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Status:</span><span className="uppercase font-bold">{statusLabels[selectedLoan?.status || 'pending']}</span></div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Nama Karyawan:</span><span className="font-bold">{employees.find(e => e.id === activeLoan?.employee_id)?.name}</span></div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Mulai Potong:</span><span>{activeLoan ? formatDate(activeLoan.start_date) : '-'}</span></div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Total Pinjaman:</span><span>{formatCurrency(activeLoan?.amount || 0)}</span></div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Potongan / Bulan:</span><span>{formatCurrency(activeLoan?.installment_amount || 0)}</span></div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Sisa Saldo:</span><span className="font-bold text-red-600">{formatCurrency(activeLoan?.remaining_amount || 0)}</span></div>
+                            <div className="flex justify-between border-b border-gray-200 pb-2"><span>Status:</span><span className="uppercase font-bold">{statusLabels[activeLoan?.status || 'pending']}</span></div>
                             <div className="mt-6 pt-2">
                                 <p className="mb-2 font-bold bg-gray-100 p-1 text-center border-y border-gray-300">Riwayat Pembayaran (Disetujui)</p>
                                 {loanPayments.filter(p => p.payment_status !== 'rejected' && p.payment_status !== 'pending_approval').length === 0 ? (

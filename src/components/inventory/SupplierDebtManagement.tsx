@@ -57,6 +57,7 @@ import { supplierDebtService } from '@/services/supplierDebtService';
 import { formatCurrency } from '@/lib/utils';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { supabase } from '@/lib/supabase';
 
 export function SupplierDebtManagement() {
   const [loading, setLoading] = useState(true);
@@ -110,6 +111,105 @@ export function SupplierDebtManagement() {
         description: 'Gagal memuat invoice supplier: ' + error.message,
         variant: 'destructive',
       });
+    }
+  };
+
+  const repairSupplierBalance = async (supplierId: string) => {
+    try {
+      setIsSyncing(true);
+      
+      // 1. Get raw movements
+      let allMovs: any[] = [];
+      let movPage = 0;
+      let hasMoreMovs = true;
+      while (hasMoreMovs) {
+        const { data: movBatch } = await supabase
+          .from('stock_movements')
+          .select('product_id, quantity, unit_price, products(supplier_id)')
+          .eq('movement_type', 'in')
+          .range(movPage * 1000, (movPage + 1) * 1000 - 1);
+        
+        if (!movBatch || movBatch.length === 0) hasMoreMovs = false;
+        else {
+          allMovs = [...allMovs, ...movBatch];
+          if (movBatch.length < 1000) hasMoreMovs = false;
+          movPage++;
+        }
+      }
+
+      const targetMovs = allMovs.filter(m => {
+        const p = Array.isArray(m.products) ? m.products[0] : m.products;
+        return p?.supplier_id === supplierId;
+      });
+
+      if (targetMovs.length === 0) {
+        toast({ title: 'Selesai', description: 'Data sudah tersinkronisasi.' });
+        setIsSyncing(false);
+        return;
+      }
+
+      const groups: Record<string, any[]> = {};
+      targetMovs.forEach(m => {
+        const ref = m.reference || `FIX-${new Date().getTime()}`;
+        if (!groups[ref]) groups[ref] = [];
+        groups[ref].push(m);
+      });
+
+      const today = new Date().toISOString().split('T')[0];
+      const nextMonth = new Date();
+      nextMonth.setDate(nextMonth.getDate() + 30);
+      const dueDate = nextMonth.toISOString().split('T')[0];
+
+      let createdCount = 0;
+      
+      for (const [ref, group] of Object.entries(groups)) {
+        const totalAmount = group.reduce((sum, m) => sum + (m.quantity * (m.unit_price || 0)), 0);
+        
+        const uniqueRef = `${ref}-FIX-${Math.floor(Math.random() * 1000)}`;
+        const { data: newInv } = await supabase
+          .from('purchase_invoices')
+          .insert({
+            supplier_id: supplierId,
+            invoice_number: uniqueRef,
+            total_amount: totalAmount,
+            paid_amount: 0,
+            payment_status: 'unpaid',
+            status: 'received',
+            invoice_date: today,
+            due_date: dueDate,
+            notes: `Auto-fix balance`
+          })
+          .select().single();
+
+        if (newInv) {
+          createdCount++;
+          for (const m of group) {
+            await supabase.from('purchase_invoice_items').insert({
+              purchase_invoice_id: newInv.id,
+              product_id: m.product_id,
+              quantity: m.quantity,
+              unit_price: m.unit_price || 0,
+              line_total: m.quantity * (m.unit_price || 0),
+              notes: `Auto-fix: ${m.id}`
+            });
+          }
+        }
+      }
+      
+      toast({ 
+        title: 'Berhasil', 
+        description: `Sinkronisasi saldo selesai.` 
+      });
+
+      loadDebtSummary();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -186,7 +286,6 @@ export function SupplierDebtManagement() {
 
       setShowPaymentDialog(false);
       
-      // Sync debts after payment
       await supplierDebtService.syncAllSupplierDebts();
       
       loadDebtSummary();
@@ -263,7 +362,6 @@ export function SupplierDebtManagement() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Supplier List */}
         <Card className="md:col-span-1 h-[calc(100vh-250px)] flex flex-col">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Daftar Supplier</CardTitle>
@@ -290,17 +388,17 @@ export function SupplierDebtManagement() {
             ) : (
               <div className="space-y-2 mt-2">
                 {filteredDebt.map((item) => (
-                  <button
+                  <div 
                     key={item.supplierId}
-                    onClick={() => handleSelectSupplier(item)}
-                    className={`w-full text-left p-3 rounded-xl border transition-all ${
+                    className={`relative p-3 rounded-xl border transition-all cursor-pointer ${
                       selectedSupplier?.supplierId === item.supplierId 
                         ? 'border-inventory bg-inventory/5 ring-1 ring-inventory/20' 
                         : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
                     }`}
+                    onClick={() => handleSelectSupplier(item)}
                   >
                     <div className="flex justify-between items-start mb-1">
-                      <span className="font-semibold text-gray-900 truncate pr-2">{item.supplierName}</span>
+                      <span className="font-semibold text-gray-900 truncate pr-8">{item.supplierName}</span>
                       <ChevronRight className={`w-4 h-4 mt-0.5 transition-transform ${selectedSupplier?.supplierId === item.supplierId ? 'rotate-90 text-inventory' : 'text-gray-300'}`} />
                     </div>
                     <div className="flex justify-between items-end">
@@ -311,14 +409,27 @@ export function SupplierDebtManagement() {
                         {formatCurrency(item.totalDebt)}
                       </div>
                     </div>
-                  </button>
+                    
+                    {/* Tiny sinkron button */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-2 right-8 h-6 w-6 p-0 text-inventory opacity-20 hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        repairSupplierBalance(item.supplierId);
+                      }}
+                      disabled={isSyncing}
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Invoice List & Detail */}
         <Card className="md:col-span-2 h-[calc(100vh-250px)] flex flex-col">
           <CardHeader className="border-b bg-gray-50/50">
             {selectedSupplier ? (
@@ -575,4 +686,6 @@ export function SupplierDebtManagement() {
       </Dialog>
     </div>
   );
-}
+};
+
+export default SupplierDebtManagement;

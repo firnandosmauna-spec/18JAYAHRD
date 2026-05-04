@@ -898,12 +898,9 @@ export const loanService = {
 
   // Get all pending payment requests (for admin review)
   async deletePayment(id: string) {
-    const { data, error } = await supabase
-      .from('employee_loan_payments')
-      .delete()
-      .eq('id', id)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('delete_loan_payment', {
+      p_payment_id: id
+    });
 
     if (error) throw error;
     return data;

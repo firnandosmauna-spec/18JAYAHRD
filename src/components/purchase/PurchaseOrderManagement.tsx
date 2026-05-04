@@ -16,7 +16,8 @@ import {
   Truck,
   Calendar,
   AlertCircle,
-  Package
+  Package,
+  X
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -387,6 +388,14 @@ export function PurchaseOrderManagement() {
                           <Truck className="w-4 h-4 mr-2" /> Tandai Diterima
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          className="text-amber-600"
+                          disabled={['received', 'cancelled'].includes(order.status)}
+                          onClick={() => handleUpdateStatus(order.id, 'cancelled')}
+                        >
+                          <XCircle className="w-4 h-4 mr-2" /> Batalkan PO
+                        </DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-red-600"
                           onClick={() => handleDeletePO(order.id)}
@@ -406,11 +415,23 @@ export function PurchaseOrderManagement() {
       {/* Create PO Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Buat Purchase Order Baru</DialogTitle>
-            <DialogDescription>
-              Isi formulir di bawah untuk membuat pesanan pembelian baru
-            </DialogDescription>
+          <DialogHeader className="relative">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>Buat Purchase Order Baru</DialogTitle>
+                <DialogDescription>
+                  Isi formulir di bawah untuk membuat pesanan pembelian baru
+                </DialogDescription>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="absolute right-0 top-0 h-8 w-8 text-gray-500 hover:text-gray-700"
+                onClick={() => setIsCreateDialogOpen(false)}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">

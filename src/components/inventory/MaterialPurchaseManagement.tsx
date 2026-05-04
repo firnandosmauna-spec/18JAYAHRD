@@ -220,9 +220,11 @@ export function MaterialPurchaseManagement() {
     );
 
     const filteredMovements = stockInMovements.filter(m => {
-        const productName = (m as any).products?.name || '';
-        const supplierName = (m as any).products?.suppliers?.name || '';
-        const sku = (m as any).products?.sku || '';
+        const prod = (m as any).products;
+        const productName = (Array.isArray(prod) ? prod[0]?.name : prod?.name) || '';
+        const supp = (Array.isArray(prod) ? prod[0]?.suppliers : prod?.suppliers);
+        const supplierName = (Array.isArray(supp) ? supp[0]?.name : supp?.name) || '';
+        const sku = (Array.isArray(prod) ? prod[0]?.sku : prod?.sku) || '';
         const reference = (m as any).reference || '';
         const search = searchQuery.toLowerCase();
         
@@ -242,31 +244,43 @@ export function MaterialPurchaseManagement() {
         }
 
         // Payment method filter
-        if (paymentMethodFilter !== 'all') {
-            const inv = (invoices as PurchaseInvoice[]).find((i: PurchaseInvoice) => i.id === m.reference);
-            let caraBayar = (m as any).payment_methods?.name || '';
-            if (!caraBayar) {
-                if (inv) {
-                    caraBayar = inv.payment_status === 'paid' ? 'Tunai / Cash' : 'Hutang / Tempo';
-                } else {
-                    caraBayar = m.reference_type === 'manual_entry' ? 'Manual' : '-';
-                }
+        const inv = (invoices as PurchaseInvoice[]).find((i: PurchaseInvoice) => i.id === m.reference || i.invoice_number === m.reference);
+        let caraBayar = (m as any).payment_methods?.name || '';
+        
+        // Fallback logic for display label
+        if (!caraBayar) {
+            if (inv) {
+                caraBayar = inv.payment_status === 'paid' ? 'Tunai / Cash' : 'Hutang / Tempo';
+            } else {
+                // If it's a manual entry and we know it's a debt-type (e.g. from reference or context)
+                // we can still label it for the user
+                caraBayar = m.reference_type === 'manual_entry' ? 'Manual' : '-';
             }
-            
-            const cbLower = caraBayar.toLowerCase();
+        }
+
+        if (paymentMethodFilter !== 'all') {
+            const cbLower = (caraBayar || '').toLowerCase();
             if (paymentMethodFilter === 'cash' && !(cbLower.includes('cash') || cbLower.includes('tunai'))) return false;
-            if (paymentMethodFilter === 'hutang' && !(cbLower.includes('hutang') || cbLower.includes('tempo'))) return false;
+            if (paymentMethodFilter === 'hutang' && !(cbLower.includes('hutang') || cbLower.includes('tempo') || cbLower.includes('kredit'))) return false;
             if (paymentMethodFilter === 'deposit' && !cbLower.includes('deposit')) return false;
         }
 
         // Supplier filter
-        if (supplierFilter !== 'all' && (m as any).products?.suppliers?.id !== supplierFilter) return false;
+        const actualProd = Array.isArray(prod) ? prod[0] : prod;
+        const supplierId = actualProd?.supplier_id || (Array.isArray(supp) ? supp[0]?.id : supp?.id);
+        if (supplierFilter !== 'all' && supplierId !== supplierFilter) return false;
 
         return true;
     }).sort((a, b) => {
         if (sortSupplier === 'none') return 0;
-        const nameA = (a as any).products?.suppliers?.name || '';
-        const nameB = (b as any).products?.suppliers?.name || '';
+        const prodA = (a as any).products;
+        const suppA = (Array.isArray(prodA) ? prodA[0]?.suppliers : prodA?.suppliers);
+        const nameA = (Array.isArray(suppA) ? suppA[0]?.name : suppA?.name) || '';
+        
+        const prodB = (b as any).products;
+        const suppB = (Array.isArray(prodB) ? prodB[0]?.suppliers : prodB?.suppliers);
+        const nameB = (Array.isArray(suppB) ? suppB[0]?.name : suppB?.name) || '';
+        
         if (sortSupplier === 'asc') return nameA.localeCompare(nameB);
         return nameB.localeCompare(nameA);
     });
@@ -924,6 +938,7 @@ export function MaterialPurchaseManagement() {
                                 <TableHead className="font-body text-[10px] uppercase text-right">Harga</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase text-right">Total Harga</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">Cara Bayar</TableHead>
+                                <TableHead className="font-body text-[10px] uppercase">Jatuh Tempo</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">Lokasi Proyek</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">Gudang</TableHead>
                                 <TableHead className="font-body text-[10px] uppercase">Keterangan</TableHead>
@@ -933,7 +948,7 @@ export function MaterialPurchaseManagement() {
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={19} className="text-center py-8">
+                                    <TableCell colSpan={20} className="text-center py-8">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-4 h-4 border-2 border-inventory/30 border-t-inventory rounded-full animate-spin" />
                                             <span className="font-body text-muted-foreground">Memuat data...</span>
@@ -942,7 +957,7 @@ export function MaterialPurchaseManagement() {
                                 </TableRow>
                             ) : filteredMovements.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={19} className="text-center py-12">
+                                    <TableCell colSpan={20} className="text-center py-12">
                                         <ArrowDownRight className="w-12 h-12 text-gray-200 mx-auto mb-4" />
                                         <p className="font-body text-muted-foreground">Belum ada data belanja material</p>
                                     </TableCell>
@@ -950,7 +965,7 @@ export function MaterialPurchaseManagement() {
                             ) : (
                                 filteredMovements.map((m: any, idx: number) => {
                                     const prod = (m as any).products;
-                                    const inv = (invoices as PurchaseInvoice[]).find((i: PurchaseInvoice) => i.id === m.reference);
+                                    const inv = (invoices as PurchaseInvoice[]).find((i: PurchaseInvoice) => i.id === m.reference || i.invoice_number === m.reference);
 
                                     // Priority: 1. Linked payment method, 2. Invoice status, 3. Reference type
                                     let caraBayar = m.payment_methods?.name;
@@ -1010,6 +1025,9 @@ export function MaterialPurchaseManagement() {
                                                 >
                                                     {caraBayar}
                                                 </Badge>
+                                            </TableCell>
+                                            <TableCell className="font-body text-xs text-red-600 font-semibold">
+                                                {inv?.due_date ? format(new Date(inv.due_date), 'dd/MM/yyyy') : '-'}
                                             </TableCell>
                                             <TableCell className="font-body text-xs">
                                                 <Badge variant="outline" className="text-[10px] font-normal bg-gray-50">

@@ -1,327 +1,234 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Wallet,
   History,
   ArrowUpCircle,
   ArrowDownCircle,
-  Undo2,
-  Package,
+  Printer,
+  RefreshCw,
   Calendar,
-  Info,
-  ExternalLink
+  CheckCircle2,
+  X,
+  FileText
 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatCurrency } from '@/lib/utils';
 import { PurchaseService } from '@/services/purchaseService';
-import { stockMovementService } from '@/services/inventoryService';
-import type { Supplier, SupplierDeposit } from '@/types/purchase';
+import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 
 interface SupplierBalanceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  supplier: Supplier;
-  isInventory?: boolean;
+  supplier: any;
 }
 
-export function SupplierBalanceDialog({ 
-  open, 
-  onOpenChange, 
-  supplier, 
-  isInventory = true 
-}: SupplierBalanceDialogProps) {
-  const [deposits, setDeposits] = useState<SupplierDeposit[]>([]);
-  const [movements, setMovements] = useState<any[]>([]);
+export function SupplierBalanceDialog({ open, onOpenChange, supplier }: SupplierBalanceDialogProps) {
+  const [deposits, setDeposits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('history');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [currentBalance, setCurrentBalance] = useState(supplier.deposit_balance || 0);
+  const printRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [depositData, movementData] = await Promise.all([
-        PurchaseService.getSupplierDeposits(supplier.id),
-        stockMovementService.getBySupplier(supplier.id)
-      ]);
-      setDeposits(depositData);
-      setMovements(movementData);
-    } catch (error) {
-      console.error('Error fetching supplier balance data:', error);
-    } finally {
-      setLoading(false);
-    }
+      const { data: sups } = await supabase.from('suppliers').select('id').ilike('name', supplier.name);
+      const ids = sups?.map(x => x.id) || [supplier.id];
+      const { data: depData } = await supabase.from('supplier_deposits').select('*').in('supplier_id', ids).order('created_at', { ascending: false });
+      setDeposits(depData || []);
+      const { data: latest } = await supabase.from('suppliers').select('deposit_balance').eq('id', supplier.id).single();
+      if (latest) setCurrentBalance(latest.deposit_balance || 0);
+    } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    if (open && supplier?.id) {
-      fetchData();
+  useEffect(() => { if (open && supplier?.id) fetchData(); }, [open, supplier?.id]);
+
+  const handlePrint = () => {
+    const printContent = printRef.current;
+    const windowUrl = '';
+    const uniqueName = new Date().getTime();
+    const windowName = 'Print' + uniqueName;
+    const printWindow = window.open(windowUrl, windowName, 'left=0,top=0,width=900,height=900,toolbar=0,scrollbars=0,status=0');
+    
+    if (printWindow && printContent) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Laporan Riwayat - ${supplier.name}</title>
+            <style>
+              body { font-family: 'Inter', sans-serif; padding: 40px; color: #333; }
+              .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; text-align: center; }
+              .title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+              .info { margin-bottom: 30px; display: flex; justify-content: space-between; font-size: 14px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+              th { background: #f0f0f0; text-align: left; padding: 12px; border: 1px solid #ddd; font-size: 12px; text-transform: uppercase; }
+              td { padding: 12px; border: 1px solid #ddd; font-size: 13px; }
+              .amt-in { color: green; font-weight: bold; }
+              .amt-out { color: red; font-weight: bold; }
+              .footer { margin-top: 50px; display: flex; justify-content: space-between; }
+              .sig { border-top: 1px solid #000; width: 200px; text-align: center; padding-top: 10px; margin-top: 60px; }
+              @media print { .no-print { display: none; } }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div class="title uppercase">LAPORAN RIWAYAT AKTIVITAS SUPPLIER</div>
+              <div>${supplier.name}</div>
+            </div>
+            <div class="info">
+              <div>
+                <strong>ID Supplier:</strong> ${supplier.code}<br>
+                <strong>Kontak:</strong> ${supplier.phone || '-'}<br>
+                <strong>Dicetak pada:</strong> ${format(new Date(), 'dd MMMM yyyy HH:mm', { locale: idLocale })}
+              </div>
+              <div style="text-align: right">
+                <strong>SALDO AKHIR:</strong><br>
+                <span style="font-size: 20px; font-weight: bold">Rp ${currentBalance.toLocaleString('id-ID')}</span>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Keterangan</th>
+                  <th>Tipe</th>
+                  <th style="text-align: right">Jumlah (Rp)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${deposits.map(d => {
+                  const isOut = ['usage', 'payment', 'out', 'bayar', 'penggunaan'].includes(d.type?.toLowerCase());
+                  return `
+                    <tr>
+                      <td>${format(new Date(d.created_at), 'dd/MM/yyyy HH:mm')}</td>
+                      <td>${d.description || '-'}</td>
+                      <td>${isOut ? 'Keluar' : 'Masuk'}</td>
+                      <td style="text-align: right" class="${isOut ? 'amt-out' : 'amt-in'}">
+                        ${isOut ? '-' : '+'}${Number(String(d.amount).replace(/[^0-9]/g, '')).toLocaleString('id-ID')}
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+            <div class="footer">
+              <div class="sig">Bagian Keuangan</div>
+              <div class="sig">Penerima / Supplier</div>
+            </div>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
     }
-  }, [open, supplier?.id]);
-
-  // Combine and sort events for the running balance
-  const getMergedHistory = () => {
-    const events: any[] = [];
-
-    // Add deposits
-    deposits.forEach(d => {
-      events.push({
-        id: d.id,
-        date: new Date(d.created_at),
-        type: d.type, // 'deposit', 'usage', 'refund'
-        amount: d.amount,
-        description: d.description || (d.type === 'deposit' ? 'Setoran Deposit' : 'Penggunaan'),
-        category: 'finance'
-      });
-    });
-
-    // Add movements (only those that didn't already create a deposit record of type 'usage' to avoid double counting if shown together)
-    // Actually, the user wants to see "stok masuk dan keluar".
-    movements.forEach(m => {
-      events.push({
-        id: m.id,
-        date: new Date(m.created_at),
-        type: m.movement_type, // 'in', 'out'
-        amount: m.quantity * (m.unit_price || 0),
-        description: `${m.movement_type === 'in' ? 'Stok Masuk' : 'Stok Keluar'}: ${m.products?.name}`,
-        category: 'stock',
-        details: m
-      });
-    });
-
-    return events.sort((a, b) => b.date.getTime() - a.date.getTime());
   };
-
-  const primaryColor = isInventory ? 'bg-inventory' : 'bg-orange-600';
-  const primaryText = isInventory ? 'text-inventory-dark' : 'text-orange-700';
-
-  const history = getMergedHistory();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
-        <DialogHeader className="p-6 pb-2">
-          <DialogTitle className="flex items-center justify-between text-2xl">
-            <div className="flex items-center gap-2">
-              <Wallet className={`w-6 h-6 ${primaryText}`} />
-              Saldo & Riwayat: {supplier.name}
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl rounded-3xl">
+        <DialogHeader className="p-8 pb-4 bg-slate-900 text-white rounded-t-3xl">
+          <DialogTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md"><Wallet className="w-8 h-8 text-orange-400" /></div>
+              <div>
+                <div className="text-3xl font-black tracking-tight">{supplier.name}</div>
+                <div className="text-white/50 text-sm font-medium flex items-center gap-2 mt-1">
+                  <Badge variant="outline" className="border-white/20 text-white/70 font-mono">{supplier.code}</Badge>
+                  • Riwayat Keuangan
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col items-end">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Saldo Deposit Saat Ini</span>
-              <Badge variant="secondary" className="font-mono text-2xl py-1 px-4 mt-1 bg-green-50 text-green-700 border-green-200">
-                {formatCurrency(supplier.deposit_balance || 0)}
-              </Badge>
+            <div className="text-right">
+              <div className="text-[10px] font-black uppercase text-white/40 tracking-[0.2em] mb-1">Saldo Deposit</div>
+              <div className="text-4xl font-black text-orange-400 font-mono tracking-tighter">{formatCurrency(currentBalance)}</div>
             </div>
           </DialogTitle>
-          <DialogDescription>
-            Informasi lengkap mengenai saldo titipan, penggunaan dana, dan mutasi barang supplier.
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col p-6 pt-2">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-            <TabsList className="mb-4">
-              <TabsTrigger value="history" className="flex items-center gap-2">
-                <History className="w-4 h-4" />
-                Riwayat Gabungan
-              </TabsTrigger>
-              <TabsTrigger value="stock" className="flex items-center gap-2">
-                <Package className="w-4 h-4" />
-                Daftar Stok
-              </TabsTrigger>
-              <TabsTrigger value="summary" className="flex items-center gap-2">
-                <Info className="w-4 h-4" />
-                Ringkasan
-              </TabsTrigger>
-            </TabsList>
+        <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
+          <div className="flex items-center justify-between mb-8">
+             <div className="space-y-1">
+                <h3 className="font-black text-slate-800 flex items-center gap-2 text-lg">
+                  <History className="w-5 h-5 text-slate-400" /> AKTIVITAS TERBARU
+                </h3>
+                <p className="text-xs text-slate-400 font-medium">Daftar semua transaksi setoran dan penggunaan saldo.</p>
+             </div>
+             <div className="flex gap-2">
+                <Button onClick={fetchData} variant="outline" size="sm" className="h-10 rounded-xl bg-white border-slate-200 text-slate-600 hover:bg-slate-100 transition-all active:scale-95">
+                  <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Sinkron
+                </Button>
+                <Button onClick={handlePrint} className="h-10 rounded-xl bg-slate-900 text-white hover:bg-black shadow-lg shadow-slate-200 transition-all active:scale-95 font-bold">
+                  <Printer className="w-4 h-4 mr-2" /> Cetak Laporan
+                </Button>
+             </div>
+          </div>
 
-            <div className="flex-1 overflow-y-auto">
-              <TabsContent value="history" className="m-0 focus-visible:ring-0">
-                {loading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-inventory"></div>
-                  </div>
-                ) : history.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500 border rounded-lg border-dashed">
-                    Belum ada riwayat transaksi
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {history.map((event) => (
-                      <Card key={`${event.category}-${event.id}`} className="overflow-hidden border-gray-100 hover:border-gray-300 transition-colors">
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className={`p-2 rounded-full ${
-                                event.type === 'deposit' || event.type === 'in' ? 'bg-green-100 text-green-700' : 
-                                event.type === 'usage' || event.type === 'out' ? 'bg-red-100 text-red-700' : 
-                                'bg-orange-100 text-orange-700'
-                              }`}>
-                                {event.category === 'finance' ? (
-                                  event.type === 'deposit' ? <ArrowUpCircle className="w-5 h-5" /> :
-                                  event.type === 'usage' ? <ArrowDownCircle className="w-5 h-5" /> :
-                                  <Undo2 className="w-5 h-5" />
-                                ) : (
-                                  <Package className="w-5 h-5" />
-                                )}
-                              </div>
-                              <div>
-                                <div className="font-bold text-gray-900">{event.description}</div>
-                                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {format(event.date, 'dd MMMM yyyy HH:mm', { locale: idLocale })}
-                                  <span className="text-gray-300">|</span>
-                                  <Badge variant="outline" className="text-[10px] py-0 h-4 border-gray-200">
-                                    {event.category === 'finance' ? 'Keuangan' : 'Stok'}
-                                  </Badge>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className={`text-lg font-mono font-bold ${
-                                event.type === 'deposit' ? 'text-green-600' :
-                                event.type === 'usage' ? 'text-red-600' :
-                                event.type === 'in' ? 'text-blue-600' :
-                                'text-gray-900'
-                              }`}>
-                                {event.type === 'deposit' || event.type === 'in' ? '+' : '-'}{' '}
-                                {event.category === 'finance' ? formatCurrency(event.amount) : `${event.details?.quantity} unit`}
-                              </div>
-                              {event.category === 'stock' && (
-                                <div className="text-xs text-gray-400 mt-1">
-                                  @ {formatCurrency(event.details?.unit_price || 0)}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="stock" className="m-0 focus-visible:ring-0">
-                <div className="rounded-md border border-gray-100">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-600 font-medium">
-                      <tr>
-                        <th className="px-4 py-3 text-left">Tanggal</th>
-                        <th className="px-4 py-3 text-left">Produk</th>
-                        <th className="px-4 py-3 text-center">Masuk</th>
-                        <th className="px-4 py-3 text-center">Keluar</th>
-                        <th className="px-4 py-3 text-right">Harga Satuan</th>
-                        <th className="px-4 py-3 text-right">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {movements.map((m) => (
-                        <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3 text-gray-500 text-xs">
-                            {format(new Date(m.created_at), 'dd/MM/yy HH:mm')}
-                          </td>
-                          <td className="px-4 py-3 font-medium">{m.products?.name}</td>
-                          <td className="px-4 py-3 text-center text-green-600 font-bold">
-                            {m.movement_type === 'in' ? m.quantity : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-center text-red-600 font-bold">
-                            {m.movement_type === 'out' ? m.quantity : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-500">
-                            {formatCurrency(m.unit_price || 0)}
-                          </td>
-                          <td className="px-4 py-3 text-right font-medium">
-                            {formatCurrency(m.quantity * (m.unit_price || 0))}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {movements.length === 0 && (
-                    <div className="text-center py-12 text-gray-400">Belum ada riwayat stok</div>
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="summary" className="m-0 focus-visible:ring-0">
-                <div className="grid grid-cols-2 gap-6">
-                  <Card className="bg-blue-50/50 border-blue-100">
-                    <CardContent className="p-6">
-                      <h4 className="text-sm font-bold text-blue-800 mb-4 flex items-center gap-2">
-                        <Package className="w-4 h-4" />
-                        Statistik Stok
-                      </h4>
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Total Stok Masuk</span>
-                          <span className="font-bold text-green-600">
-                            {movements.filter(m => m.movement_type === 'in').reduce((sum, m) => sum + m.quantity, 0)} unit
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Total Stok Keluar</span>
-                          <span className="font-bold text-red-600">
-                            {movements.filter(m => m.movement_type === 'out').reduce((sum, m) => sum + m.quantity, 0)} unit
-                          </span>
-                        </div>
-                        <div className="pt-2 border-t border-blue-100 flex justify-between items-center font-bold">
-                          <span>Total Nilai Belanja</span>
-                          <span>{formatCurrency(movements.filter(m => m.movement_type === 'in').reduce((sum, m) => sum + (m.quantity * (m.unit_price || 0)), 0))}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card className="bg-green-50/50 border-green-100">
-                    <CardContent className="p-6">
-                      <h4 className="text-sm font-bold text-green-800 mb-4 flex items-center gap-2">
-                        <Wallet className="w-4 h-4" />
-                        Statistik Deposit
-                      </h4>
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Total Setoran</span>
-                          <span className="font-bold text-green-600">
-                            {formatCurrency(deposits.filter(d => d.type === 'deposit').reduce((sum, d) => sum + d.amount, 0))}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Total Penggunaan</span>
-                          <span className="font-bold text-red-600">
-                            {formatCurrency(deposits.filter(d => d.type === 'usage').reduce((sum, d) => sum + d.amount, 0))}
-                          </span>
-                        </div>
-                        <div className="pt-2 border-t border-green-100 flex justify-between items-center font-bold">
-                          <span>Saldo Akhir</span>
-                          <span className="text-2xl text-green-700">{formatCurrency(supplier.deposit_balance || 0)}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <RefreshCw className="w-12 h-12 text-slate-300 animate-spin" />
+              <p className="text-slate-400 font-bold animate-pulse">Memuat riwayat transaksi...</p>
             </div>
-          </Tabs>
+          ) : deposits.length === 0 ? (
+            <div className="text-center py-24 bg-white rounded-3xl border-2 border-dashed border-slate-200">
+               <FileText className="w-16 h-16 text-slate-100 mx-auto mb-4" />
+               <p className="text-slate-400 font-bold">Belum ada aktivitas transaksi yang tercatat.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {deposits.map((d) => {
+                const isOut = ['usage', 'payment', 'out', 'bayar', 'penggunaan'].includes(d.type?.toLowerCase());
+                return (
+                  <Card key={d.id} className="border-none shadow-sm bg-white rounded-2xl overflow-hidden hover:shadow-md transition-shadow">
+                    <CardContent className="p-5 flex items-center justify-between">
+                      <div className="flex items-center gap-5">
+                        <div className={`p-4 rounded-xl ${isOut ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'}`}>
+                          {isOut ? <ArrowDownCircle className="w-6 h-6" /> : <ArrowUpCircle className="w-6 h-6" />}
+                        </div>
+                        <div>
+                          <div className="font-black text-slate-900 text-lg">{d.description || (isOut ? 'Penggunaan Saldo' : 'Setoran Deposit')}</div>
+                          <div className="flex items-center gap-3 text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">
+                            <Calendar className="w-3 h-3" />
+                            {format(new Date(d.created_at), 'dd MMMM yyyy, HH:mm', { locale: idLocale })}
+                            <span className="w-1 h-1 rounded-full bg-slate-200"></span>
+                            <span className={isOut ? 'text-rose-400' : 'text-emerald-400'}>{d.type}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-2xl font-black font-mono tracking-tighter ${isOut ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {isOut ? '-' : '+'}{formatCurrency(Number(String(d.amount).replace(/[^0-9]/g, '')))}
+                        </div>
+                        {!isOut && <div className="text-[10px] font-black text-emerald-500 flex items-center justify-end gap-1 mt-1 uppercase"><CheckCircle2 className="w-3 h-3" /> Terverifikasi</div>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Tutup
+        <DialogFooter className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Dokumen Elektronik • Terintegrasi Supabase DB</p>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-xl font-bold hover:bg-slate-200 transition-colors">
+            Tutup Jendela
           </Button>
-          <Button className={primaryColor} onClick={() => window.open('/purchase/suppliers', '_blank')}>
-            <ExternalLink className="w-4 h-4 mr-2" />
-            Kelola di Master Supplier
-          </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

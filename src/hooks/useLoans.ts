@@ -100,28 +100,8 @@ export function useLoans() {
 
     const deletePayment = async (paymentId: string) => {
         try {
-            // 1. Delete and get the payment details
-            const deletedPayment = await loanService.deletePayment(paymentId);
-            
-            if (deletedPayment && deletedPayment.loan_id && deletedPayment.payment_status === 'approved') {
-                // 2. Fetch current loan to get current balance
-                const allLoans = await loanService.getAll();
-                const loan = allLoans.find(l => l.id === deletedPayment.loan_id);
-                
-                if (loan) {
-                    // 3. Restore the balance
-                    const newRemaining = loan.remaining_amount + deletedPayment.amount;
-                    // If it was paid_off, it might become approved again
-                    const newStatus = loan.status === 'paid_off' ? 'approved' : loan.status;
-                    
-                    await loanService.update(loan.id, {
-                        remaining_amount: newRemaining,
-                        status: newStatus
-                    });
-                }
-            }
-            
-            await fetchLoans(); // Refresh all
+            await loanService.deletePayment(paymentId);
+            await fetchLoans(); // Refresh all balances from database
         } catch (err: any) {
             const errorMsg = handleSupabaseError(err);
             setError(errorMsg);

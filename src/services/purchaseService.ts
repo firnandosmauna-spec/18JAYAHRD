@@ -27,41 +27,57 @@ export class PurchaseService {
 
     // Hitung deposit_balance dari riwayat transaksi (lebih akurat dari kolom cached)
     const depositMap = (deposits || []).reduce((acc: Record<string, number>, d) => {
-      const delta = d.type === 'deposit' ? Number(d.amount) : -Number(d.amount);
+      const type = (d.type || '').toLowerCase().trim();
+      const isNegative = ['usage', 'payment', 'penggunaan'].includes(type);
+      const delta = isNegative ? -Number(d.amount) : Number(d.amount);
       acc[d.supplier_id] = (acc[d.supplier_id] || 0) + delta;
       return acc;
     }, {});
 
-    // Fetch unpaid invoice totals per supplier
-    const { data: invoices, error: invoicesError } = await supabase
-      .from('purchase_invoices')
-      .select('supplier_id, total_amount, paid_amount')
-      .neq('payment_status', 'paid')
-      .neq('status', 'cancelled');
+    // Fetch ALL unpaid invoices using batching to overcome the 1000-row limit
+    let allInvoices: any[] = [];
+    let from = 0;
+    const limit = 1000;
+    let hasMoreInvoices = true;
 
-    try {
-      if (invoicesError) {
-        console.warn('Error fetching supplier debts:', invoicesError);
+    while (hasMoreInvoices) {
+      const { data: invBatch, error: invError } = await supabase
+        .from('purchase_invoices')
+        .select('supplier_id, total_amount, paid_amount')
+        .neq('payment_status', 'paid')
+        .neq('status', 'cancelled')
+        .range(from, from + limit - 1);
+
+      if (invError) {
+        console.warn('Error fetching supplier debts batch:', invError);
+        break;
       }
 
+      if (!invBatch || invBatch.length === 0) {
+        hasMoreInvoices = false;
+      } else {
+        allInvoices = [...allInvoices, ...invBatch];
+        if (invBatch.length < limit) hasMoreInvoices = false;
+        from += limit;
+      }
+    }
+
+    try {
       // Aggregate debt per supplier
-      const debtMap = (invoices || []).reduce((acc: any, inv) => {
-        const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
+      const debtMap = (allInvoices || []).reduce((acc: any, inv) => {
+        const debt = Number(inv.total_amount || 0) - Number(inv.paid_amount || 0);
         acc[inv.supplier_id] = (acc[inv.supplier_id] || 0) + debt;
         return acc;
       }, {});
 
       const result = (suppliers || []).map(s => {
         const debtFromInvoices = debtMap[s.id] || 0;
-        // Gunakan kalkulasi dari supplier_deposits jika ada, fallback ke kolom DB
-        const computedDeposit = depositMap.hasOwnProperty(s.id)
-          ? Math.max(0, depositMap[s.id])
-          : Number(s.deposit_balance || 0);
-
+        // Gunakan saldo yang ada di tabel supplier sebagai base, 
+        // dan pastikan tidak hilang saat ada kalkulasi history
         return {
           ...s,
-          deposit_balance: computedDeposit,
-          total_debt: debtFromInvoices > 0 ? debtFromInvoices : 0
+          deposit_balance: Number(s.deposit_balance || 0),
+          total_debt: Number(debtFromInvoices || 0)
         };
       });
 
@@ -220,6 +236,20 @@ export class PurchaseService {
   }
 
   // Purchase Invoice Management
+  static async getPurchaseInvoicesBySupplier(supplierId: string): Promise<PurchaseInvoice[]> {
+    const { data, error } = await supabase
+      .from('purchase_invoices')
+      .select(`
+        *,
+        payment_method:payment_methods(id, name)
+      `)
+      .eq('supplier_id', supplierId)
+      .order('invoice_date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
   static async getPurchaseInvoices(): Promise<PurchaseInvoice[]> {
     const { data, error } = await supabase
       .from('purchase_invoices')
@@ -371,7 +401,19 @@ export class PurchaseService {
       throw error;
     }
     
-    console.log('Supplier deposit added successfully:', data);
+    // UPDATE SALDO DI TABEL SUPPLIERS (PENTING!)
+    const { data: currentSupp } = await supabase.from('suppliers').select('deposit_balance').eq('id', deposit.supplier_id).single();
+    const currentBalance = Number(currentSupp?.deposit_balance || 0);
+    const delta = (deposit.type || '').toLowerCase().trim() === 'usage' || 
+                  (deposit.type || '').toLowerCase().trim() === 'payment' ||
+                  (deposit.type || '').toLowerCase().trim() === 'penggunaan'
+                  ? -Number(deposit.amount) : Number(deposit.amount);
+    
+    await supabase.from('suppliers')
+      .update({ deposit_balance: currentBalance + delta })
+      .eq('id', deposit.supplier_id);
+
+    console.log('Supplier deposit added and balance updated successfully:', data);
     return data;
   }
 
@@ -388,12 +430,25 @@ export class PurchaseService {
   }
 
   static async deleteSupplierDeposit(id: string): Promise<void> {
+    // Ambil data sebelum dihapus untuk menyesuaikan saldo
+    const { data: deposit } = await supabase.from('supplier_deposits').select('*').eq('id', id).single();
+    
     const { error } = await supabase
       .from('supplier_deposits')
       .delete()
       .eq('id', id);
 
     if (error) throw error;
+
+    if (deposit) {
+      const { data: currentSupp } = await supabase.from('suppliers').select('deposit_balance').eq('id', deposit.supplier_id).single();
+      const currentBalance = Number(currentSupp?.deposit_balance || 0);
+      const delta = deposit.type === 'deposit' ? Number(deposit.amount) : -Number(deposit.amount);
+      
+      await supabase.from('suppliers')
+        .update({ deposit_balance: currentBalance - delta })
+        .eq('id', deposit.supplier_id);
+    }
   }
 
   // Utility Methods

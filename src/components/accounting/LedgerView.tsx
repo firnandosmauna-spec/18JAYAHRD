@@ -6,9 +6,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Button } from '../../components/ui/button';
 import { Label } from '../../components/ui/label';
 import { Input } from '../../components/ui/input';
-import { Calendar, Download, Printer, Search, Loader2 } from 'lucide-react';
+import { Calendar, Download, Printer, Search, Loader2, FileText } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import { AccountingNativeSelect } from './AccountingNativeSelect';
+import { generateLedgerPDF } from '../../utils/pdfGenerator';
 
 export function LedgerView() {
     const { accounts } = useAccounts();
@@ -42,6 +43,20 @@ export function LedgerView() {
 
     let runningBalance = openingBalance;
 
+    const handleExportPDF = () => {
+        if (!selectedAccount) return;
+        generateLedgerPDF(
+            { 
+                name: selectedAccount.name, 
+                code: selectedAccount.code, 
+                type: selectedAccount.type 
+            },
+            dateRange,
+            openingBalance,
+            ledgerItems
+        );
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -50,20 +65,39 @@ export function LedgerView() {
                     <p className="text-muted-foreground">Rincian transaksi per akun</p>
                 </div>
                 <div className="flex items-center gap-2 print:hidden">
-                    <Button variant="outline" size="sm" onClick={() => {
-                        const csvContent = "data:text/csv;charset=utf-8,Tanggal,Ref,Memo,Debit,Kredit,Saldo\n" +
-                            ledgerItems.map(item => `${item.journal.date},${item.journal.reference},${item.description || item.journal.description},${item.debit},${item.credit}`).join("\n");
-                        const encodedUri = encodeURI(csvContent);
-                        const link = document.createElement("a");
-                        link.setAttribute("href", encodedUri);
-                        link.setAttribute("download", `Buku_Besar_${selectedAccount?.name || 'Akun'}.csv`);
-                        document.body.appendChild(link);
-                        link.click();
-                    }}>
-                        <Download className="w-4 h-4 mr-2" />
-                        Ekspor
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleExportPDF}
+                        disabled={!selectedAccountId || loading}
+                    >
+                        <FileText className="w-4 h-4 mr-2" />
+                        Ekspor PDF
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => window.print()}>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                            const csvContent = "data:text/csv;charset=utf-8,Tanggal,Ref,Memo,Debit,Kredit,Saldo\n" +
+                                ledgerItems.map(item => `${item.journal.date},${item.journal.reference},${item.description || item.journal.description},${item.debit},${item.credit}`).join("\n");
+                            const encodedUri = encodeURI(csvContent);
+                            const link = document.createElement("a");
+                            link.setAttribute("href", encodedUri);
+                            link.setAttribute("download", `Buku_Besar_${selectedAccount?.name || 'Akun'}.csv`);
+                            document.body.appendChild(link);
+                            link.click();
+                        }}
+                        disabled={!selectedAccountId || loading}
+                    >
+                        <Download className="w-4 h-4 mr-2" />
+                        Ekspor CSV
+                    </Button>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => window.print()}
+                        disabled={!selectedAccountId || loading}
+                    >
                         <Printer className="w-4 h-4 mr-2" />
                         Cetak
                     </Button>

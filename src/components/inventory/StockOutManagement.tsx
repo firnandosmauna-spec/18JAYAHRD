@@ -136,9 +136,11 @@ export function StockOutManagement() {
     const movementsWithBalances = calculateBalances();
 
     const filteredMovements = movementsWithBalances.filter(m => {
-        const product = (m as any).products;
+        const prod = (m as any).products;
+        const product = Array.isArray(prod) ? prod[0] : prod;
         const productName = product?.name || '';
-        const supplierName = product?.suppliers?.name || '';
+        const supp = product?.suppliers;
+        const supplierName = (Array.isArray(supp) ? supp[0]?.name : supp?.name) || '';
         const sku = product?.sku || '';
         const reference = m.reference || '';
         const search = searchQuery.toLowerCase();
@@ -800,7 +802,11 @@ export function StockOutManagement() {
                                             {format(new Date(m.created_at), 'dd/MM/yyyy')}
                                         </TableCell>
                                         <TableCell className="font-body text-xs">
-                                            {(m as any).products?.suppliers?.name || '-'}
+                                            {(() => {
+                                                const prod = (m as any).products;
+                                                const supp = Array.isArray(prod) ? prod[0]?.suppliers : prod?.suppliers;
+                                                return (Array.isArray(supp) ? supp[0]?.name : supp?.name) || '-';
+                                            })()}
                                         </TableCell>
                                         <TableCell className="font-mono text-[10px] text-muted-foreground">
                                             {m.reference || '-'}

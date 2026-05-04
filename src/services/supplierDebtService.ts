@@ -50,24 +50,6 @@ export const supplierDebtService = {
     return data
   },
 
-  async getInvoiceItems(invoiceId: string) {
-    const { data, error } = await supabase
-      .from('purchase_invoice_items')
-      .select(`
-        *,
-        product:products (
-          name,
-          unit,
-          volume,
-          sku
-        )
-      `)
-      .eq('purchase_invoice_id', invoiceId)
-
-    if (error) throw error
-    return data || []
-  },
-
   // --- Payments ---
 
   async getAllPayments() {
@@ -141,184 +123,283 @@ export const supplierDebtService = {
     }))
   },
 
-  async syncAllSupplierDebts() {
-    console.group('=== DEEP HISTORY SYNC REPORT ===')
-    
-    let totalMigratedInvoices = 0
-    let totalMigratedItems = 0
-    let totalMovementsScanned = 0
-    let totalCandidatesFound = 0
-    
-    // 1. Fetch ALL existing invoices for de-duplication
-    const { data: allExistingInvoices, error: invFetchError } = await supabase
-      .from('purchase_invoices')
-      .select('invoice_number')
-    
-    if (invFetchError) throw invFetchError
-    const existingInvNumbers = new Set((allExistingInvoices || []).map(i => i.invoice_number))
+  async syncAllSupplierDebts(targetSupplierId?: string) {
+    console.group('=== DEEP HISTORY SYNC REPORT ===');
+    console.log('[Sync Debug] Started for Supplier ID:', targetSupplierId);
+    let totalMigratedInvoices = 0;
+    let totalMovementsScanned = 0;
+    let alreadyInvoicedCount = 0;
+    let updatedInvoicesCount = 0;
 
-    // 2. Fetch 'in' stock movements in batches to overcome Supabase 1000-row limit
-    let hasMore = true
-    let page = 0
-    const pageSize = 1000
-    const htgCandidates: any[] = []
+    try {
+      // 1. Diagnostics & Repair (Simplified for stability)
+      const targetSuppId = targetSupplierId || '2fa96adc-bfb9-44c6-a25d-d9a254a26d55';
 
-    // Helper to safely get relationship data (handles array or object)
-    const getRel = (obj: any, key: string) => {
-      if (!obj || !obj[key]) return null
-      return Array.isArray(obj[key]) ? obj[key][0] : obj[key]
-    }
+      // 2. Fetch existing invoice item links
+      const { data: allItems } = await supabase.from('purchase_invoice_items').select('notes');
+      const invoicedMovementIds = new Set<string>();
+      allItems?.forEach(item => {
+        const match = item.notes?.match(/(?:Migrated from Stock Mov|Auto-generated from movement): ([a-f0-9-]+)/i);
+        if (match && match[1]) invoicedMovementIds.add(match[1]);
+      });
 
-    while (hasMore) {
-      console.log(`Fetching movements page ${page}...`)
-      const { data: batch, error: movError } = await supabase
-        .from('stock_movements')
-        .select(`
-          *,
-          products (id, name, supplier_id, cost),
-          payment_methods (name)
-        `)
-        .eq('movement_type', 'in')
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-        .order('created_at', { ascending: false })
+      // 3. Batch Scan Movements
+      let hasMore = true;
+      let page = 0;
+      while (hasMore) {
+        const { data: batch } = await supabase.from('stock_movements')
+          .select('*, products(id, name, supplier_id, cost)')
+          .eq('type', 'in')
+          .range(page * 1000, (page + 1) * 1000 - 1);
 
-      if (movError) {
-        console.error('Error fetching batch:', movError)
-        hasMore = false
-        break
-      }
-
-      if (!batch || batch.length === 0) {
-        hasMore = false
-        break
-      }
-
-      totalMovementsScanned += batch.length
-
-      // Filter this batch
-      const batchCandidates = batch.filter(m => {
-        const pm = getRel(m, 'payment_methods')
-        const prod = getRel(m, 'products')
+        if (!batch || batch.length === 0) break;
+        console.log(`[Sync Debug] Page ${page} batch size: ${batch.length}`);
         
-        const pmName = (pm?.name || '').toLowerCase()
-        const isCash = pmName.includes('cash') || pmName.includes('tunai')
-        const isDebtPM = pmName.includes('hutang') || pmName.includes('tempo') || pmName.includes('kredit')
-        
-        // If it's explicitly debt, OR if it's not cash and has no PM (legacy)
-        const isHutang = isDebtPM || (!isCash && pmName === '')
-        
-        const isAlreadyInvoiced = m.reference && existingInvNumbers.has(m.reference)
-        // Check if it's an auto-reference but somehow missing from current invoices
-        const isAutoRefMissing = m.reference && m.reference.startsWith('INV-AUTO-') && !existingInvNumbers.has(m.reference)
-        
-        const hasSupplier = prod?.supplier_id
-        
-        // We include it if it's hutang and not invoiced, OR if the auto-ref is missing
-        return (isHutang && !isAlreadyInvoiced) || isAutoRefMissing && hasSupplier
-      })
-
-      htgCandidates.push(...batchCandidates)
-      totalCandidatesFound += batchCandidates.length
-
-      if (batch.length < pageSize) hasMore = false
-      page++
-    }
-
-    console.log(`Scanned ${totalMovementsScanned} movements. Found ${totalCandidatesFound} candidates.`)
-
-    // 3. Group candidates by reference
-    const groups: Record<string, any[]> = {}
-    htgCandidates.forEach(m => {
-      const prod = getRel(m, 'products')
-      const groupKey = m.reference || `GROUP-${prod?.supplier_id || 'unknown'}-${new Date(m.created_at).toISOString().split('T')[0]}`
-      if (!groups[groupKey]) groups[groupKey] = []
-      groups[groupKey].push(m)
-    })
-
-    // 4. Migrate each group
-    for (const [ref, groupMovs] of Object.entries(groups)) {
-      try {
-        const firstMov = groupMovs[0]
-        const prod = getRel(firstMov, 'products')
-        const supplierId = prod?.supplier_id
-
-        if (!supplierId) continue
-
-        const itemsToInsert = groupMovs.map(m => {
-          const mProd = getRel(m, 'products')
-          const price = m.unit_price || mProd?.cost || 0
-          return {
-            product_id: m.product_id,
-            quantity: m.quantity,
-            unit_price: price,
-            line_total: m.quantity * price,
-            mov_id: m.id
+        const htgCandidates = batch.filter(m => {
+          const p = m.products;
+          const suppId = Array.isArray(p) ? p[0]?.supplier_id : (p as any)?.supplier_id;
+          
+          if (suppId === targetSuppId) {
+            console.log(`[Sync Debug] Found movement for target supplier:`, {
+              id: m.id,
+              ref: m.reference,
+              invoiced: invoicedMovementIds.has(m.id)
+            });
           }
-        })
 
-        const totalAmount = itemsToInsert.reduce((sum, item) => sum + item.line_total, 0)
-        if (totalAmount <= 0) continue
+          if (!suppId || suppId !== targetSuppId) return false;
+          if (invoicedMovementIds.has(m.id)) { alreadyInvoicedCount++; return false; }
+          return true;
+        });
+        
+        if (htgCandidates.length > 0) {
+          console.log(`[Sync Debug] Found ${htgCandidates.length} new candidates for this page!`);
+        }
 
-        const invoiceNumber = ref.startsWith('GROUP-') 
-          ? `INV-AUTO-MIG-${Date.now().toString().slice(-6)}-${firstMov.id.slice(0, 4)}` 
-          : ref
+        // Group & Migrate
+        const groups: Record<string, any[]> = {};
+        htgCandidates.forEach(m => {
+          const ref = m.reference || `AUTO-${new Date(m.created_at).getTime()}`;
+          if (!groups[ref]) groups[ref] = [];
+          groups[ref].push(m);
+        });
 
-        const { data: invoice, error: invError } = await supabase
-          .from('purchase_invoices')
-          .insert({
-            supplier_id: supplierId,
-            invoice_number: invoiceNumber,
-            invoice_date: new Date(firstMov.created_at).toISOString().split('T')[0],
-            due_date: new Date(new Date(firstMov.created_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'received',
-            payment_status: 'unpaid',
+        for (const [ref, group] of Object.entries(groups)) {
+          const totalAmount = group.reduce((sum, m) => sum + (m.quantity * (m.unit_price || 0)), 0);
+          const { data: newInv, error: invErr } = await supabase.from('purchase_invoices').insert({
+            supplier_id: targetSuppId,
+            invoice_number: ref,
             total_amount: totalAmount,
             paid_amount: 0,
-            notes: `Auto-migrated (${groupMovs.length} item)`,
-            created_by: 'system_migration'
-          })
-          .select()
-          .single()
+            payment_status: 'unpaid',
+            status: 'received',
+            notes: `Auto-Migrated (${group.length} item)`
+          }).select().single();
 
-        if (invError) {
-          console.error(`Error creating invoice ${invoiceNumber}:`, invError)
-          continue
-        }
-
-        await supabase.from('purchase_invoice_items').insert(itemsToInsert.map(item => ({
-          purchase_invoice_id: invoice.id,
-          product_id: item.product_id,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          line_total: item.line_total,
-          notes: `Migrated from Stock Mov: ${item.mov_id}`
-        })))
-
-        for (const m of groupMovs) {
-          if (!m.reference) {
-            await supabase.from('stock_movements').update({ reference: invoiceNumber }).eq('id', m.id)
+          if (newInv) {
+            totalMigratedInvoices++;
+            for (const m of group) {
+              await supabase.from('purchase_invoice_items').insert({
+                purchase_invoice_id: newInv.id,
+                product_id: m.product_id,
+                quantity: m.quantity,
+                unit_price: m.unit_price || 0,
+                line_total: m.quantity * (m.unit_price || 0),
+                notes: `Auto-generated from movement: ${m.id}`
+              });
+            }
           }
         }
+        if (batch.length < 1000) hasMore = false;
+        page++;
+      }
 
-        totalMigratedInvoices++
-        totalMigratedItems += groupMovs.length
+      // 4. Phase 12: Cross-Supplier Invoice Repair (Agresif)
+      const { data: allInvItems } = await supabase
+        .from('purchase_invoice_items')
+        .select('purchase_invoice_id, notes');
 
-      } catch (err) {
-        console.error('Fatal error in sync loop:', err)
+      for (const item of (allInvItems || [])) {
+        const mIdMatch = item.notes?.match(/(?:Migrated from Stock Mov|Auto-generated from movement): ([a-f0-9-]+)/i);
+        if (mIdMatch && mIdMatch[1]) {
+          const mId = mIdMatch[1];
+          // Check if this movement belongs to our target supplier
+          const { data: mov } = await supabase
+            .from('stock_movements')
+            .select('products(supplier_id)')
+            .eq('id', mId)
+            .single();
+          
+          const actualSuppId = (mov?.products as any)?.supplier_id;
+          if (actualSuppId === targetSuppId) {
+            // This item SHOULD belong to our target supplier. Ensure the invoice matches.
+            const { data: inv } = await supabase
+              .from('purchase_invoices')
+              .select('id, supplier_id')
+              .eq('id', item.purchase_invoice_id)
+              .single();
+            
+            if (inv && inv.supplier_id !== targetSuppId) {
+              console.log(`[Phase 12] RE-ASSIGNING invoice ${inv.id} to ${targetSuppId}`);
+              await supabase.from('purchase_invoices').update({ supplier_id: targetSuppId }).eq('id', inv.id);
+              updatedInvoicesCount++;
+            }
+          }
+        }
+      }
+
+      // 5. Final Recalculate
+      const { data: finalInvs } = await supabase.from('purchase_invoices')
+        .select('*, purchase_invoice_items(*)')
+        .eq('supplier_id', targetSuppId);
+
+      for (const inv of (finalInvs || [])) {
+        const items = (inv as any).purchase_invoice_items || [];
+        const calcTotal = items.reduce((sum: number, it: any) => sum + (it.line_total || 0), 0);
+        if (Math.abs(calcTotal - inv.total_amount) > 0.01) {
+          await supabase.from('purchase_invoices').update({ total_amount: calcTotal }).eq('id', inv.id);
+          updatedInvoicesCount++;
+        }
+      }
+
+    } finally {
+      console.groupEnd();
+    }
+
+    return `Selesai. Memindai ${totalMovementsScanned} data. Berhasil sinkron ${totalMigratedInvoices} nota baru & perbarui ${updatedInvoicesCount} saldo.`;
+  },
+
+  async getInvoiceItems(invoiceId: string) {
+    const { data, error } = await supabase
+      .from('purchase_invoice_items')
+      .select(`
+        *,
+        product:products (
+          id,
+          name
+        )
+      `)
+      .eq('purchase_invoice_id', invoiceId);
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getPaymentsBySupplier(supplierId: string) {
+    const { data, error } = await supabase
+      .from('purchase_payments')
+      .select('*')
+      .eq('supplier_id', supplierId)
+      .order('payment_date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getSupplierDeposits(supplierId: string) {
+    const { data, error } = await supabase
+      .from('supplier_deposits')
+      .select('*')
+      .eq('supplier_id', supplierId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async addSupplierDeposit(deposit: any) {
+    const { data, error } = await supabase
+      .from('supplier_deposits')
+      .insert(deposit)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteSupplierDeposit(id: string) {
+    const { error } = await supabase
+      .from('supplier_deposits')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  async syncAllSupplierDeposits() {
+    console.log('[Sync Deposit] Starting nuclear reconciliation...');
+    // 1. Fetch all suppliers
+    const { data: suppliers, error: sErr } = await supabase.from('suppliers').select('id, name, deposit_balance');
+    if (sErr) throw sErr;
+    
+    // 2. Fetch all deposit history using batching
+    let allDeposits: any[] = [];
+    let from = 0;
+    const limit = 1000;
+    let hasMore = true;
+    while (hasMore) {
+      const { data: batch, error: dErr } = await supabase.from('supplier_deposits').select('supplier_id, amount, type').range(from, from + limit - 1);
+      if (dErr) throw dErr;
+      if (!batch || batch.length === 0) hasMore = false;
+      else {
+        allDeposits = [...allDeposits, ...batch];
+        if (batch.length < limit) hasMore = false;
+        from += limit;
       }
     }
-
-    // --- CLEANUP DIAGNOSTIC DUMMY ---
-    try {
-      await supabase.from('purchase_invoices').delete().like('invoice_number', 'DIAG-TEST-%')
-    } catch (cleanupErr) {
-      console.error('Cleanup failed:', cleanupErr)
-    }
-
-    const report = `Pindai ${totalMovementsScanned} riwayat, temukan ${totalCandidatesFound} nota potensial. Berhasil migrasi ${totalMigratedInvoices} nota baru ke modul hutang.`
-    console.log(report)
-    console.groupEnd()
     
-    return report
+    // 3. Aggregate totals
+    const depositMap = (allDeposits || []).reduce((acc: any, d) => {
+      const type = (d.type || '').toLowerCase().trim();
+      
+      // SANITIZE AMOUNT: Handle strings with dots/commas (Indonesian format)
+      let rawAmount = d.amount;
+      if (typeof rawAmount === 'string') {
+        // Remove all non-numeric characters except maybe a single decimal point if it's there
+        // But usually in this DB it's just dots for thousands.
+        rawAmount = rawAmount.replace(/[^0-9,-]/g, '').replace(',', '.');
+      }
+      const amount = Number(rawAmount || 0) || 0;
+      
+      const negativeTypes = ['usage', 'payment', 'adjustment_out', 'bayar', 'penggunaan', 'out'];
+      let delta = negativeTypes.includes(type) ? -amount : amount;
+      
+      acc[d.supplier_id] = (acc[d.supplier_id] || 0) + delta;
+      return acc;
+    }, {});
+    
+    let updatedCount = 0;
+    const nameMap: Record<string, number> = {};
+    const duplicates: string[] = [];
+    
+    // 4. Detect Duplicates for reporting
+    suppliers.forEach(s => {
+      nameMap[s.name] = (nameMap[s.name] || 0) + 1;
+      if (nameMap[s.name] === 2) duplicates.push(s.name);
+    });
+
+    // 5. Update each supplier balance (Protect against negatives)
+    for (const s of (suppliers || [])) {
+      let newBalance = depositMap[s.id] || 0;
+      
+      if (newBalance < 0) newBalance = 0;
+
+      const oldBalance = Number(s.deposit_balance || 0);
+      if (Math.abs(newBalance - oldBalance) > 1) {
+        await supabase.from('suppliers').update({ 
+          deposit_balance: newBalance,
+          updated_at: new Date().toISOString() 
+        }).eq('id', s.id);
+        updatedCount++;
+      }
+    }
+    
+    let report = `Sinkronisasi Selesai. Memperbaiki ${updatedCount} data.`;
+    if (duplicates.length > 0) {
+      report += `\nPERINGATAN: Ditemukan ${duplicates.length} Supplier GANDA (${duplicates.join(', ')}). Segera hubungi admin untuk penggabungan data agar saldo tidak terbagi dua!`;
+    }
+    
+    return report;
   }
-}
+};

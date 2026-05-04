@@ -669,17 +669,15 @@ export default function ConsumerDatabaseView() {
                                         >
                                             <CheckCircle2 className="w-3.5 h-3.5" />
                                         </Button>
-                                        {isAdmin && (
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                className="h-8 w-8 p-0 text-blue-600 border-blue-100 hover:bg-blue-50"
-                                                title="Bayar Booking"
-                                                onClick={() => setPosConsumer(consumer)}
-                                            >
-                                                <Receipt className="w-3.5 h-3.5" />
-                                            </Button>
-                                        )}
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 w-8 p-0 text-blue-600 border-blue-100 hover:bg-blue-50"
+                                            title="Bayar Booking"
+                                            onClick={() => setPosConsumer(consumer)}
+                                        >
+                                            <Receipt className="w-3.5 h-3.5" />
+                                        </Button>
                                         <Button
                                             size="sm"
                                             variant="outline"
@@ -831,17 +829,15 @@ export default function ConsumerDatabaseView() {
                                                             >
                                                                 <CheckCircle2 className="h-4 w-4" />
                                                             </Button>
-                                                            {isAdmin && (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                                                                    title="Bayar Booking"
-                                                                    onClick={() => setPosConsumer(consumer)}
-                                                                >
-                                                                    <Receipt className="h-4 w-4" />
-                                                                </Button>
-                                                            )}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                                                                title="Bayar Booking"
+                                                                onClick={() => setPosConsumer(consumer)}
+                                                            >
+                                                                <Receipt className="h-4 w-4" />
+                                                            </Button>
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"

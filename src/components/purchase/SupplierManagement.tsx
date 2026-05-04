@@ -1,864 +1,275 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Truck,
   Plus,
   Search,
-  Edit,
+  Edit2,
   Trash2,
-  Mail,
-  Phone,
-  MapPin,
-  Calendar,
   Wallet,
+  FileText,
+  RefreshCw,
   History,
-  ArrowUpCircle,
-  ArrowDownCircle,
-  Undo2,
-  AlertTriangle,
-  Settings2
+  ArrowUpRight,
+  ArrowDownLeft,
+  Settings2,
+  User,
+  ChevronRight
 } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogFooter
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { useSuppliers } from '@/hooks/usePurchase';
-import { useProducts } from '@/hooks/useInventory';
-import { useToast } from '@/components/ui/use-toast';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PurchaseService } from '@/services/purchaseService';
+import { supplierDebtService } from '@/services/supplierDebtService';
+import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/use-toast';
 import { formatCurrency } from '@/lib/utils';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import type { Supplier, SupplierDeposit } from '@/types/purchase';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SupplierBalanceDialog } from './SupplierBalanceDialog';
+import { Card } from '@/components/ui/card';
+import { format } from 'date-fns';
+import { id as idLocale } from 'date-fns/locale';
 
 export function SupplierManagement() {
-  const location = useLocation();
-  const isInventory = location.pathname.includes('/inventory');
-  const primaryColor = isInventory ? 'bg-inventory' : 'bg-orange-600';
-  const primaryHover = isInventory ? 'hover:bg-inventory-dark' : 'hover:bg-orange-700';
-  const primaryText = isInventory ? 'text-inventory' : 'text-orange-600';
-  const primaryBorder = isInventory ? 'border-t-inventory' : 'border-t-orange-600';
-
-  const { suppliers, loading, refetch, createSupplier, updateSupplier, deleteSupplier } = useSuppliers();
+  const { suppliers, loading, refetch } = useSuppliers();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
-  const [showDialog, setShowDialog] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
-  const [formData, setFormData] = useState({
-    code: '',
-    name: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    postal_code: '',
-    tax_number: '',
-    payment_terms: 30,
-    status: 'active',
-    payment_method: 'CASH' as 'CASH' | 'Hutang'
-  });
-
-  const { products } = useProducts();
   const [activeTab, setActiveTab] = useState('all');
+  const [showFormDialog, setShowFormDialog] = useState(false);
+  const [showBalanceDialog, setShowBalanceDialog] = useState(false);
+  const [selectedSupplier, setSelectedSupplier] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recentDeposits, setRecentDeposits] = useState<any[]>([]);
 
-  const [visibleColumns, setVisibleColumns] = useState(() => {
-    const saved = localStorage.getItem('purchase_supplier_list_cols_v2');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse supplier list columns:', e);
-      }
-    }
-    return {
-      code: true,
-      status: true,
-      email: true,
-      phone: true,
-      location: true,
-      terms: true,
-      deposit: true,
-      debt: true,
-      actions: true
-    };
-  });
-
-  useEffect(() => {
-    localStorage.setItem('purchase_supplier_list_cols_v2', JSON.stringify(visibleColumns));
-  }, [visibleColumns]);
-
-  const toggleColumn = (column: string) => {
-    setVisibleColumns((prev: any) => ({
-      ...prev,
-      [column]: !prev[column]
-    }));
-  };
-
-  const filteredSuppliers = suppliers.filter(supplier => {
-    const matchesSearch = supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      supplier.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      supplier.email?.toLowerCase().includes(searchQuery.toLowerCase());
-
-    // Base filter: search match
-    if (!matchesSearch) return false;
-
-    // Tab filter
-    if (activeTab === 'all') return true;
-
-    // Filter suppliers by their own payment method
-    return supplier.payment_method?.toLowerCase() === activeTab.toLowerCase();
-  });
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.name.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Nama supplier wajib diisi',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    // Auto-generate code if empty
-    let finalFormData = { ...formData };
-    if (!finalFormData.code.trim()) {
-      const timestamp = new Date().getTime().toString().slice(-4);
-      finalFormData.code = `SUP-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${timestamp}`;
-    }
-
+  const fetchRecentDeposits = async () => {
     try {
-      setIsSubmitting(true);
-      if (editingSupplier) {
-        await updateSupplier(editingSupplier.id, finalFormData);
-        toast({ title: 'Berhasil', description: 'Data supplier berhasil diperbarui' });
-      } else {
-        await createSupplier(finalFormData);
-        toast({ title: 'Berhasil', description: 'Supplier baru berhasil ditambahkan' });
-      }
-      setShowDialog(false);
-      resetForm();
-    } catch (error: any) {
-      console.error('Error saving supplier:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Gagal menyimpan data supplier',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+      const { data } = await supabase.from('supplier_deposits').select('*, suppliers(name)').order('created_at', { ascending: false }).limit(10);
+      setRecentDeposits(data || []);
+    } catch (err) { console.error(err); }
   };
 
-  const handleEdit = (supplier: Supplier) => {
-    setEditingSupplier(supplier);
-    setFormData({
-      code: supplier.code,
-      name: supplier.name,
-      email: supplier.email || '',
-      phone: supplier.phone || '',
-      address: supplier.address || '',
-      city: supplier.city || '',
-      postal_code: supplier.postal_code || '',
-      tax_number: supplier.tax_number || '',
-      payment_terms: supplier.payment_terms || 30,
-      status: supplier.status || 'active',
-      payment_method: (supplier.payment_method as any) || 'CASH'
+  useEffect(() => { fetchRecentDeposits(); }, [suppliers]);
+
+  const [formData, setFormData] = useState({ name: '', code: '', contact_person: '', phone: '', email: '', address: '', payment_method: 'CASH', payment_terms: 30, is_active: true });
+
+  // STRICT FILTER LOGIC
+  const getFilteredData = (tabValue: string) => {
+    return suppliers.filter(s => {
+      // 1. Search Filter
+      const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                           s.code.toLowerCase().includes(searchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+
+      // 2. Tab Filter
+      if (tabValue === 'all' || tabValue === 'riwayat_global') return true;
+      
+      const method = (s.payment_method || '').toLowerCase();
+      const hasDeposit = (s.deposit_balance || 0) > 0;
+      const hasDebt = (s.total_debt || 0) > 0;
+
+      if (tabValue === 'cash') {
+        // ONLY SHOW CASH IF NO DEPOSIT AND NO DEBT
+        return (method.includes('cash') || method.includes('tunai') || method === '') && !hasDeposit && !hasDebt;
+      }
+      
+      if (tabValue === 'deposit') {
+        // SHOW IF HAS DEPOSIT BALANCE OR METHOD IS DEPOSIT
+        return hasDeposit || method.includes('deposit');
+      }
+      
+      if (tabValue === 'hutang') {
+        // SHOW IF HAS DEBT BALANCE OR METHOD IS DEBT/TEMPO
+        return hasDebt || method.includes('hutang') || method.includes('tempo') || method.includes('kredit');
+      }
+      
+      return true;
     });
-    setShowDialog(true);
+  };
+
+  const handleEdit = (s: any) => {
+    setSelectedSupplier(s);
+    setFormData({ name: s.name, code: s.code, contact_person: s.contact_person || '', phone: s.phone || '', email: s.email || '', address: s.address || '', payment_method: s.payment_method || 'CASH', payment_terms: s.payment_terms || 30, is_active: s.is_active });
+    setShowFormDialog(true);
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Apakah Anda yakin ingin menghapus supplier ini?')) {
-      try {
-        await deleteSupplier(id);
-        toast({ title: 'Berhasil', description: 'Supplier berhasil dihapus' });
-      } catch (error: any) {
-        console.error('Error deleting supplier:', error);
-        toast({
-          title: 'Error',
-          description: error.message || 'Gagal menghapus supplier',
-          variant: 'destructive'
-        });
+    if (!confirm('Hapus supplier ini?')) return;
+    try {
+      await PurchaseService.deleteSupplier(id);
+      toast({ title: 'Berhasil', description: 'Supplier dihapus' });
+      refetch();
+    } catch (error: any) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setIsSubmitting(true);
+      if (selectedSupplier) {
+        await PurchaseService.updateSupplier(selectedSupplier.id, formData);
+        toast({ title: 'Berhasil', description: 'Supplier diperbarui' });
+      } else {
+        await PurchaseService.createSupplier(formData);
+        toast({ title: 'Berhasil', description: 'Supplier ditambahkan' });
       }
-    }
+      setShowFormDialog(false);
+      refetch();
+    } catch (err: any) { toast({ title: 'Error', description: err.message, variant: 'destructive' }); } finally { setIsSubmitting(false); }
   };
 
-  const resetForm = () => {
-    setEditingSupplier(null);
-    setFormData({
-      code: '',
-      name: '',
-      email: '',
-      phone: '',
-      address: '',
-      city: '',
-      postal_code: '',
-      tax_number: '',
-      payment_terms: 30,
-      status: 'active',
-      payment_method: 'CASH'
-    });
-  };
-
-  const [selectedSupplierForDeposit, setSelectedSupplierForDeposit] = useState<Supplier | null>(null);
-  const [showDepositDialog, setShowDepositDialog] = useState(false);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className={`w-8 h-8 border-4 ${isInventory ? 'border-inventory/30 border-t-inventory' : 'border-orange-600/30 border-t-orange-600'} rounded-full animate-spin mx-auto mb-4`} />
-          <p className="text-gray-600">Memuat data supplier...</p>
-        </div>
-      </div>
-    );
-  }
+  const SupplierTable = ({ data }: { data: any[] }) => (
+    <Table>
+      <TableHeader className="bg-slate-50/50">
+        <TableRow className="hover:bg-transparent">
+          <TableHead className="py-4 pl-6 text-slate-400 uppercase text-[10px] font-black tracking-widest">Identitas</TableHead>
+          <TableHead className="text-slate-400 uppercase text-[10px] font-black tracking-widest">Metode</TableHead>
+          <TableHead className="text-right text-slate-400 uppercase text-[10px] font-black tracking-widest">Deposit</TableHead>
+          <TableHead className="text-right text-slate-400 uppercase text-[10px] font-black tracking-widest">Hutang</TableHead>
+          <TableHead className="text-right pr-6 text-slate-400 uppercase text-[10px] font-black tracking-widest">Kelola</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {data.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center py-20 text-slate-400">Tidak ada data di kategori ini</TableCell></TableRow> : 
+          data.map(s => (
+            <TableRow key={s.id} className="group hover:bg-slate-50 border-slate-50">
+              <TableCell className="py-5 pl-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs group-hover:bg-orange-100 group-hover:text-orange-600 transition-colors uppercase">{s.name.charAt(0)}</div>
+                  <div><p className="font-bold text-slate-900">{s.name}</p><p className="text-[10px] font-bold text-blue-500 font-mono tracking-tighter">{s.code}</p></div>
+                </div>
+              </TableCell>
+              <TableCell><Badge variant="outline" className="rounded-lg px-2 border-slate-200 text-slate-500 bg-white font-bold text-[10px] uppercase">{s.payment_method || 'CASH'}</Badge></TableCell>
+              <TableCell className="text-right font-mono font-bold text-emerald-600">{formatCurrency(s.deposit_balance || 0)}</TableCell>
+              <TableCell className="text-right font-mono font-bold text-rose-600">{formatCurrency(s.total_debt || 0)}</TableCell>
+              <TableCell className="text-right pr-6">
+                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button variant="ghost" size="icon" onClick={() => { setSelectedSupplier(s); setShowBalanceDialog(true); }} className="h-9 w-9 rounded-xl text-orange-600 hover:bg-orange-50"><Wallet className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleEdit(s)} className="h-9 w-9 rounded-xl text-slate-400 hover:bg-slate-100"><Edit2 className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)} className="h-9 w-9 rounded-xl text-rose-400 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))
+        }
+      </TableBody>
+    </Table>
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Master Supplier</h2>
-          <p className="text-gray-600">Kelola data supplier dan informasi kontak</p>
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 bg-slate-50/30 min-h-screen">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 flex items-center gap-3">Suppliers</h1>
+          <p className="text-slate-500 text-sm font-medium">Manajemen data pemasok dan pengelolaan deposit saldo.</p>
         </div>
-        <Dialog open={showDialog} onOpenChange={setShowDialog}>
-          <DialogTrigger asChild>
-            <Button onClick={resetForm} className={`${primaryColor} ${primaryHover}`}>
-              <Plus className="w-4 h-4 mr-2" />
-              Tambah Supplier
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingSupplier ? 'Edit Supplier' : 'Tambah Supplier Baru'}
-              </DialogTitle>
-              <DialogDescription>
-                Lengkapi informasi supplier di bawah ini
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="code">Kode Supplier</Label>
-                  <Input
-                    id="code"
-                    value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nama Supplier *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Telepon</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="address">Alamat</Label>
-                <Textarea
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="city">Kota</Label>
-                  <Input
-                    id="city"
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="postal_code">Kode Pos</Label>
-                  <Input
-                    id="postal_code"
-                    value={formData.postal_code}
-                    onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tax_number">NPWP</Label>
-                  <Input
-                    id="tax_number"
-                    value={formData.tax_number}
-                    onChange={(e) => setFormData({ ...formData, tax_number: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="payment_terms">Termin Pembayaran (hari)</Label>
-                <Input
-                  id="payment_terms"
-                  type="number"
-                  value={formData.payment_terms}
-                  onChange={(e) => setFormData({ ...formData, payment_terms: Number(e.target.value) })}
-                />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="status"
-                  checked={formData.status === 'active'}
-                  onCheckedChange={(checked) => setFormData({ ...formData, status: checked ? 'active' : 'inactive' })}
-                />
-                <Label htmlFor="status">Supplier Aktif</Label>
-              </div>
-
-              <div className="grid gap-2">
-                <Label className="font-body">Metode Pembayaran Default</Label>
-                <div className="flex gap-4">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      id="pm-cash"
-                      name="payment_method"
-                      className="w-4 h-4"
-                      checked={formData.payment_method === 'CASH'}
-                      onChange={() => setFormData({ ...formData, payment_method: 'CASH' })}
-                    />
-                    <Label htmlFor="pm-cash">CASH</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      id="pm-debt"
-                      name="payment_method"
-                      className="w-4 h-4"
-                      checked={formData.payment_method === 'Hutang'}
-                      onChange={() => setFormData({ ...formData, payment_method: 'Hutang' })}
-                    />
-                    <Label htmlFor="pm-debt">Hutang</Label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
-                  Batal
-                </Button>
-                <Button type="submit" disabled={isSubmitting} className={`${primaryColor} ${primaryHover}`}>
-                  {isSubmitting ? 'Menyimpan...' : (editingSupplier ? 'Update' : 'Simpan')}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <Button variant="outline" size="sm" onClick={() => supplierDebtService.syncAllSupplierDeposits().then(() => refetch())} className="h-10 px-4 rounded-xl bg-white border-slate-200 shadow-sm">
+            <RefreshCw className="w-4 h-4 mr-2 text-slate-400" /> Sinkron Data
+          </Button>
+          <Button onClick={() => { setSelectedSupplier(null); setShowFormDialog(true); }} className="h-10 px-6 rounded-xl bg-orange-600 hover:bg-orange-700 text-white shadow-lg shadow-orange-200 font-semibold transition-all active:scale-95">
+            <Plus className="w-4 h-4 mr-2" /> Supplier Baru
+          </Button>
+        </div>
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-2 flex-1">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            placeholder="Cari supplier..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="icon" className="h-10 w-10">
-              <Settings2 className="w-4 h-4" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-56" align="end">
-            <div className="space-y-2">
-              <h4 className="font-medium leading-none mb-4">Pengaturan Tampilan</h4>
-              <div className="space-y-3">
-                {Object.entries({
-                  code: 'Kode Supplier',
-                  status: 'Status',
-                  email: 'Email',
-                  phone: 'Telepon',
-                  location: 'Lokasi (Kota)',
-                  terms: 'Termin',
-                  deposit: 'Saldo Deposit',
-                  debt: 'Total Hutang',
-                  actions: 'Tombol Aksi'
-                }).map(([key, label]) => (
-                  <div key={key} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`sup-col-${key}`}
-                      checked={(visibleColumns as any)[key]}
-                      onCheckedChange={() => toggleColumn(key)}
-                    />
-                    <Label
-                      htmlFor={`sup-col-${key}`}
-                      className="text-sm font-normal cursor-pointer"
-                    >
-                      {label}
-                    </Label>
-                  </div>
-                ))}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[
+          { label: 'Total Supplier', val: suppliers.length, icon: User, color: 'blue' },
+          { label: 'Saldo Deposit', val: formatCurrency(suppliers.reduce((a, s) => a + (s.deposit_balance || 0), 0)), icon: Wallet, color: 'emerald' },
+          { label: 'Total Hutang', val: formatCurrency(suppliers.reduce((a, s) => a + (s.total_debt || 0), 0)), icon: FileText, color: 'rose' }
+        ].map((st, i) => (
+          <Card key={i} className="relative overflow-hidden border-none shadow-sm bg-white rounded-3xl p-6 group transition-all hover:shadow-md">
+            <div className="flex items-center gap-5">
+              <div className={`p-4 rounded-2xl bg-${st.color}-50 text-${st.color}-600`}><st.icon className="w-6 h-6" /></div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{st.label}</p>
+                <p className="text-3xl font-black text-slate-900">{st.val}</p>
               </div>
             </div>
-          </PopoverContent>
-        </Popover>
-      </div>
-      <Badge variant="outline" className="px-3 py-1">
-        {filteredSuppliers.length} supplier {activeTab !== 'all' ? `(${activeTab.toUpperCase()})` : ''}
-      </Badge>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="font-body">
-          <TabsTrigger value="all">Semua</TabsTrigger>
-          <TabsTrigger value="cash">CASH</TabsTrigger>
-          <TabsTrigger value="debt">Hutang</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {/* Supplier Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredSuppliers.map((supplier) => (
-          <Card key={supplier.id} className="hover:shadow-md transition-shadow">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-lg">{supplier.name}</CardTitle>
-                  {visibleColumns.code && <CardDescription className="font-mono">{supplier.code}</CardDescription>}
-                </div>
-                {visibleColumns.status && (
-                  <Badge variant={supplier.status === 'active' ? 'default' : 'secondary'}>
-                    {supplier.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {visibleColumns.email && supplier.email && (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Mail className="w-4 h-4" />
-                  <span className="truncate">{supplier.email}</span>
-                </div>
-              )}
-              {visibleColumns.phone && supplier.phone && (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Phone className="w-4 h-4" />
-                  <span>{supplier.phone}</span>
-                </div>
-              )}
-              {visibleColumns.location && supplier.city && (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <MapPin className="w-4 h-4" />
-                  <span>{supplier.city}</span>
-                </div>
-              )}
-              {visibleColumns.terms && supplier.payment_terms && (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Calendar className="w-4 h-4" />
-                  <span>Termin: {supplier.payment_terms} hari</span>
-                </div>
-              )}
-
-              {(visibleColumns.deposit || visibleColumns.debt) && (
-                <div 
-                  className={`mt-4 p-3 rounded-lg border border-dashed cursor-pointer transition-all hover:bg-opacity-80 active:scale-95 ${
-                    isInventory 
-                      ? 'bg-inventory/5 border-inventory/20 hover:bg-inventory/10' 
-                      : 'bg-orange-50 border-orange-200 hover:bg-orange-100'
-                  }`}
-                  onClick={() => {
-                    setSelectedSupplierForDeposit(supplier);
-                    setShowDepositDialog(true);
-                  }}
-                >
-                  {visibleColumns.deposit && (
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
-                        <Wallet className="w-3 h-3" />
-                        Saldo Deposit
-                      </span>
-                      <Badge variant="outline" className={`text-xs font-mono font-bold ${isInventory ? 'text-inventory-dark' : 'text-orange-700'}`}>
-                        {formatCurrency(supplier.deposit_balance || 0)}
-                      </Badge>
-                    </div>
-                  )}
-
-                  {visibleColumns.debt && (
-                    <div className={`flex items-center justify-between mb-1 ${visibleColumns.deposit ? 'pt-2 border-t border-gray-100 mt-2' : ''}`}>
-                      <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-red-500" />
-                        Total Hutang
-                      </span>
-                      <Badge variant="outline" className="text-xs font-mono font-bold text-red-600 bg-red-50 border-red-100">
-                        {formatCurrency(supplier.total_debt || 0)}
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {visibleColumns.actions && (
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleEdit(supplier)}
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDelete(supplier.id)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              )}
-            </CardContent>
           </Card>
         ))}
       </div>
 
-      {filteredSuppliers.length === 0 && (
-        <div className="text-center py-12">
-          <Truck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Belum ada supplier</h3>
-          <p className="text-gray-600 mb-4">
-            {searchQuery ? 'Tidak ada supplier yang sesuai dengan pencarian' : 'Mulai dengan menambahkan supplier pertama'}
-          </p>
-          {!searchQuery && (
-            <Button onClick={() => setShowDialog(true)} className={`${primaryColor} ${primaryHover}`}>
-              <Plus className="w-4 h-4 mr-2" />
-              Tambah Supplier
-            </Button>
-          )}
-        </div>
-      )}
-
-      {selectedSupplierForDeposit && (
-        <DepositManagementDialog
-          open={showDepositDialog}
-          onOpenChange={setShowDepositDialog}
-          supplier={selectedSupplierForDeposit}
-          onSuccess={() => {
-            refetch();
-          }}
-          isInventory={isInventory}
-        />
-      )}
-    </div>
-  );
-}
-
-interface DepositManagementDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  supplier: Supplier;
-  onSuccess: () => void;
-  isInventory: boolean;
-}
-
-function DepositManagementDialog({ open, onOpenChange, supplier, onSuccess, isInventory }: DepositManagementDialogProps) {
-  const { toast } = useToast();
-  const [deposits, setDeposits] = useState<SupplierDeposit[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    amount: '',
-    type: 'deposit' as 'deposit' | 'usage' | 'refund',
-    description: ''
-  });
-
-  const fetchDeposits = async () => {
-    try {
-      setLoading(true);
-      const data = await PurchaseService.getSupplierDeposits(supplier.id);
-      setDeposits(data);
-    } catch (error: any) {
-      toast({ title: 'Error', description: 'Gagal memuat riwayat deposit', variant: 'destructive' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    if (open) {
-      fetchDeposits();
-    }
-  }, [open, supplier.id]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.amount || Number(formData.amount) <= 0) {
-      toast({ title: 'Error', description: 'Jumlah harus lebih dari 0', variant: 'destructive' });
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      if (editingId) {
-        await PurchaseService.updateSupplierDeposit(editingId, {
-          amount: Number(formData.amount),
-          type: formData.type,
-          description: formData.description
-        });
-        toast({ title: 'Berhasil', description: 'Transaksi deposit berhasil diperbarui' });
-      } else {
-        await PurchaseService.addSupplierDeposit({
-          supplier_id: supplier.id,
-          amount: Number(formData.amount),
-          type: formData.type,
-          description: formData.description
-        });
-        toast({ title: 'Berhasil', description: 'Transaksi deposit berhasil dicatat' });
-      }
-      setShowAddForm(false);
-      setEditingId(null);
-      setFormData({ amount: '', type: 'deposit', description: '' });
-      fetchDeposits();
-      onSuccess();
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message || 'Gagal menyimpan transaksi', variant: 'destructive' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleEdit = (dep: SupplierDeposit) => {
-    setEditingId(dep.id);
-    setFormData({
-      amount: dep.amount.toString(),
-      type: dep.type,
-      description: dep.description || ''
-    });
-    setShowAddForm(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus data deposit ini? Saldo akan disesuaikan otomatis.')) return;
-
-    try {
-      setIsSubmitting(true);
-      await PurchaseService.deleteSupplierDeposit(id);
-      toast({ title: 'Berhasil', description: 'Transaksi deposit dihapus' });
-      fetchDeposits();
-      onSuccess();
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message || 'Gagal menghapus transaksi', variant: 'destructive' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const primaryColor = isInventory ? 'bg-inventory' : 'bg-orange-600';
-  const primaryHover = isInventory ? 'hover:bg-inventory-dark' : 'hover:bg-orange-700';
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
-        <DialogHeader className="p-6 pb-2">
-          <DialogTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-inventory" />
-              Kelola Deposit: {supplier.name}
-            </div>
-            <Badge variant="secondary" className="font-mono text-lg py-1 px-3">
-              {formatCurrency(supplier.deposit_balance || 0)}
-            </Badge>
-          </DialogTitle>
-          <DialogDescription>
-            Kelola saldo titipan dan riwayat penggunaan dana pada supplier ini.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {!showAddForm ? (
-            <Button
-              className={`w-full ${primaryColor} ${primaryHover}`}
-              onClick={() => setShowAddForm(true)}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Catat Deposit / Penggunaan Baru
-            </Button>
-          ) : (
-            <Card className="border-inventory/20 bg-inventory/5">
-              <CardContent className="p-4">
-                <h5 className="text-xs font-bold mb-3 flex items-center gap-1 text-inventory-dark">
-                  {editingId ? <Edit className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                  {editingId ? 'Edit Transaksi' : 'Transaksi Baru'}
-                </h5>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Jenis Transaksi</Label>
-                      <select
-                        className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        value={formData.type}
-                        onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                      >
-                        <option value="deposit">Deposit Baru (+)</option>
-                        <option value="usage">Penggunaan Saldo (-)</option>
-                        <option value="refund">Refund / Pengembalian (-)</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Jumlah (Rp)</Label>
-                      <Input
-                        type="number"
-                        placeholder="0"
-                        value={formData.amount}
-                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Keterangan</Label>
-                    <Input
-                      placeholder="Misal: Deposit untuk order PO-001"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => {
-                      setShowAddForm(false);
-                      setEditingId(null);
-                      setFormData({ amount: '', type: 'deposit', description: '' });
-                    }}>
-                      Batal
-                    </Button>
-                    <Button type="submit" size="sm" className={primaryColor} disabled={isSubmitting}>
-                      {isSubmitting ? 'Memproses...' : editingId ? 'Perbarui Transaksi' : 'Simpan Transaksi'}
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="space-y-3">
-            <h4 className="text-sm font-bold flex items-center gap-2">
-              <History className="w-4 h-4" />
-              Riwayat Transaksi
-            </h4>
-            {loading ? (
-              <div className="text-center py-8 text-gray-400">Memuat riwayat...</div>
-            ) : deposits.length === 0 ? (
-              <div className="text-center py-8 text-gray-400 border rounded-lg border-dashed">
-                Belum ada riwayat transaksi deposit
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {deposits.map((dep) => (
-                  <div key={dep.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-full ${dep.type === 'deposit' ? 'bg-green-100' : 'bg-red-100'
-                        }`}>
-                        {dep.type === 'deposit' ? (
-                          <ArrowUpCircle className={`w-4 h-4 ${isInventory ? 'text-inventory-dark' : 'text-green-700'}`} />
-                        ) : dep.type === 'usage' ? (
-                          <ArrowDownCircle className="w-4 h-4 text-red-700" />
-                        ) : (
-                          <Undo2 className="w-4 h-4 text-orange-700" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{dep.description || (dep.type === 'deposit' ? 'Setoran Deposit' : 'Penggunaan Saldo')}</p>
-                        <p className="text-[10px] text-gray-400">
-                          {new Date(dep.created_at).toLocaleDateString('id-ID', {
-                            day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-mono text-sm font-bold ${dep.type === 'deposit' ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                        {dep.type === 'deposit' ? '+' : '-'}{formatCurrency(dep.amount)}
-                      </p>
-                      <Badge variant="outline" className="text-[10px] py-0 h-4">
-                        {dep.type.toUpperCase()}
-                      </Badge>
-                    </div>
-                    <div className="flex gap-1 ml-4 border-l pl-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 hover:bg-inventory/10 text-inventory"
-                        onClick={() => handleEdit(dep)}
-                      >
-                        <Edit className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 hover:bg-red-50 text-red-600"
-                        onClick={() => handleDelete(dep.id)}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
+          <TabsList className="bg-transparent border-none p-0 h-auto gap-1">
+            {['all', 'cash', 'hutang', 'deposit', 'riwayat_global'].map((t) => (
+              <TabsTrigger 
+                key={t} 
+                value={t} 
+                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white ${t === 'riwayat_global' ? 'text-orange-600 hover:bg-orange-50' : 'text-slate-500 hover:bg-slate-50'}`}
+              >
+                {t === 'riwayat_global' ? 'Riwayat Deposit' : t.charAt(0).toUpperCase() + t.slice(1)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <div className="relative w-full lg:w-80 group">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input placeholder="Cari nama atau kode..." className="pl-10 h-11 border-none bg-slate-50 focus-visible:ring-0 rounded-xl font-medium" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           </div>
         </div>
 
-        <DialogFooter className="p-4 bg-gray-50 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full">
-            Tutup
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+          <TabsContent value="all" className="m-0 focus-visible:ring-0"><SupplierTable data={getFilteredData('all')} /></TabsContent>
+          <TabsContent value="cash" className="m-0 focus-visible:ring-0"><SupplierTable data={getFilteredData('cash')} /></TabsContent>
+          <TabsContent value="hutang" className="m-0 focus-visible:ring-0"><SupplierTable data={getFilteredData('hutang')} /></TabsContent>
+          <TabsContent value="deposit" className="m-0 focus-visible:ring-0"><SupplierTable data={getFilteredData('deposit')} /></TabsContent>
+          <TabsContent value="riwayat_global" className="m-0 focus-visible:ring-0">
+             <Table>
+               <TableHeader className="bg-slate-50/50"><TableRow><TableHead className="py-4 pl-6 text-slate-400 uppercase text-[10px] font-black tracking-widest">Waktu</TableHead><TableHead className="text-slate-400 uppercase text-[10px] font-black tracking-widest">Pemasok</TableHead><TableHead className="text-slate-400 uppercase text-[10px] font-black tracking-widest">Keterangan</TableHead><TableHead className="text-right pr-6 text-slate-400 uppercase text-[10px] font-black tracking-widest">Nominal</TableHead></TableRow></TableHeader>
+               <TableBody>
+                 {recentDeposits.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-20 text-slate-400">Belum ada riwayat transaksi</TableCell></TableRow> : 
+                   recentDeposits.map(d => {
+                     const isOut = ['usage', 'payment', 'out', 'bayar', 'penggunaan'].includes(d.type?.toLowerCase());
+                     return (
+                       <TableRow key={d.id} className="group hover:bg-slate-50 transition-colors border-slate-50">
+                         <TableCell className="py-4 pl-6 text-xs font-semibold text-slate-400">{format(new Date(d.created_at), 'dd MMM, HH:mm')}</TableCell>
+                         <TableCell className="font-bold text-slate-900">{d.suppliers?.name}</TableCell>
+                         <TableCell className="text-sm font-medium text-slate-500">{d.description || 'Deposit'}</TableCell>
+                         <TableCell className={`text-right pr-6 font-mono font-bold ${isOut ? 'text-rose-600' : 'text-emerald-600'}`}>{isOut ? '-' : '+'}{formatCurrency(Number(String(d.amount).replace(/[^0-9]/g, '')))}</TableCell>
+                       </TableRow>
+                     );
+                   })
+                 }
+               </TableBody>
+             </Table>
+          </TabsContent>
+        </div>
+      </Tabs>
+
+      <Dialog open={showFormDialog} onOpenChange={setShowFormDialog}>
+        <DialogContent className="sm:max-w-[550px] rounded-3xl p-8">
+           <DialogHeader><DialogTitle className="text-2xl font-black text-slate-900">Form Pemasok</DialogTitle></DialogHeader>
+           <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+             <div className="grid grid-cols-2 gap-4">
+               <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-slate-400 pl-1">Kode</Label><Input value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} className="h-12 rounded-xl bg-slate-50 border-none font-bold font-mono" required /></div>
+               <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-slate-400 pl-1">Nama Supplier</Label><Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="h-12 rounded-xl bg-slate-50 border-none font-bold" required /></div>
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+               <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-slate-400 pl-1">Telepon</Label><Input value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="h-12 rounded-xl bg-slate-50 border-none font-bold" /></div>
+               <div className="space-y-1.5"><Label className="text-[10px] font-black uppercase text-slate-400 pl-1">Email</Label><Input value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="h-12 rounded-xl bg-slate-50 border-none font-bold" /></div>
+             </div>
+             <Button type="submit" disabled={isSubmitting} className="w-full h-14 rounded-2xl bg-slate-900 hover:bg-black text-white font-black text-lg shadow-xl shadow-slate-200 transition-all active:scale-95">{isSubmitting ? 'Menyimpan...' : 'Simpan Data'}</Button>
+           </form>
+        </DialogContent>
+      </Dialog>
+
+      {selectedSupplier && <SupplierBalanceDialog open={showBalanceDialog} onOpenChange={setShowBalanceDialog} supplier={selectedSupplier} />}
+    </div>
   );
 }
