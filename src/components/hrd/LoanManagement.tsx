@@ -158,8 +158,7 @@ export function LoanManagement() {
     const normalizedRole = (user?.role || '').toLowerCase();
     const isOnlyAdmin = normalizedRole === 'administrator' || normalizedRole === 'admin';
     const isAdminRole = isOnlyAdmin || normalizedRole === 'manager' || normalizedRole === 'hrd' || normalizedRole === 'owner' || normalizedRole === 'direktur';
-    const hasHRDModule = user?.modules?.some(m => m.toLowerCase() === 'hrd');
-    const isAdminOrHR = isAdminRole || hasHRDModule;
+    const isAdminOrHR = isAdminRole;
 
     const FullPageLoader = () => (
         <div className="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
