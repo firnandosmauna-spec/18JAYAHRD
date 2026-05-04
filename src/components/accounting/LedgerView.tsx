@@ -43,13 +43,17 @@ export function LedgerView() {
     }, [selectedAccountId, dateRange.start]);
     
     const displayItems = React.useMemo(() => {
-        // Force chronological sort before calculating balances
+        // Super Strict Sort: Compare date strings directly then creation time
         const sortedRaw = [...ledgerItems].sort((a, b) => {
-            const dateA = new Date(a.journal.date).getTime();
-            const dateB = new Date(b.journal.date).getTime();
-            if (dateA !== dateB) return dateA - dateB;
-            // If same date, sort by creation time
-            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            // Compare YYYY-MM-DD strings directly (safest way)
+            if (a.journal.date < b.journal.date) return -1;
+            if (a.journal.date > b.journal.date) return 1;
+            
+            // If same date, sort by creation time (ISO string comparison)
+            if (a.created_at < b.created_at) return -1;
+            if (a.created_at > b.created_at) return 1;
+            
+            return 0;
         });
 
         let current = openingBalance;
