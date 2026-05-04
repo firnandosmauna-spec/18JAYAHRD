@@ -147,11 +147,14 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     // Helper to get work start minutes based on day
     const getWorkStartMinutes = (dateStr: string) => {
         if (!attendanceSettings) return 8 * 60; // Fallback
-        const date = new Date(dateStr);
-        const day = date.getDay();
-        const startTime = day === 6 ? attendanceSettings.work_start_time_saturday : attendanceSettings.work_start_time_weekday;
         
-        // Null-safe split
+        // Timezone-safe day detection
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        const dayOfWeek = date.getDay();
+        
+        const startTime = dayOfWeek === 6 ? attendanceSettings.work_start_time_saturday : attendanceSettings.work_start_time_weekday;
+        
         if (!startTime || typeof startTime !== 'string' || !startTime.includes(':')) {
             return 8 * 60; // Default 08:00
         }
@@ -335,7 +338,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             const currentMinutes = now.getHours() * 60 + now.getMinutes();
             const isLate = status === 'late';
             const tolerance = attendanceSettings?.attendance_late_tolerance || 5;
-            const lateMinutes = isLate ? (currentMinutes - (workStartMinutes + tolerance)) : 0;
+            const lateMinutes = isLate ? Math.max(0, currentMinutes - (workStartMinutes + tolerance)) : 0;
             const penalty = lateMinutes * (penaltyRate || 1000);
 
             // SP1 Check
