@@ -316,8 +316,11 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
             }
 
             if (distance > officeRadius) {
-                // Bypass dialog as requested, but still log the reason automatically
-                await processCheckIn(loc, status, distance, 'Akurasi GPS/Luar Jangkauan (Auto-Accept)', currentLat, currentLng);
+                toast({
+                    title: 'Di Luar Jangkauan',
+                    description: `Jarak Anda ${Math.round(distance)}m dari kantor (Maksimal ${officeRadius}m). Gunakan fitur "Absen Manual" jika Anda sedang dinas luar.`,
+                    variant: 'destructive'
+                });
                 return;
             }
 
