@@ -492,6 +492,17 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 </div>
             )}
 
+            {/* Pending Manual Request Banner */}
+            {todayRecord?.manual_status === 'pending' && (
+                <div className="p-4 rounded-xl border border-orange-200 bg-orange-50 flex items-center gap-3 animate-pulse">
+                    <ShieldCheck className="w-5 h-5 text-orange-600" />
+                    <div>
+                        <p className="font-bold text-orange-900">ABSEN BELUM MASUK</p>
+                        <p className="text-xs text-orange-700">Permintaan absensi manual Anda sedang menunggu persetujuan Administrator. Silakan cek kembali nanti.</p>
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {/* Check-In Card */}
@@ -629,15 +640,23 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                     </div>
                                 </div>
 
-                                <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-100">
+                                <div className={`p-4 rounded-2xl border ${todayRecord?.manual_status === 'pending' ? 'bg-orange-50 border-orange-200' : 'bg-blue-50/50 border-blue-100'}`}>
                                     <div className="flex justify-between items-start mb-2">
-                                        <p className="text-xs font-bold text-blue-600 uppercase"><span>Analysis</span></p>
-                                        <Badge variant={todayRecord?.status === 'late' ? 'destructive' : 'default'} className="bg-blue-600 text-[10px]">
-                                            <span>{todayRecord?.status || 'Unknown'}</span>
+                                        <p className={`text-xs font-bold uppercase ${todayRecord?.manual_status === 'pending' ? 'text-orange-600' : 'text-blue-600'}`}><span>Analysis</span></p>
+                                        <Badge 
+                                            variant={todayRecord?.status === 'late' ? 'destructive' : 'default'} 
+                                            className={`${todayRecord?.manual_status === 'pending' ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-blue-600'} text-[10px]`}
+                                        >
+                                            <span>{todayRecord?.manual_status === 'pending' ? 'WAITING APPROVAL' : (todayRecord?.status || 'Unknown')}</span>
                                         </Badge>
                                     </div>
-                                    <p className="text-sm text-blue-900 leading-relaxed font-body">
-                                        <span>{todayRecord?.notes || (todayRecord ? 'Kehadiran Anda telah tercatat dengan koordinat GPS yang valid.' : 'Silakan lakukan presensi untuk mencatat jam kerja Anda.')}</span>
+                                    <p className={`text-sm leading-relaxed font-body ${todayRecord?.manual_status === 'pending' ? 'text-orange-900 font-bold' : 'text-blue-900'}`}>
+                                        <span>
+                                            {todayRecord?.manual_status === 'pending' 
+                                                ? '🔴 ABSEN BELUM MASUK: Permintaan manual Anda sedang menunggu persetujuan Administrator/Manager.' 
+                                                : (todayRecord?.notes || (todayRecord ? 'Kehadiran Anda telah tercatat dengan koordinat GPS yang valid.' : 'Silakan lakukan presensi untuk mencatat jam kerja Anda.'))
+                                            }
+                                        </span>
                                     </p>
                                 </div>
                             </div>
