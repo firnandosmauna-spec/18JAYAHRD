@@ -43,35 +43,38 @@ export function LedgerView() {
     }, [selectedAccountId, dateRange.start]);
     
     const displayItems = React.useMemo(() => {
-        // Super Strict Sort: Compare date strings directly then creation time
+        if (!ledgerItems || ledgerItems.length === 0) return [];
+
+        // Ultra Robust Sort: Ensure all fields exist and compare correctly
         const sortedRaw = [...ledgerItems].sort((a, b) => {
-            // Compare YYYY-MM-DD strings directly (safest way)
-            if (a.journal.date < b.journal.date) return -1;
-            if (a.journal.date > b.journal.date) return 1;
+            const dateA = a.journal?.date || '';
+            const dateB = b.journal?.date || '';
             
-            // If same date, sort by creation time (ISO string comparison)
-            if (a.created_at < b.created_at) return -1;
-            if (a.created_at > b.created_at) return 1;
+            if (dateA !== dateB) {
+                return dateA.localeCompare(dateB);
+            }
             
-            return 0;
+            // Secondary sort by created_at timestamp
+            const timeA = a.created_at || '';
+            const timeB = b.created_at || '';
+            return timeA.localeCompare(timeB);
         });
 
         let current = openingBalance;
-        const itemsWithBalance = sortedRaw.map(item => {
+        return sortedRaw.map(item => {
             const type = selectedAccount?.type;
             const adjustment = (type === 'asset' || type === 'expense')
-                ? (item.debit - item.credit)
-                : (item.credit - item.debit);
+                ? (Number(item.debit || 0) - Number(item.credit || 0))
+                : (Number(item.credit || 0) - Number(item.debit || 0));
             current += adjustment;
             return { ...item, runningBalance: current };
         });
+    }, [ledgerItems, openingBalance, selectedAccount]);
 
-        if (sortOrder === 'desc') {
-            return [...itemsWithBalance].reverse();
-        }
-        return itemsWithBalance;
-    }, [ledgerItems, openingBalance, selectedAccount, sortOrder]);
-
+    // Apply display order (ASC/DESC) only for visual presentation
+    const finalDisplayItems = React.useMemo(() => {
+        return sortOrder === 'desc' ? [...displayItems].reverse() : displayItems;
+    }, [displayItems, sortOrder]);
 
     const handleExportPDF = () => {
         if (!selectedAccount) return;
@@ -83,8 +86,19 @@ export function LedgerView() {
             },
             dateRange,
             openingBalance,
-            ledgerItems
+            displayItems // Use sorted items
         );
+    };
+
+    const handleExportCSV = () => {
+        const csvContent = "data:text/csv;charset=utf-8,Tanggal,Ref,Memo,Debit,Kredit,Saldo\n" +
+            displayItems.map(item => `${item.journal?.date || ''},${item.journal?.reference || ''},${item.description || item.journal?.description || ''},${item.debit},${item.credit},${item.runningBalance}`).join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `Buku_Besar_${selectedAccount?.name || 'Akun'}.csv`);
+        document.body.appendChild(link);
+        link.click();
     };
 
     return (
@@ -107,16 +121,7 @@ export function LedgerView() {
                     <Button 
                         variant="outline" 
                         size="sm" 
-                        onClick={() => {
-                            const csvContent = "data:text/csv;charset=utf-8,Tanggal,Ref,Memo,Debit,Kredit,Saldo\n" +
-                                ledgerItems.map(item => `${item.journal.date},${item.journal.reference},${item.description || item.journal.description},${item.debit},${item.credit}`).join("\n");
-                            const encodedUri = encodeURI(csvContent);
-                            const link = document.createElement("a");
-                            link.setAttribute("href", encodedUri);
-                            link.setAttribute("download", `Buku_Besar_${selectedAccount?.name || 'Akun'}.csv`);
-                            document.body.appendChild(link);
-                            link.click();
-                        }}
+                        onClick={handleExportCSV}
                         disabled={!selectedAccountId || loading}
                     >
                         <Download className="w-4 h-4 mr-2" />
@@ -220,8 +225,8 @@ export function LedgerView() {
                                             {fetchingOpening ? '...' : formatCurrency(openingBalance)}
                                         </td>
                                     </tr>
-                                    {displayItems.length > 0 ? (
-                                        displayItems.map((item, idx) => {
+                                    {finalDisplayItems.length > 0 ? (
+                                        finalDisplayItems.map((item, idx) => {
                                              return (
                                                  <tr key={item.id} className="hover:bg-gray-50/50">
                                                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
