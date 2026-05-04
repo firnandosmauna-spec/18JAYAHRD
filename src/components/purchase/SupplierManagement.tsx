@@ -163,6 +163,7 @@ export function SupplierManagement() {
           <TableHead className="text-slate-400 uppercase text-[10px] font-black tracking-widest">Metode</TableHead>
           <TableHead className="text-right text-slate-400 uppercase text-[10px] font-black tracking-widest">Deposit</TableHead>
           <TableHead className="text-right text-slate-400 uppercase text-[10px] font-black tracking-widest">Hutang</TableHead>
+          <TableHead className="text-right text-slate-400 uppercase text-[10px] font-black tracking-widest">Tgl Terakhir</TableHead>
           <TableHead className="text-right pr-6 text-slate-400 uppercase text-[10px] font-black tracking-widest">Kelola</TableHead>
         </TableRow>
       </TableHeader>
@@ -179,6 +180,10 @@ export function SupplierManagement() {
               <TableCell><Badge variant="outline" className="rounded-lg px-2 border-slate-200 text-slate-500 bg-white font-bold text-[10px] uppercase">{s.payment_method || 'CASH'}</Badge></TableCell>
               <TableCell className="text-right font-mono font-bold text-emerald-600">{formatCurrency(s.deposit_balance || 0)}</TableCell>
               <TableCell className="text-right font-mono font-bold text-rose-600">{formatCurrency(s.total_debt || 0)}</TableCell>
+              <TableCell className="text-right">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">{s.updated_at ? format(new Date(s.updated_at), 'dd/MM/yy') : '-'}</p>
+                <p className="text-[9px] text-slate-400 font-mono">{s.updated_at ? format(new Date(s.updated_at), 'HH:mm') : ''}</p>
+              </TableCell>
               <TableCell className="text-right pr-6">
                 <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Button variant="ghost" size="icon" onClick={() => { setSelectedSupplier(s); setShowBalanceDialog(true); }} className="h-9 w-9 rounded-xl text-orange-600 hover:bg-orange-50"><Wallet className="h-4 w-4" /></Button>
