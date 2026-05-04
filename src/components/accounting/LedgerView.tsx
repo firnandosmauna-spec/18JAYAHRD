@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Button } from '../../components/ui/button';
 import { Label } from '../../components/ui/label';
 import { Input } from '../../components/ui/input';
-import { Calendar, Download, Printer, Search, Loader2, FileText } from 'lucide-react';
+import { Calendar, Download, Printer, Search, Loader2, FileText, ArrowUpDown } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
 import { AccountingNativeSelect } from './AccountingNativeSelect';
 import { generateLedgerPDF } from '../../utils/pdfGenerator';
@@ -22,6 +22,7 @@ export function LedgerView() {
     const { ledgerItems, loading, refresh } = useLedger(selectedAccountId, dateRange.start, dateRange.end);
     const [openingBalance, setOpeningBalance] = React.useState(0);
     const [fetchingOpening, setFetchingOpening] = React.useState(false);
+    const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
 
     const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
@@ -40,8 +41,24 @@ export function LedgerView() {
         };
         fetchOpening();
     }, [selectedAccountId, dateRange.start]);
+    
+    const displayItems = React.useMemo(() => {
+        let current = openingBalance;
+        const itemsWithBalance = ledgerItems.map(item => {
+            const type = selectedAccount?.type;
+            const adjustment = (type === 'asset' || type === 'expense')
+                ? (item.debit - item.credit)
+                : (item.credit - item.debit);
+            current += adjustment;
+            return { ...item, runningBalance: current };
+        });
 
-    let runningBalance = openingBalance;
+        if (sortOrder === 'desc') {
+            return [...itemsWithBalance].reverse();
+        }
+        return itemsWithBalance;
+    }, [ledgerItems, openingBalance, selectedAccount, sortOrder]);
+
 
     const handleExportPDF = () => {
         if (!selectedAccount) return;
@@ -163,9 +180,17 @@ export function LedgerView() {
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
-                                <thead className="bg-gray-50/50">
+                                <thead className="bg-gray-50/50 sticky top-0 z-10">
                                     <tr>
-                                        <th className="px-4 py-3 text-sm font-semibold text-gray-900 border-b border-gray-100">Tanggal</th>
+                                        <th className="px-4 py-3 text-sm font-semibold text-gray-900 border-b border-gray-100">
+                                            <button 
+                                                onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                                className="flex items-center hover:text-accounting transition-colors"
+                                            >
+                                                Tanggal
+                                                <ArrowUpDown className="w-3 h-3 ml-2" />
+                                            </button>
+                                        </th>
                                         <th className="px-4 py-3 text-sm font-semibold text-gray-900 border-b border-gray-100">Referensi</th>
                                         <th className="px-4 py-3 text-sm font-semibold text-gray-900 border-b border-gray-100">Keterangan</th>
                                         <th className="px-4 py-3 text-sm font-semibold text-gray-900 border-b border-gray-100 text-right">Debit</th>
@@ -182,39 +207,33 @@ export function LedgerView() {
                                             {fetchingOpening ? '...' : formatCurrency(openingBalance)}
                                         </td>
                                     </tr>
-                                    {ledgerItems.length > 0 ? (
-                                        ledgerItems.map((item, idx) => {
-                                            const type = selectedAccount?.type;
-                                            const adjustment = (type === 'asset' || type === 'expense')
-                                                ? (item.debit - item.credit)
-                                                : (item.credit - item.debit);
-                                            runningBalance += adjustment;
-
-                                            return (
-                                                <tr key={item.id} className="hover:bg-gray-50/50">
-                                                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                                                        {new Date(item.journal.date).toLocaleDateString('id-ID')}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600 font-medium">
-                                                        {item.journal.reference || '-'}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-sm text-gray-900">
-                                                        <div className="flex flex-col">
-                                                            <span>{item.description || item.journal.description}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
-                                                        {item.debit > 0 ? formatCurrency(item.debit) : '-'}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
-                                                        {item.credit > 0 ? formatCurrency(item.credit) : '-'}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-sm text-right font-mono font-bold text-gray-900">
-                                                        {formatCurrency(runningBalance)}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
+                                    {displayItems.length > 0 ? (
+                                        displayItems.map((item, idx) => {
+                                             return (
+                                                 <tr key={item.id} className="hover:bg-gray-50/50">
+                                                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                                         {new Date(item.journal.date).toLocaleDateString('id-ID')}
+                                                     </td>
+                                                     <td className="px-4 py-3 text-sm text-gray-600 font-medium">
+                                                         {item.journal.reference || '-'}
+                                                     </td>
+                                                     <td className="px-4 py-3 text-sm text-gray-900">
+                                                         <div className="flex flex-col">
+                                                             <span>{item.description || item.journal.description}</span>
+                                                         </div>
+                                                     </td>
+                                                     <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
+                                                         {item.debit > 0 ? formatCurrency(item.debit) : '-'}
+                                                     </td>
+                                                     <td className="px-4 py-3 text-sm text-right font-mono text-gray-700">
+                                                         {item.credit > 0 ? formatCurrency(item.credit) : '-'}
+                                                     </td>
+                                                     <td className="px-4 py-3 text-sm text-right font-mono font-bold text-gray-900">
+                                                         {formatCurrency(item.runningBalance)}
+                                                     </td>
+                                                 </tr>
+                                             );
+                                         })
                                     ) : (
                                         <tr>
                                             <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
