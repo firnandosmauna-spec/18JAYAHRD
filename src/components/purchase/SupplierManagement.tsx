@@ -34,6 +34,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useSuppliers } from '@/hooks/usePurchase';
+import type { Supplier } from '@/types/purchase';
 import { PurchaseService } from '@/services/purchaseService';
 import { supplierDebtService } from '@/services/supplierDebtService';
 import { supabase } from '@/lib/supabase';
@@ -65,7 +66,18 @@ export function SupplierManagement() {
 
   useEffect(() => { fetchRecentDeposits(); }, [suppliers]);
 
-  const [formData, setFormData] = useState({ name: '', code: '', contact_person: '', phone: '', email: '', address: '', payment_method: 'CASH', payment_terms: 30, is_active: true });
+  const [formData, setFormData] = useState<Omit<Supplier, 'id' | 'created_at' | 'updated_at' | 'deposit_balance' | 'total_debt'>>({ 
+    name: '', 
+    code: '', 
+    contact_person: '', 
+    phone: '', 
+    email: '', 
+    address: '', 
+    payment_method: 'CASH', 
+    payment_terms: 30, 
+    is_active: true,
+    status: 'active'
+  });
 
   // STRICT FILTER LOGIC
   const getFilteredData = (tabValue: string) => {
@@ -103,7 +115,18 @@ export function SupplierManagement() {
 
   const handleEdit = (s: any) => {
     setSelectedSupplier(s);
-    setFormData({ name: s.name, code: s.code, contact_person: s.contact_person || '', phone: s.phone || '', email: s.email || '', address: s.address || '', payment_method: s.payment_method || 'CASH', payment_terms: s.payment_terms || 30, is_active: s.is_active });
+    setFormData({ 
+      name: s.name, 
+      code: s.code, 
+      contact_person: s.contact_person || '', 
+      phone: s.phone || '', 
+      email: s.email || '', 
+      address: s.address || '', 
+      payment_method: (s.payment_method as 'CASH' | 'Hutang') || 'CASH', 
+      payment_terms: s.payment_terms || 30, 
+      is_active: s.is_active,
+      status: s.status || 'active'
+    });
     setShowFormDialog(true);
   };
 

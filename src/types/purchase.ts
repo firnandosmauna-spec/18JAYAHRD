@@ -12,6 +12,8 @@ export interface Supplier {
   deposit_balance?: number;
   total_debt?: number;
   payment_method?: 'CASH' | 'Hutang';
+  contact_person?: string;
+  is_active?: boolean;
   status: string;
   created_at: string;
   updated_at: string;
