@@ -173,26 +173,33 @@ export function LoanManagement() {
         </div>
     );
 
-    const filteredLoans = loans.filter(loan => {
+    // Filter base loans for summary and display
+    const displayLoans = isAdminOrHR ? loans : loans.filter(l => l.employee_id === user?.employee_id);
+
+    // Calculate totals based on filtered view
+    const totalActiveLoan = displayLoans
+        .filter(l => l.status === 'approved')
+        .reduce((sum, l) => sum + l.remaining_amount, 0);
+    
+    const totalPaidOffLoan = displayLoans
+        .filter(l => l.status === 'paid_off')
+        .reduce((sum, l) => sum + l.amount, 0);
+    
+    const activeLoanCount = displayLoans.filter(l => l.status === 'approved').length;
+
+    // Filter pending payments for summary
+    const displayPendingPayments = isAdminOrHR 
+        ? pendingPayments 
+        : pendingPayments.filter(p => p.employee_loans?.employee_id === user?.employee_id);
+
+    const filteredLoans = displayLoans.filter(loan => {
         const employee = employees.find(e => e.id === loan.employee_id);
         const searchLower = searchQuery.toLowerCase();
         const matchesSearch = (employee?.name || '').toLowerCase().includes(searchLower) ||
             (loan.reason || '').toLowerCase().includes(searchLower);
         const matchesStatus = statusFilter === 'all' || loan.status === statusFilter;
-        const matchesRole = isAdminOrHR ? true : loan.employee_id === user?.employee_id;
-        return matchesSearch && matchesStatus && matchesRole;
+        return matchesSearch && matchesStatus;
     });
-
-    // Calculate totals
-    const totalActiveLoan = loans
-        .filter(l => l.status === 'approved')
-        .reduce((sum, l) => sum + l.remaining_amount, 0);
-    
-    const totalPaidOffLoan = loans
-        .filter(l => l.status === 'paid_off')
-        .reduce((sum, l) => sum + l.amount, 0);
-    
-    const activeLoanCount = loans.filter(l => l.status === 'approved').length;
 
     // ===== ADD LOAN =====
     const handleAddLoan = async () => {
@@ -719,7 +726,7 @@ export function LoanManagement() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Permintaan Bayar</p>
-                                <p className="text-xl font-bold text-blue-900 mt-1">{pendingPayments.length} Permintaan</p>
+                                <p className="text-xl font-bold text-blue-900 mt-1">{displayPendingPayments.length} Permintaan</p>
                                 <p className="text-[10px] text-blue-500 mt-1">Menunggu Persetujuan</p>
                             </div>
                             <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
