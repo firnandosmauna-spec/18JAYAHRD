@@ -43,8 +43,17 @@ export function LedgerView() {
     }, [selectedAccountId, dateRange.start]);
     
     const displayItems = React.useMemo(() => {
+        // Force chronological sort before calculating balances
+        const sortedRaw = [...ledgerItems].sort((a, b) => {
+            const dateA = new Date(a.journal.date).getTime();
+            const dateB = new Date(b.journal.date).getTime();
+            if (dateA !== dateB) return dateA - dateB;
+            // If same date, sort by creation time
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+
         let current = openingBalance;
-        const itemsWithBalance = ledgerItems.map(item => {
+        const itemsWithBalance = sortedRaw.map(item => {
             const type = selectedAccount?.type;
             const adjustment = (type === 'asset' || type === 'expense')
                 ? (item.debit - item.credit)
