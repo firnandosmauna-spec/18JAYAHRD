@@ -40,6 +40,11 @@ export function SupplierBalanceDialog({ open, onOpenChange, supplier }: Supplier
   const [currentBalance, setCurrentBalance] = useState(supplier.deposit_balance || 0);
   const printRef = useRef<HTMLDivElement>(null);
 
+  const [isAdding, setIsAdding] = useState(false);
+  const [newAmount, setNewAmount] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -50,6 +55,27 @@ export function SupplierBalanceDialog({ open, onOpenChange, supplier }: Supplier
       const { data: latest } = await supabase.from('suppliers').select('deposit_balance').eq('id', supplier.id).single();
       if (latest) setCurrentBalance(latest.deposit_balance || 0);
     } catch (error) { console.error(error); } finally { setLoading(false); }
+  };
+
+  const handleAddDeposit = async () => {
+    if (!newAmount || Number(newAmount) <= 0) return;
+    try {
+      setIsSubmitting(true);
+      await PurchaseService.addSupplierDeposit({
+        supplier_id: supplier.id,
+        amount: Number(newAmount),
+        type: 'deposit',
+        description: newDesc || 'Setoran Deposit Manual'
+      });
+      setNewAmount('');
+      setNewDesc('');
+      setIsAdding(false);
+      await fetchData();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   useEffect(() => { if (open && supplier?.id) fetchData(); }, [open, supplier?.id]);
@@ -151,6 +177,48 @@ export function SupplierBalanceDialog({ open, onOpenChange, supplier }: Supplier
                   <Badge variant="outline" className="border-white/20 text-white/70 font-mono">{supplier.code}</Badge>
                   • Riwayat Keuangan
                 </div>
+
+          {isAdding && (
+            <Card className="mb-8 border-none shadow-xl bg-white rounded-3xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+              <CardContent className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nominal Setoran (Rp)</label>
+                    <div className="relative">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">Rp</div>
+                      <input 
+                        type="number" 
+                        value={newAmount} 
+                        onChange={e => setNewAmount(e.target.value)}
+                        placeholder="0" 
+                        className="w-full h-14 bg-slate-50 border-none rounded-2xl pl-12 pr-4 font-mono font-black text-xl text-slate-900 focus:ring-2 focus:ring-emerald-500 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Keterangan / Referensi</label>
+                    <input 
+                      type="text" 
+                      value={newDesc} 
+                      onChange={e => setNewDesc(e.target.value)}
+                      placeholder="Contoh: Setoran tunai, transfer Bank ABC, dll." 
+                      className="w-full h-14 bg-slate-50 border-none rounded-2xl px-6 font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <Button 
+                    onClick={handleAddDeposit} 
+                    disabled={isSubmitting || !newAmount}
+                    className="h-14 px-8 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-lg shadow-xl shadow-emerald-100 transition-all active:scale-95"
+                  >
+                    {isSubmitting ? <RefreshCw className="w-6 h-6 animate-spin mr-2" /> : <CheckCircle2 className="w-6 h-6 mr-2" />}
+                    Simpan Setoran
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
               </div>
             </div>
             <div className="text-right">
@@ -169,6 +237,10 @@ export function SupplierBalanceDialog({ open, onOpenChange, supplier }: Supplier
                 <p className="text-xs text-slate-400 font-medium">Daftar semua transaksi setoran dan penggunaan saldo.</p>
              </div>
              <div className="flex gap-2">
+                <Button onClick={() => setIsAdding(!isAdding)} className={`h-10 rounded-xl font-bold shadow-lg transition-all active:scale-95 ${isAdding ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-600 hover:bg-emerald-700'} text-white`}>
+                  {isAdding ? <X className="w-4 h-4 mr-2" /> : <ArrowUpCircle className="w-4 h-4 mr-2" />}
+                  {isAdding ? 'Batal' : 'Tambah Saldo'}
+                </Button>
                 <Button onClick={fetchData} variant="outline" size="sm" className="h-10 rounded-xl bg-white border-slate-200 text-slate-600 hover:bg-slate-100 transition-all active:scale-95">
                   <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Sinkron
                 </Button>
