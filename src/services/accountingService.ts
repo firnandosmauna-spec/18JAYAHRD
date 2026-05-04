@@ -404,9 +404,9 @@ class AccountingService {
                 journal:accounting_journals!inner(date, description, reference)
             `)
             .eq('account_id', accountId)
-            .gte('journal.date', startDate)
-            .lte('journal.date', endDate)
-            .order('date', { foreignTable: 'accounting_journals', ascending: true })
+            .gte('journal.date', startDate || '2000-01-01')
+            .lte('journal.date', endDate || '2099-12-31')
+            .order('date', { foreignTable: 'journal', ascending: true })
             .order('created_at', { ascending: true });
 
         if (error) throw error;
