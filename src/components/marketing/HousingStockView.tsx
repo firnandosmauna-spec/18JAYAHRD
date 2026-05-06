@@ -52,7 +52,7 @@ export default function HousingStockView() {
             const { data: consumerData } = await supabase
                 .from('consumer_profiles')
                 .select('id, name');
-            setConsumers(consumerData || []);
+            setConsumers((consumerData || []) as any);
 
             // Fetch Units
             const { data: unitData, error: unitError } = await supabase
