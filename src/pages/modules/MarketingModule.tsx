@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ModuleLayout from '@/components/layout/ModuleLayout';
-import { Trello, Users, FileText, MessageSquare, CheckCircle2, Table as TableIcon, DollarSign } from 'lucide-react';
+import { Trello, Users, FileText, MessageSquare, CheckCircle2, Table as TableIcon, DollarSign, Home } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Pipeline } from '@/components/marketing/MarketingTypes';
 
@@ -12,6 +12,7 @@ import PemberkasanView from '@/components/marketing/PemberkasanView';
 import ControlTableView from '@/components/marketing/ControlTableView';
 import AkadProcessView from '@/components/marketing/AkadProcessView';
 import RetentionFundView from '@/components/marketing/RetentionFundView';
+import HousingStockView from '@/components/marketing/HousingStockView';
 
 import { useModulePersistence } from '@/hooks/useModulePersistence';
 
@@ -59,6 +60,7 @@ export default function MarketingModule() {
             title="Marketing & Sales"
             navItems={[
                 { label: 'Master Konsumen', href: '/marketing/master', icon: Users },
+                { label: 'Stok Rumah', href: '/marketing/stok', icon: Home },
                 { label: 'Follow Up', href: '/marketing/followup', icon: MessageSquare },
                 { label: 'Pengerjaan Pemberkasan', href: '/marketing/pemberkasan', icon: CheckCircle2 },
                 { label: 'Dana Retensi', href: '/marketing/retensi', icon: DollarSign },
@@ -75,6 +77,7 @@ export default function MarketingModule() {
                     )
                 } />
                 <Route path="master" element={<ConsumerDatabaseView />} />
+                <Route path="stok" element={<HousingStockView />} />
                 <Route path="followup" element={<FollowUpView />} />
                 <Route path="pemberkasan" element={<PemberkasanView />} />
                 <Route path="retensi" element={<RetentionFundView />} />

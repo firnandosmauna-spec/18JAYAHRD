@@ -100,7 +100,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     // States
     const [currentTime, setCurrentTime] = useState(new Date());
     const [location, setLocation] = useState<string>('Mencari lokasi...');
-    const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
+    const [coordinates, setCoordinates] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
     const [gettingLocation, setGettingLocation] = useState(false);
     const [locationError, setLocationError] = useState<string | null>(null);
     const [penaltyRate, setPenaltyRate] = useState<number>(0);
@@ -184,7 +184,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
     }, []);
 
     // Get Location Promise
-    const getLocation = (): Promise<{ address: string | null; lat: number | null; lng: number | null }> => {
+    const getLocation = (): Promise<{ address: string | null; lat: number | null; lng: number | null; accuracy: number | null }> => {
         setGettingLocation(true);
         setLocationError(null);
 
@@ -193,14 +193,14 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 const error = 'Geolocation is not supported';
                 setLocationError(error);
                 setGettingLocation(false);
-                resolve({ address: null, lat: null, lng: null });
+                resolve({ address: null, lat: null, lng: null, accuracy: null });
                 return;
             }
 
             navigator.geolocation.getCurrentPosition(
                 async (position) => {
-                    const { latitude, longitude } = position.coords;
-                    setCoordinates({ lat: latitude, lng: longitude });
+                    const { latitude, longitude, accuracy } = position.coords;
+                    setCoordinates({ lat: latitude, lng: longitude, accuracy });
 
                     try {
                         const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=id`);
@@ -209,18 +209,18 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                             const addr = [data.locality, data.city, data.principalSubdivision].filter(Boolean).join(', ');
                             setLocation(addr || 'Lokasi Terdeteksi');
                             setGettingLocation(false);
-                            resolve({ address: addr || 'Lokasi Terdeteksi', lat: latitude, lng: longitude });
+                            resolve({ address: addr || 'Lokasi Terdeteksi', lat: latitude, lng: longitude, accuracy });
                         } else {
                             const latlng = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
                             setLocation(latlng);
                             setGettingLocation(false);
-                            resolve({ address: latlng, lat: latitude, lng: longitude });
+                            resolve({ address: latlng, lat: latitude, lng: longitude, accuracy });
                         }
                     } catch (e) {
                         const latlng = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
                         setLocation(latlng);
                         setGettingLocation(false);
-                        resolve({ address: latlng, lat: latitude, lng: longitude });
+                        resolve({ address: latlng, lat: latitude, lng: longitude, accuracy });
                     }
                 },
                 (error) => {
@@ -228,9 +228,9 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                     setLocationError(msg);
                     setLocation('Lokasi tidak tersedia');
                     setGettingLocation(false);
-                    resolve({ address: null, lat: null, lng: null });
+                    resolve({ address: null, lat: null, lng: null, accuracy: null });
                 },
-                { enableHighAccuracy: true, timeout: 10000 }
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         });
     };
@@ -286,13 +286,18 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 return;
             }
 
-            // 3. Validate Distance
+            // 3. Validate Distance with Accuracy Tolerance
             const distance = calculateDistance(
                 currentLat,
                 currentLng,
                 officeLat,
                 officeLng
             );
+
+            // Accuracy tolerance: add half of accuracy error to the radius, but max 50m extra
+            const accuracy = locResult.accuracy || 0;
+            const toleranceDistance = Math.min(50, accuracy / 2);
+            const maxAllowedDistance = officeRadius + toleranceDistance;
 
             // 4. Determine Lateness status
             const now = new Date();
@@ -315,10 +320,10 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                 return;
             }
 
-            if (distance > officeRadius) {
+            if (distance > maxAllowedDistance) {
                 toast({
                     title: 'Di Luar Jangkauan',
-                    description: `Jarak Anda ${Math.round(distance)}m dari kantor (Maksimal ${officeRadius}m). Gunakan fitur "Absen Manual" jika Anda sedang dinas luar.`,
+                    description: `Jarak Anda ${Math.round(distance)}m (Akurasi GPS: ±${Math.round(accuracy)}m). Maksimal yang diizinkan ${Math.round(maxAllowedDistance)}m.`,
                     variant: 'destructive'
                 });
                 return;
@@ -688,7 +693,7 @@ export function UserAttendance({ onViewHistory }: { onViewHistory?: () => void }
                                         <p className="text-[10px] font-bold text-gray-500 tracking-wider"><span>SECURE TRACKING ACTIVE</span></p>
                                     </div>
                                     <p className="text-[10px] font-mono mt-0.5 text-gray-400">
-                                        <span>{coordinates ? `LAT: ${coordinates.lat.toFixed(4)} LNG: ${coordinates.lng.toFixed(4)}` : 'SCANNING...'}</span>
+                                        <span>{coordinates ? `LAT: ${coordinates.lat.toFixed(4)} LNG: ${coordinates.lng.toFixed(4)} (±${Math.round(coordinates.accuracy || 0)}m)` : 'SCANNING...'}</span>
                                     </p>
                                 </div>
                             </div>

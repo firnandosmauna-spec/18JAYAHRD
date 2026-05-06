@@ -28,6 +28,9 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
     const [activeTab, setActiveTab] = useState('data-diri');
     const [marketingStaff, setMarketingStaff] = useState<any[]>([]);
     const [uploading, setUploading] = useState(false);
+    const [availableUnits, setAvailableUnits] = useState<any[]>([]);
+    const [loadingUnits, setLoadingUnits] = useState(false);
+    const [previousUnit, setPreviousUnit] = useState<{ project: string, block: string } | null>(null);
     
     const idPrefix = isUnrealData ? 'unreal_' : 'real_';
     
@@ -104,12 +107,20 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                         if (isUnrealData) {
                             if (data.unreal_data && Object.keys(data.unreal_data).length > 0) {
                                 setFormData({ ...data, ...data.unreal_data });
+                                setPreviousUnit(data.unreal_data.housing_project && data.unreal_data.housing_block_no ? {
+                                    project: data.unreal_data.housing_project,
+                                    block: data.unreal_data.housing_block_no
+                                } : null);
                             } else {
                                 // Default to keeping real data for basis, but user will overwrite
                                 setFormData({ ...data });
                             }
                         } else {
                             setFormData({ ...data });
+                            setPreviousUnit(data.housing_project && data.housing_block_no ? {
+                                project: data.housing_project,
+                                block: data.housing_block_no
+                            } : null);
                         }
                     }
                 } catch (error) {
@@ -121,6 +132,33 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
         fetchMarketingStaff();
         fetchExistingData();
     }, [consumerId]);
+
+    useEffect(() => {
+        const fetchAvailableUnits = async () => {
+            if (!formData.housing_project || formData.housing_project === 'none') {
+                setAvailableUnits([]);
+                return;
+            }
+
+            setLoadingUnits(true);
+            try {
+                const { data: units, error } = await supabase
+                    .from('housing_units')
+                    .select('id, block_number, status')
+                    .eq('location_name', formData.housing_project)
+                    .eq('status', 'available');
+                
+                if (error) throw error;
+                setAvailableUnits(units || []);
+            } catch (error) {
+                console.error('Error fetching available units:', error);
+            } finally {
+                setLoadingUnits(false);
+            }
+        };
+
+        fetchAvailableUnits();
+    }, [formData.housing_project]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -302,6 +340,52 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                 title: "Berhasil",
                 description: `Data konsumen berhasil ${consumerId ? 'diperbarui' : 'ditambahkan'}`,
             });
+            
+            // Sync with housing_units
+            const currentProj = formData.housing_project;
+            const currentBlock = formData.housing_block_no;
+            const isCancelled = formData.status === 'batal';
+
+            // 1. If previous unit exists and it changed OR consumer is cancelled, release the previous unit
+            if (previousUnit && (previousUnit.project !== currentProj || previousUnit.block !== currentBlock || isCancelled)) {
+                try {
+                    await supabase
+                        .from('housing_units')
+                        .update({ status: 'available', consumer_id: null })
+                        .eq('location_name', previousUnit.project)
+                        .eq('block_number', previousUnit.block)
+                        .eq('consumer_id', consumerId || payload.id);
+                } catch (e) {
+                    console.error('Error releasing previous unit:', e);
+                }
+            }
+
+            // 2. If current unit is set and not cancelled, mark it as booked
+            if (currentProj && currentBlock && !isCancelled) {
+                try {
+                    // Check if it's different from previous OR previous didn't exist
+                    if (!previousUnit || previousUnit.project !== currentProj || previousUnit.block !== currentBlock) {
+                        const { data: unit } = await supabase
+                            .from('housing_units')
+                            .select('id, status')
+                            .eq('location_name', currentProj)
+                            .eq('block_number', currentBlock)
+                            .single();
+                        
+                        if (unit && unit.status === 'available') {
+                            await supabase
+                                .from('housing_units')
+                                .update({ 
+                                    status: 'booked', 
+                                    consumer_id: consumerId || payload.id 
+                                })
+                                .eq('id', unit.id);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error booking current unit:', e);
+                }
+            }
             
             onSuccess(payload);
         } catch (error: any) {
@@ -532,14 +616,39 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor={`${idPrefix}block_no`}>Blok dan NO yang dipilih</Label>
-                                    <Input 
-                                        id={`${idPrefix}block_no`} 
-                                        name="housing_block_no" 
-                                        value={formData.housing_block_no || ''} 
-                                        onChange={handleInputChange} 
-                                        placeholder="Cth: Blok A No. 12" 
-                                        readOnly={readOnly} 
-                                    />
+                                    <div className="flex gap-2">
+                                        <Input 
+                                            id={`${idPrefix}block_no`} 
+                                            name="housing_block_no" 
+                                            value={formData.housing_block_no || ''} 
+                                            onChange={handleInputChange} 
+                                            placeholder="Cth: Blok A No. 12" 
+                                            readOnly={readOnly} 
+                                            className="flex-1"
+                                        />
+                                        {!readOnly && availableUnits.length > 0 && (
+                                            <Select
+                                                onValueChange={(val) => {
+                                                    setFormData(prev => ({ ...prev, housing_block_no: val }));
+                                                }}
+                                            >
+                                                <SelectTrigger className="w-[140px]">
+                                                    <SelectValue placeholder="Pilih Unit" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {availableUnits.map(unit => (
+                                                        <SelectItem key={unit.id} value={unit.block_number}>
+                                                            {unit.block_number}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    </div>
+                                    {loadingUnits && <p className="text-[10px] text-slate-400">Memuat unit tersedia...</p>}
+                                    {!readOnly && formData.housing_project && availableUnits.length === 0 && !loadingUnits && (
+                                        <p className="text-[10px] text-amber-600">Tidak ada unit 'Tersedia' di proyek ini.</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2 md:col-span-2">
                                     <Label htmlFor={`${idPrefix}sales`}>Nama Sales / Marketing</Label>

@@ -187,3 +187,18 @@ export interface ConsumerTransaction {
     created_by?: string;
     created_at: string;
 }
+
+export interface HousingUnit {
+    id: string;
+    project_id?: string;
+    project_name?: string; // Joined
+    location_name?: string; // Synchronized with location management
+    block_number: string;
+    status: 'available' | 'booked' | 'sold' | 'blocked';
+    construction_progress: number;
+    notes?: string;
+    consumer_id?: string;
+    consumer_name?: string; // Joined
+    created_at: string;
+    updated_at: string;
+}

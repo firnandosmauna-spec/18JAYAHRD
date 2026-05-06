@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../..
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Plus, Trash2, Save, Loader2, ArrowLeft, History, Edit } from 'lucide-react';
+import { Plus, Trash2, Save, Loader2, ArrowLeft, History, Edit, Search } from 'lucide-react';
 import { toast } from '../../components/ui/use-toast';
 import { accountingService } from '../../services/accountingService';
 import { formatCurrency, cn } from '../../lib/utils';
@@ -25,6 +25,21 @@ export function JournalEntryView() {
     const [showForm, setShowForm] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [editingId, setEditingId] = React.useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = React.useState('');
+
+    const filteredEntries = React.useMemo(() => {
+        const query = searchQuery.toLowerCase();
+        return entries.filter(entry => {
+            return (
+                entry.description.toLowerCase().includes(query) ||
+                (entry.reference?.toLowerCase().includes(query)) ||
+                entry.items?.some((item: any) => 
+                    item.account_name.toLowerCase().includes(query) ||
+                    item.account_code.toLowerCase().includes(query)
+                )
+            );
+        });
+    }, [entries, searchQuery]);
 
     // Load from URL param
     React.useEffect(() => {
@@ -381,6 +396,20 @@ export function JournalEntryView() {
                 </Button>
             </div>
 
+            <Card className="border-none shadow-sm mb-6">
+                <CardContent className="p-4">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Input
+                            placeholder="Cari berdasarkan keterangan, referensi, atau nama akun..."
+                            className="pl-10"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
             <Card className="border-none shadow-sm overflow-hidden">
                 <CardContent className="p-0">
                     {loadingEntries ? (
@@ -389,9 +418,9 @@ export function JournalEntryView() {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            {entries.length > 0 ? (
+                            {filteredEntries.length > 0 ? (
                                 <div className="divide-y divide-gray-100">
-                                    {entries.map((entry) => (
+                                    {filteredEntries.map((entry) => (
                                         <div key={entry.id} className="p-6 transition-colors hover:bg-gray-50/50">
                                             <div className="flex flex-col md:flex-row justify-between mb-4 gap-4">
                                                 <div className="flex items-center gap-4">
@@ -464,9 +493,14 @@ export function JournalEntryView() {
                                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                                         <Plus className="w-8 h-8 text-gray-400" />
                                     </div>
-                                    <h3 className="text-lg font-semibold text-gray-900">Belum Ada Jurnal</h3>
-                                    <p className="text-gray-500 max-w-xs mx-auto mb-6">Mulai dengan mencatat transaksi keuangan pertama Anda.</p>
-                                    <Button variant="outline" onClick={() => setShowForm(true)}>Buat Jurnal Pertama</Button>
+                                    <h3 className="text-lg font-semibold text-gray-900">
+                                        {searchQuery ? 'Hasil Pencarian Tidak Ditemukan' : 'Belum Ada Jurnal'}
+                                    </h3>
+                                    <p className="text-gray-500 max-w-xs mx-auto mb-6">
+                                        {searchQuery ? `Tidak ada jurnal yang cocok dengan "${searchQuery}"` : 'Mulai dengan mencatat transaksi keuangan pertama Anda.'}
+                                    </p>
+                                    {!searchQuery && <Button variant="outline" onClick={() => setShowForm(true)}>Buat Jurnal Pertama</Button>}
+                                    {searchQuery && <Button variant="outline" onClick={() => setSearchQuery('')}>Hapus Pencarian</Button>}
                                 </div>
                             )}
                         </div>
