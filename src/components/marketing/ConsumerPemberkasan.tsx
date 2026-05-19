@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotificationsContext } from '@/contexts/NotificationContext';
 import { Badge } from '@/components/ui/badge';
-import { Check, RotateCcw, ThumbsUp, ThumbsDown, Clock, History, Calendar } from 'lucide-react';
+import { Check, RotateCcw, ThumbsUp, ThumbsDown, Clock, History, Calendar, AlertTriangle } from 'lucide-react';
 
 interface ConsumerPemberkasanProps {
     consumerId: string;
@@ -247,12 +247,63 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                 throw error;
             }
 
+            // Sync with Housing Stock
+            let isStockSynced = false;
+            if (key === 'pencairan_akad') {
+                const targetStatus = value ? 'sold' : 'booked';
+                
+                try {
+                    // 1. Fetch all consumer profile IDs matching this consumer's name exactly (case-insensitive)
+                    const { data: matchingConsumers, error: fetchErr } = await supabase
+                        .from('consumer_profiles')
+                        .select('id')
+                        .ilike('name', consumerName);
+
+                    let nameSyncSuccess = false;
+                    if (!fetchErr && matchingConsumers && matchingConsumers.length > 0) {
+                        const consumerIds = matchingConsumers.map(c => c.id);
+                        
+                        // Update any housing unit where consumer_id matches any of these profile IDs
+                        const { error: nameSyncError } = await supabase
+                            .from('housing_units')
+                            .update({ status: targetStatus })
+                            .in('consumer_id', consumerIds);
+                        
+                        if (!nameSyncError) {
+                            nameSyncSuccess = true;
+                        }
+                    }
+
+                    // 2. Fallback: also match by location & block number if provided
+                    let blockSyncSuccess = false;
+                    if (housingProject && housingBlockNo) {
+                        const { error: secondaryError } = await supabase
+                            .from('housing_units')
+                            .update({ status: targetStatus, consumer_id: consumerId })
+                            .eq('location_name', housingProject)
+                            .eq('block_number', housingBlockNo);
+                        
+                        if (!secondaryError) {
+                            blockSyncSuccess = true;
+                        }
+                    }
+
+                    if (nameSyncSuccess || blockSyncSuccess) {
+                        isStockSynced = true;
+                    }
+                } catch (syncErr) {
+                    console.error('Error syncing housing unit by name:', syncErr);
+                }
+            }
+
             setData(prev => prev ? { ...prev, ...updates } : null);
             await logMovement(key, value);
 
             toast({
                 title: "Tersimpan",
-                description: `Status ${CHECKLIST_ITEMS.find(i => i.key === key)?.label} diperbarui`,
+                description: key === 'pencairan_akad' && isStockSynced
+                    ? `Status Pencairan Akad diperbarui & Stok Rumah otomatis disinkronkan menjadi ${value ? 'Terjual (Sold)' : 'Booked'}!`
+                    : `Status ${CHECKLIST_ITEMS.find(i => i.key === key)?.label} diperbarui`,
             });
 
             if (onUpdate) onUpdate();
@@ -588,6 +639,22 @@ export function ConsumerPemberkasan({ consumerId, consumerName, housingProject, 
                     </Button>
                 </div>
             </div>
+
+
+            {(!housingProject || housingProject === 'none' || !housingBlockNo) && (
+                <div className="flex gap-4 p-5 rounded-2xl bg-amber-50 border border-amber-200 shadow-sm animate-pulse-subtle">
+                    <div className="p-3 bg-amber-100/80 rounded-xl h-fit">
+                        <AlertTriangle className="w-6 h-6 text-amber-600 animate-bounce-subtle" />
+                    </div>
+                    <div className="space-y-1">
+                        <h4 className="text-sm font-black text-amber-900 tracking-tight">Data Proyek & Blok Belum Lengkap</h4>
+                        <p className="text-xs text-amber-700 leading-relaxed font-medium">
+                            Konsumen ini belum memilih <strong>Proyek Perumahan</strong> atau <strong>Nomor Blok</strong> pada profilnya. 
+                            Silakan lengkapi data Proyek dan Blok/No pada menu <strong>Profil Konsumen</strong> agar status unit rumah di modul <strong>Stok Rumah</strong> otomatis tersinkronisasi menjadi <strong>Terjual (Sold)</strong> saat pencairan akad selesai.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             <div className="flex flex-col lg:flex-row gap-6 items-start relative">
                 <div className={cn(

@@ -256,6 +256,28 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // 1. Strict Validation for Project Location and Block/No
+        if (!formData.housing_project || formData.housing_project === 'none') {
+            toast({
+                title: "Data Belum Lengkap",
+                description: "Proyek Perumahan wajib dipilih!",
+                variant: "destructive"
+            });
+            setActiveTab('data-diri');
+            return;
+        }
+
+        if (!formData.housing_block_no || !formData.housing_block_no.trim()) {
+            toast({
+                title: "Data Belum Lengkap",
+                description: "Blok dan Nomor Rumah wajib diisi!",
+                variant: "destructive"
+            });
+            setActiveTab('data-diri');
+            return;
+        }
+
         setSubmitting(true);
 
         try {
@@ -594,7 +616,7 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                         <div className="pt-4 border-t mt-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor={`${idPrefix}project`}>Proyek Perumahan</Label>
+                                    <Label htmlFor={`${idPrefix}project`}>Proyek Perumahan <span className="text-red-500">*</span></Label>
                                     <Select
                                         value={formData.housing_project || 'none'}
                                         onValueChange={(value) => setFormData({ ...formData, housing_project: value === 'none' ? '' : value })}
@@ -615,7 +637,7 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor={`${idPrefix}block_no`}>Blok dan NO yang dipilih</Label>
+                                    <Label htmlFor={`${idPrefix}block_no`}>Blok dan NO yang dipilih <span className="text-red-500">*</span></Label>
                                     <div className="flex gap-2">
                                         <Input 
                                             id={`${idPrefix}block_no`} 
@@ -624,6 +646,7 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
                                             onChange={handleInputChange} 
                                             placeholder="Cth: Blok A No. 12" 
                                             readOnly={readOnly} 
+                                            required
                                             className="flex-1"
                                         />
                                         {!readOnly && availableUnits.length > 0 && (
