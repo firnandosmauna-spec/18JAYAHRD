@@ -314,6 +314,7 @@ export default function ConsumerDatabaseView() {
                             <div className="mt-4">
                                 <ConsumerProfileForm
                                     consumerId={editingId}
+                                    initialData={consumers.find(c => c.id === editingId) || undefined}
                                     onSuccess={handleFormSuccess}
                                     onCancel={handleFormCancel}
                                 />

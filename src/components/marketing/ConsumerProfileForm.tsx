@@ -72,6 +72,48 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
     });
 
     useEffect(() => {
+        const defaultBlankState = {
+            code: '',
+            name: '',
+            id_card_number: '',
+            address: '',
+            phone: '',
+            email: '',
+            sales_person: '',
+            sales_person_id: null,
+            housing_project: '',
+            housing_block_no: '',
+            npwp: '',
+            company_id_number: '',
+            booking_remarks: '',
+            salary: 0,
+            occupation: '',
+            employer_name: '',
+            employer_address: '',
+            employer_phone: '',
+            employer_remarks: '',
+            marital_status: '',
+            spouse_name: '',
+            spouse_phone: '',
+            spouse_occupation: '',
+            spouse_office_address: '',
+            spouse_remarks: '',
+            family_name: '',
+            family_relationship: '',
+            family_phone: '',
+            family_address: '',
+            source: '',
+            bank_process: '',
+            document_urls: [],
+            status: 'aktif',
+            ...initialData
+        };
+
+        // Reset state completely to prevent stale form data from lingering
+        setFormData(defaultBlankState);
+        setPreviousUnit(null);
+        setActiveTab('data-diri');
+
         const fetchMarketingStaff = async () => {
             try {
                 const { data, error } = await supabase
