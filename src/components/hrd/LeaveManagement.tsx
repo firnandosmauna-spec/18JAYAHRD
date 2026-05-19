@@ -97,29 +97,48 @@ function formatDate(dateString: string) {
   });
 }
 
-function calculateDays(startDate: string, endDate: string): number {
+function calculateDays(startDate: string, endDate: string, holidays: string[] = []): number {
+  if (!startDate || !endDate) return 0;
   const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
   const end = new Date(endDate);
-  const diffTime = Math.abs(end.getTime() - start.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-  return diffDays;
+  end.setHours(0, 0, 0, 0);
+
+  let count = 0;
+  const current = new Date(start);
+
+  while (current <= end) {
+    const day = current.getDay();
+    const dateStr = current.toLocaleDateString('en-CA');
+
+    // Exclude Sundays (0) and manual/national holidays
+    if (day !== 0 && !holidays.includes(dateStr)) {
+      count++;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  return count;
 }
 
 function NativeSelect({
   value,
   onChange,
   className = '',
+  disabled = false,
   children,
 }: {
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
       className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
       {children}
@@ -291,7 +310,7 @@ export function LeaveManagement() {
   // Reset form
   const resetForm = () => {
     setFormData({
-      employee_id: '',
+      employee_id: user?.role === 'staff' ? user.employee_id || '' : '',
       leave_type: 'annual',
       start_date: '',
       end_date: '',
@@ -326,7 +345,7 @@ export function LeaveManagement() {
         }
       }
 
-      const days = calculateDays(formData.start_date, formData.end_date);
+      const days = calculateDays(formData.start_date, formData.end_date, holidays);
 
       if (isEditing && selectedLeave) {
         const updates = {
@@ -723,7 +742,7 @@ export function LeaveManagement() {
                                 <Eye className="w-4 h-4 mr-1" />
                                 Detail
                               </Button>
-                              {leave.status === 'pending' && (
+                              {(leave.status === 'pending' || user?.role === 'Administrator') && (
                                 <>
                                   <Button
                                     variant="ghost"
@@ -743,28 +762,28 @@ export function LeaveManagement() {
                                     <Trash2 className="w-4 h-4 mr-1" />
                                     Hapus
                                   </Button>
-                                  {user?.role === 'Administrator' && (
-                                    <>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="font-body text-green-600 hover:text-green-700"
-                                        onClick={() => handleApproveLeave(leave.id)}
-                                      >
-                                        <CheckCircle className="w-4 h-4 mr-1" />
-                                        Setujui
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="font-body text-red-600 hover:text-red-700"
-                                        onClick={() => handleRejectLeave(leave.id)}
-                                      >
-                                        <XCircle className="w-4 h-4 mr-1" />
-                                        Tolak
-                                      </Button>
-                                    </>
-                                  )}
+                                </>
+                              )}
+                              {leave.status === 'pending' && user?.role === 'Administrator' && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="font-body text-green-600 hover:text-green-700"
+                                    onClick={() => handleApproveLeave(leave.id)}
+                                  >
+                                    <CheckCircle className="w-4 h-4 mr-1" />
+                                    Setujui
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="font-body text-red-600 hover:text-red-700"
+                                    onClick={() => handleRejectLeave(leave.id)}
+                                  >
+                                    <XCircle className="w-4 h-4 mr-1" />
+                                    Tolak
+                                  </Button>
                                 </>
                               )}
                               <Button variant="ghost" size="sm" className="font-body">
@@ -807,6 +826,7 @@ export function LeaveManagement() {
                 value={formData.employee_id}
                 onChange={(value) => setFormData({ ...formData, employee_id: value })}
                 className="font-body"
+                disabled={user?.role === 'staff'}
               >
                 <option value="">Pilih karyawan</option>
                   {employees.map(emp => (
@@ -857,7 +877,7 @@ export function LeaveManagement() {
               <div className="space-y-2">
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-sm font-body text-blue-800">
-                    Durasi Cuti: {calculateDays(formData.start_date, formData.end_date)} hari
+                    Durasi Cuti: {calculateDays(formData.start_date, formData.end_date, holidays)} hari
                   </p>
                 </div>
                 
