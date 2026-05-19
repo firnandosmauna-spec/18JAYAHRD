@@ -226,11 +226,36 @@ export default function RetentionFundView() {
         const formatDateForInput = (d?: string) => d ? d.split('T')[0] : '';
 
         setEditForm({
-            imb: { ...details.imb, claim_date: formatDateForInput(details.imb.claim_date) },
-            jkk: { ...details.jkk, claim_date: formatDateForInput(details.jkk.claim_date) },
-            sertifikat: { ...details.sertifikat, claim_date: formatDateForInput(details.sertifikat.claim_date) },
-            listrik: { ...details.listrik, claim_date: formatDateForInput(details.listrik.claim_date) },
-            bestek: { ...details.bestek, claim_date: formatDateForInput(details.bestek.claim_date) }
+            imb: { 
+                amount: details.imb.amount || 0, 
+                status: details.imb.status || 'pending', 
+                claim_date: formatDateForInput(details.imb.claim_date), 
+                notes: details.imb.notes || '' 
+            },
+            jkk: { 
+                amount: details.jkk.amount || 0, 
+                status: details.jkk.status || 'pending', 
+                claim_date: formatDateForInput(details.jkk.claim_date), 
+                notes: details.jkk.notes || '' 
+            },
+            sertifikat: { 
+                amount: details.sertifikat.amount || 0, 
+                status: details.sertifikat.status || 'pending', 
+                claim_date: formatDateForInput(details.sertifikat.claim_date), 
+                notes: details.sertifikat.notes || '' 
+            },
+            listrik: { 
+                amount: details.listrik.amount || 0, 
+                status: details.listrik.status || 'pending', 
+                claim_date: formatDateForInput(details.listrik.claim_date), 
+                notes: details.listrik.notes || '' 
+            },
+            bestek: { 
+                amount: details.bestek.amount || 0, 
+                status: details.bestek.status || 'pending', 
+                claim_date: formatDateForInput(details.bestek.claim_date), 
+                notes: details.bestek.notes || '' 
+            }
         });
         setIsEditDialogOpen(true);
     };
