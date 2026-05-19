@@ -72,7 +72,7 @@ export function ConsumerProfileForm({ consumerId, initialData, onSuccess, onCanc
     });
 
     useEffect(() => {
-        const defaultBlankState = {
+        const defaultBlankState: Partial<ConsumerProfile> = {
             code: '',
             name: '',
             id_card_number: '',
